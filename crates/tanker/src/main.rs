@@ -32,6 +32,7 @@ mod photo;
 mod player;
 mod radar;
 mod rain;
+mod save;
 mod thunder;
 mod script_cam;
 
@@ -59,6 +60,9 @@ struct Cli {
     iso: Option<PathBuf>,
     #[arg(default_value = "w00a")]
     stage: String,
+    /// Start from the autosave (written each time a stage starts).
+    #[arg(long = "continue")]
+    resume: bool,
     /// Arrive as if coming from this stage (its script supplies Snake's start
     /// and the story marker). Defaults to the opening cutscene `d01t` for
     /// w00a; `none` uses `--entry` instead.
@@ -702,7 +706,17 @@ fn prepare(
 }
 
 fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
+    let saved = if cli.resume { save::read() } else { None };
+    match &saved {
+        Some(s) => {
+            info!("continuing at {}", s.stage);
+            cli.stage = s.stage.clone();
+            cli.from = Some("none".into());
+        }
+        None if cli.resume => eprintln!("no save at {}; starting {}", save::path().display(), cli.stage),
+        None => {}
+    }
     let iso = cli.iso.or_else(stage::default_iso).context("pass --iso <path to MGS2 .iso> or set MGS2_ISO")?;
     let mut disc = stage::open_disc(&iso)?;
     let codec_data = codec::CodecData::load(&iso).map_err(|e| eprintln!("CODEC.DAT not loaded: {e:#}")).ok();
@@ -744,6 +758,10 @@ fn main() -> Result<()> {
     }
     // Coming from another gameplay stage (not a cutscene `d..t`), Snake
     // walks in through the door.
+    // Continuing: the variables as the saved stage started.
+    if let Some(s) = &saved {
+        banks = s.banks.clone();
+    }
     let walk_in = arrival.is_some() && from.as_deref().is_some_and(|f| f.starts_with('w'));
     let mut level = prepare(&mut disc, &cli.stage, banks, walk_in, cli.spawns, cli.vision)?;
     // The cutscene Snake comes from (the opening briefing for w00a).
@@ -782,7 +800,10 @@ fn main() -> Result<()> {
     .insert_resource(level.phase)
     .insert_resource(NewCast(Mutex::new(Some(level.cast))))
     .insert_resource(bullet::Rng(0x2001_1113))
-    .init_resource::<items::Inventory>()
+    .insert_resource(match &saved {
+        Some(s) => items::Inventory { counts: s.counts.clone(), usp: s.usp, weapon: s.weapon, ..default() },
+        None => items::Inventory::default(),
+    })
         .init_resource::<guard::Gunshot>()
     .init_resource::<contact::Punches>()
     .init_resource::<codec::CodecState>()
@@ -845,6 +866,10 @@ fn main() -> Result<()> {
     app.add_plugins(headmark::plugin);
     app.add_plugins(fpv::plugin);
     app.add_plugins(hud::plugin);
+    // Test runs (--screenshot) leave the player's save alone.
+    if cli.screenshot.is_none() {
+        app.add_systems(Update, save::autosave);
+    }
     app.add_plugins(cbox::plugin);
     app.add_plugins(grenade::plugin);
     app.add_systems(Update, motion_sheet.after(player::control).before(body::skin));

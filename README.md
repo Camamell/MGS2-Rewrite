@@ -44,6 +44,10 @@ script output. Dictionary-only matches are shown as `~name`.
 cargo run --release -p tanker -- --iso "path/to/mgs2.iso" w00a
 ```
 
+Progress is saved automatically each time a stage starts (stage, story
+variables and inventory, in `%APPDATA%\mgs2-tanker\save.txt`); add
+`--continue` to pick up from there.
+
 The stage script runs through a GCL interpreter, which creates the level
 geometry and the guards for the chosen difficulty (`--difficulty 10..50`,
 default 30 = Normal). Snake arrives the way the previous stage's script sends
