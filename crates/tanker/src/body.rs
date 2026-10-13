@@ -216,15 +216,21 @@ pub fn skin(
     children: Query<&Children>,
     parts: Query<(&BodyMesh, &Mesh3d, &ViewVisibility)>,
     mut meshes: ResMut<Assets<Mesh>>,
+    cams: Query<&GlobalTransform, With<crate::player::FollowCam>>,
+    mut last: Local<std::collections::HashMap<Entity, SkinKey>>,
 ) {
     let dt = time.delta_secs().min(0.05);
+    last.retain(|e, _| bodies.contains(*e));
+    let eye = cams.single().map_or(Vec3::ZERO, |c| c.translation() / SCALE);
     // Lit by the stage's lt2 like the map (assumed: the same per-vertex
     // lights at the body's current place).
     let lt2 = game.data.lights.first().map(|(_, l)| l).filter(|_| std::env::var_os("MGS2_NO_LT2").is_none());
+    // Bodies to skin this frame, with their parts.
+    let mut jobs: Vec<(&Body, f32, Quat, Vec<(&BodyMesh, AssetId<Mesh>)>)> = Vec::new();
+    let mut to_skin: Vec<Entity> = Vec::new();
     for (e, mut b, mut t) in &mut bodies {
         t.translation = b.pos * SCALE;
         t.rotation = Quat::from_rotation_y(b.yaw);
-        let model = &game.data.models[b.model].1;
         let motion = b.motions.and_then(|m| game.data.motions[m].1.motions.get(b.motion));
         b.frame += dt * 60.0;
         if let (true, Some(m)) = (b.once, motion) {
@@ -234,35 +240,107 @@ pub fn skin(
         if !children.iter_descendants(e).any(|c| parts.get(c).is_ok_and(|p| p.2.get())) {
             continue;
         }
-        let mats = anim::pose(model, motion, b.frame, false);
-        let reach = Vec3::splat(2000.0);
-        let lights = lt2.map(|l| l.gather((b.pos - reach).into(), (b.pos + reach).into())).unwrap_or_default();
-        for child in children.iter_descendants(e) {
-            let Ok((part, mesh3d, _)) = parts.get(child) else { continue };
-            let Some(mut mesh) = meshes.get_mut(&mesh3d.0) else { continue };
-            let (mut pos, mut nrm) = (Vec::new(), Vec::new());
-            for &(o, m) in &part.segs {
-                let (p, n) = anim::skin(model, o, m, &mats);
-                pos.extend(p);
-                nrm.extend(n);
-            }
-            if let Some(l) = lt2 {
-                let col: Vec<[f32; 4]> = pos
-                    .iter()
-                    .zip(&nrm)
-                    .map(|(p, n)| {
-                        let c = l.shade((t.rotation * Vec3::from(*p) + b.pos).into(), (t.rotation * Vec3::from(*n)).into(), &lights);
-                        [c[0] / 128.0, c[1] / 128.0, c[2] / 128.0, 1.0]
+        // Motions are keyed at 60 frames a second, as the game plays them:
+        // skin again only when the whole frame, the place or the facing
+        // changes (most frames at higher refresh rates; still crowds).
+        let key = SkinKey::of(&b, step(b.pos.distance(eye)));
+        if last.get(&e) == Some(&key) {
+            continue;
+        }
+        last.insert(e, key);
+        to_skin.push(e);
+    }
+    for (e, b, t) in bodies.iter_many(&to_skin) {
+        let list = children.iter_descendants(e).filter_map(|c| parts.get(c).ok().map(|(p, m, _)| (p, m.0.id()))).collect();
+        jobs.push((b, last[&e].frame as f32, t.rotation, list));
+    }
+    // Skinning and lighting run in parallel; the meshes are written after.
+    let pool = bevy::tasks::ComputeTaskPool::get();
+    let game = &*game;
+    let results: Vec<Vec<(AssetId<Mesh>, Vec<[f32; 3]>, Vec<[f32; 3]>, Option<Vec<[f32; 4]>>)>> = pool.scope(|scope| {
+        for (b, frame, rot, list) in &jobs {
+            scope.spawn(async move {
+                let model = &game.data.models[b.model].1;
+                let motion = b.motions.and_then(|m| game.data.motions[m].1.motions.get(b.motion));
+                let mats = anim::pose(model, motion, *frame, false);
+                let reach = Vec3::splat(2000.0);
+                let lights = lt2.map(|l| l.gather((b.pos - reach).into(), (b.pos + reach).into())).unwrap_or_default();
+                list.iter()
+                    .map(|(part, id)| {
+                        let (mut pos, mut nrm) = (Vec::new(), Vec::new());
+                        for &(o, m) in &part.segs {
+                            let (p, n) = anim::skin(model, o, m, &mats);
+                            pos.extend(p);
+                            nrm.extend(n);
+                        }
+                        let col = lt2.map(|l| {
+                            pos.iter()
+                                .zip(&nrm)
+                                .map(|(p, n)| {
+                                    let c = l.shade((*rot * Vec3::from(*p) + b.pos).into(), (*rot * Vec3::from(*n)).into(), &lights);
+                                    [c[0] / 128.0, c[1] / 128.0, c[2] / 128.0, 1.0]
+                                })
+                                .collect()
+                        });
+                        let pos = pos.into_iter().map(|v| (Vec3::from(v) * SCALE).into()).collect();
+                        (*id, pos, nrm, col)
                     })
-                    .collect();
-                mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, col);
-            }
-            let pos: Vec<[f32; 3]> = pos.into_iter().map(|v| (Vec3::from(v) * SCALE).into()).collect();
-            mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, pos);
-            mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, nrm);
+                    .collect()
+            });
+        }
+    });
+    BODIES.fetch_add(results.len(), std::sync::atomic::Ordering::Relaxed);
+    for (id, pos, nrm, col) in results.into_iter().flatten() {
+        let Some(mut mesh) = meshes.get_mut(id) else { continue };
+        STATS.fetch_add(pos.len(), std::sync::atomic::Ordering::Relaxed);
+        if let Some(col) = col {
+            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, col);
+        }
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, pos);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, nrm);
+    }
+}
+
+pub static STATS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+pub static BODIES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// What a body was last skinned with.
+#[derive(Clone, Copy, PartialEq)]
+pub struct SkinKey {
+    model: usize,
+    motions: Option<usize>,
+    motion: usize,
+    frame: i32,
+    pos: [i32; 3],
+    yaw: u32,
+}
+
+/// Animation frames per skinning update by distance from the camera (mm):
+/// every frame close up, every second or fourth further away (re-uploading
+/// skinned meshes is what costs, with crowds of Marines in the holds).
+pub fn step(distance: f32) -> i32 {
+    if distance < 6000.0 {
+        1
+    } else if distance < 15000.0 {
+        2
+    } else {
+        4
+    }
+}
+
+impl SkinKey {
+    fn of(b: &Body, step: i32) -> Self {
+        Self {
+            model: b.model,
+            motions: b.motions,
+            motion: b.motion,
+            frame: (b.frame.floor() as i32).div_euclid(step) * step,
+            pos: b.pos.round().as_ivec3().to_array(),
+            yaw: b.yaw.to_bits(),
         }
     }
 }
+
 /// A character's shadow on the floor under it. The game links a low-poly
 /// shadow model to the body (`sna_shadow` for Snake, joined when the object
 /// counts match, `FUN_00129448`) and draws it as a shadow volume; here it
@@ -327,20 +405,32 @@ pub fn add_shadows(
 pub fn update_shadows(
     game: Res<Game>,
     bodies: Query<&Body>,
-    shadows: Query<(&DropShadow, &ChildOf, &Mesh3d, &ViewVisibility)>,
+    shadows: Query<(Entity, &DropShadow, &ChildOf, &Mesh3d, &ViewVisibility)>,
     mut meshes: ResMut<Assets<Mesh>>,
+    cams: Query<&GlobalTransform, With<crate::player::FollowCam>>,
+    mut last: Local<std::collections::HashMap<Entity, (usize, Option<usize>, usize, i32)>>,
 ) {
+    let eye = cams.single().map_or(Vec3::ZERO, |c| c.translation() / SCALE);
+    last.retain(|e, _| shadows.contains(*e));
     use bevy::mesh::Indices;
     /// Above the floor, against z-fighting (mm).
     const LIFT: f32 = 15.0;
-    for (s, parent, m3, seen) in &shadows {
+    for (e, s, parent, m3, seen) in &shadows {
         let Ok(b) = bodies.get(parent.parent()) else { continue };
         if !seen.get() {
             continue;
         }
+        // The flattened pose only changes with the motion frame.
+        let step = step(b.pos.distance(eye));
+        let frame = (b.frame.floor() as i32).div_euclid(step) * step;
+        let key = (s.model, b.motions, b.motion, frame);
+        if last.get(&e) == Some(&key) {
+            continue;
+        }
+        last.insert(e, key);
         let model = &game.data.models[s.model].1;
         let motion = b.motions.and_then(|m| game.data.motions[m].1.motions.get(b.motion));
-        let mats = anim::pose(model, motion, b.frame, false);
+        let mats = anim::pose(model, motion, frame as f32, false);
         let mut pos: Vec<[f32; 3]> = Vec::new();
         let mut idx: Vec<u32> = Vec::new();
         for (o, obj) in model.objects.iter().enumerate() {

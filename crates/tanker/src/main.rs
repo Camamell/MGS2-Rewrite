@@ -899,6 +899,13 @@ fn main() -> Result<()> {
     // MGS2_FPS=1: log frame rate and time every second.
     if std::env::var_os("MGS2_FPS").is_some() {
         app.add_plugins((bevy::diagnostic::FrameTimeDiagnosticsPlugin::default(), bevy::diagnostic::LogDiagnosticsPlugin::default()));
+        app.add_systems(Update, |time: Res<Time<Real>>, mut next: Local<f32>, bodies: Query<(), With<body::Body>>| {
+            if time.elapsed_secs() >= *next {
+                *next = time.elapsed_secs() + 1.0;
+                use std::sync::atomic::Ordering::Relaxed;
+                info!("skinned {} bodies, {} vertices this second; {} bodies", body::BODIES.swap(0, Relaxed), body::STATS.swap(0, Relaxed), bodies.iter().count());
+            }
+        });
     }
     app.add_systems(Update, (fog::apply, fog::unfog));
     app.add_systems(Startup, codec_face::setup_portraits).add_systems(Update, (codec_face::load, codec_face::show, codec_face::animate.after(codec_face::load)));
