@@ -212,6 +212,8 @@ const COS: u32 = 0x019A53;
 const ABS: u32 = 0x0190B3;
 /// Snake's life (Bs16:0xf2; the maximum is Bs16:0xf4).
 pub const SNAKE_LIFE: u16 = 0xF2;
+/// `command #ee8b90 -s effect -p x y z`: a sound effect at a place.
+pub const SOUND_AT_COMMAND: u32 = 0xEE8B90;
 /// `command #80b977 -g proc -c proc`: the stage's game-over proc and the
 /// proc run on continuing.
 pub const OVER_COMMAND: u32 = 0x80B977;
@@ -258,6 +260,8 @@ pub enum CodecReq {
     Reset,
     /// Features switched on and off (`cmd_944e11`, [`flags`]).
     Flags { on: u32, off: u32 },
+    /// A sound effect at a place (`#ee8b90`).
+    SoundAt { id: u32, at: [i32; 3] },
     /// A message to an actor (`mesg <actor> <code> args..`).
     Mesg { target: u32, code: u32, args: Vec<i32> },
     /// The game-over and continue procs (`#80b977 -g -c`).
@@ -525,6 +529,18 @@ impl<'a> Vm<'a> {
                     _ => None,
                 };
                 self.codec.extend(req);
+            }
+            self.last = 0;
+            None
+        } else if is("command") && matches!(a.first(), Some(Value::Name(h)) if *h & 0x00FF_FFFF == SOUND_AT_COMMAND) {
+            // `command #ee8b90 -s <effect> -p x y z [-m mode]`: an effect at
+            // a place (scripted events: impacts, explosions).
+            let get = |s: &mut Self, l: u8, i: usize| {
+                options.iter().find(|(o, _)| *o == l).and_then(|(_, v)| v.get(i)).and_then(|v| s.value(v, args).int())
+            };
+            if let Some(id) = get(self, b's', 0) {
+                let at = [0, 1, 2].map(|i| get(self, b'p', i).unwrap_or(0));
+                self.codec.push(CodecReq::SoundAt { id: id as u32, at });
             }
             self.last = 0;
             None

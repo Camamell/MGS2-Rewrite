@@ -1505,6 +1505,7 @@ fn apply_codec(game: &mut Game, reqs: &[gcl::CodecReq]) {
             CodecReq::Then { id, then } => game.codec_calls.push((14112, id, then)),
             CodecReq::Speech { id, then } => game.speech = Some((id, then, SPEECH_SECONDS)),
             CodecReq::Reset => game.codec_area = None,
+            CodecReq::SoundAt { id, at } => crate::sfx::play(id, Some(Vec3::new(at[0] as f32, at[1] as f32, at[2] as f32))),
             CodecReq::Mesg { target, code, args } => {
                 if let Some(col) = game.collision.as_mut() {
                     col.script_wall_message(target, code, &args);
