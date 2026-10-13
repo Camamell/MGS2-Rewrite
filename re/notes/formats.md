@@ -416,3 +416,19 @@ sound-bank pages.
 ## lt2 lighting
 
 See `crates/mgs2-formats/src/lt2.rs` for the layout. The per-vertex formulas come from the VU0 micro programs that `FUN_0012b1d0` calls (MPG of 190 instructions in the VIF0 packet at `0x196020`; `vcallms` 0x00 directional + ambient, 0x10 point, 0x20 spot, 0x50 strip, 0x30 shadow sphere). Constants: `0x1b02a0` = (1, 1, 1, 255) (axis weights, clamp), `0x1b02b0` = (1.5, -0.75) (the 1.5 point/spot gain). Model normals point inwards (checked on Snake's parts), so lights use `n . (vertex - light)` and the directional `n . dir` with dir the direction the light travels. Map models have no vertex colours of their own.
+
+## Script command `#944e11` (`cmd_944e11`, main executable 0x105850)
+
+Switches game features off and on around scripted scenes: each option takes
+"on" (str_code 0xe4e) or "off" (0x1c926). "off" sets, "on" clears, bits of
+DAT_0017f498: `-m` 3 (weapon 1 and item 2 windows: the menus check 0x201 /
+0x102), `-r` 4 (the radar: `FUN_00393318` returns 0 while 0x704 is set),
+`-g` 8, `-s` 0x20, `-A` 0x40000, `-v` 0x80000, `-d` 0x30000, `-n` 0x4000
+(inverted); `-p` sets DAT_0017f490 0x200 (no pausing), `-j` clears 0x80. The
+stages' event procs use it in pairs (w04c `#fe0810` off, `#be57f5` on). The
+port hides the radar and the weapon / item windows accordingly.
+
+Other frequent unhandled commands, by handler: `#6a725a` 0x3a59d0 (options
+w r m p c), `#b44bbb` 0x11cca8 (i t s d c), `#56ef97` 0x10ebb0 (runs its
+`-s` block under a mask; the port runs the block), `#0acf09` 0x2d7d08,
+`#fbeb7f` 0x105d48. The command table is the resident's (header +0xC).

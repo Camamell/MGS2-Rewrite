@@ -115,7 +115,11 @@ fn draw(
     mut gizmos: Gizmos<RadarGizmos>,
 ) {
     let snake = snake.single().ok();
-    let shown = game.radar.is_some() && snake.is_some() && !cutscene.active() && codec.call.is_none();
+    let shown = game.radar.is_some()
+        && snake.is_some()
+        && !cutscene.active()
+        && codec.call.is_none()
+        && game.disabled & crate::gcl::flags::RADAR == 0;
     if let Ok(mut v) = panel.single_mut() {
         let want = if shown { Visibility::Inherited } else { Visibility::Hidden };
         if *v != want {

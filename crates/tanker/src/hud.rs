@@ -34,6 +34,8 @@ struct WeaponText;
 #[derive(Component)]
 struct ItemBox;
 #[derive(Component)]
+struct WeaponBox;
+#[derive(Component)]
 struct ItemText;
 #[derive(Component)]
 struct Prompt;
@@ -90,7 +92,7 @@ fn setup(mut commands: Commands) {
     };
     // Bottom right: weapon. Bottom left: item.
     commands
-        .spawn((HudRoot, corner(false), BorderColor::all(FRAME), BackgroundColor(PANEL)))
+        .spawn((HudRoot, WeaponBox, corner(false), BorderColor::all(FRAME), BackgroundColor(PANEL)))
         .with_child((WeaponText, Text::new(""), font(18.0), TextColor(Color::WHITE), TextLayout::justify(Justify::Center)));
     commands
         .spawn((ItemBox, corner(true), BorderColor::all(FRAME), BackgroundColor(PANEL), Visibility::Hidden))
@@ -108,7 +110,7 @@ fn toggle(
     cutscene: Res<crate::demo::Cutscene>,
     mut debug: ResMut<DebugHud>,
     mut text: Query<&mut Visibility, With<crate::Hud>>,
-    mut roots: Query<&mut Visibility, (With<HudRoot>, Without<crate::Hud>)>,
+    mut roots: Query<&mut Visibility, (With<HudRoot>, Without<crate::Hud>, Without<WeaponBox>)>,
 ) {
     let shown = if cutscene.active() { Visibility::Hidden } else { Visibility::Inherited };
     for mut v in &mut roots {
@@ -147,7 +149,12 @@ fn update(
         Query<&mut Node, With<BossFill>>,
         Query<&mut Node, With<GripFill>>,
     )>,
-    mut vis: ParamSet<(Query<&mut Visibility, With<BossRow>>, Query<&mut Visibility, With<GripRow>>, Query<&mut Visibility, With<ItemBox>>)>,
+    mut vis: ParamSet<(
+        Query<&mut Visibility, With<BossRow>>,
+        Query<&mut Visibility, With<GripRow>>,
+        Query<&mut Visibility, With<ItemBox>>,
+        Query<&mut Visibility, With<WeaponBox>>,
+    )>,
     labels: Query<(Entity, Has<LifeText>, Has<WeaponText>, Has<ItemText>, Has<Prompt>, Has<Centre>, Has<TimerText>)>,
     mut texts: Query<&mut Text>,
     mut fill_colour: Query<&mut BackgroundColor, With<LifeFill>>,
@@ -183,8 +190,17 @@ fn update(
     } else {
         None
     };
+    // The script can switch the weapon (bit 1) and item (bit 2) windows
+    // off (`cmd_944e11 -m`).
+    let menus = game.disabled & crate::gcl::flags::MENUS;
     if let Ok(mut v) = vis.p2().single_mut() {
-        *v = if item.is_some() && !hidden { Visibility::Inherited } else { Visibility::Hidden };
+        *v = if item.is_some() && !hidden && menus & 2 == 0 { Visibility::Inherited } else { Visibility::Hidden };
+    }
+    if let Ok(mut v) = vis.p3().single_mut() {
+        let want = if hidden || menus & 1 != 0 { Visibility::Hidden } else { Visibility::Inherited };
+        if *v != want {
+            *v = want;
+        }
     }
     let mut prompt = if crate::door_in_reach(&game, b.pos).is_some() { "[Space] open door".to_string() } else { String::new() };
     if let Some((m, _)) = &inv.message {

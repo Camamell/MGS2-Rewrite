@@ -203,6 +203,8 @@ pub struct Game {
     pub codec_area: Option<(i32, u32)>,
     /// The stage's default call (`-b`).
     pub codec_base: Option<(i32, u32)>,
+    /// Features the script has switched off (`gcl::flags`).
+    pub disabled: u32,
     /// Incoming calls waiting to open, with the proc to run after each.
     pub codec_calls: Vec<(i32, u32, Option<u32>)>,
     /// Procs of finished calls, to run.
@@ -681,6 +683,7 @@ fn prepare(
         cameras,
         codec_area: None,
         codec_base: None,
+        disabled: 0,
         codec_calls: Vec::new(),
         codec_then: Vec::new(),
         on_alert,
@@ -1422,6 +1425,10 @@ fn apply_codec(game: &mut Game, reqs: &[gcl::CodecReq]) {
             CodecReq::Then { id, then } => game.codec_calls.push((14112, id, then)),
             CodecReq::Speech { id, then } => game.speech = Some((id, then, SPEECH_SECONDS)),
             CodecReq::Reset => game.codec_area = None,
+            CodecReq::Flags { on, off } => {
+                game.disabled = (game.disabled | off) & !on;
+                debug!("script features off: {:#x}", game.disabled);
+            }
             CodecReq::Sound(c) => game.sound_cmds.push(c),
             CodecReq::Timer(m) => {
                 if let Some(t) = game.timer.as_mut() {

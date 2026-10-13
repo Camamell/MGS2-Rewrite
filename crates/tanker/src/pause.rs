@@ -60,6 +60,8 @@ fn toggle(
         *fired |= due;
         due
     });
+    // (`cmd_944e11 -p "off"` forbids pausing in the game; not applied here,
+    // so a script whose "on" the port misses cannot leave pause blocked.)
     if (keys.just_pressed(KeyCode::KeyP) || scripted) && (!dead || paused.0) {
         paused.0 = !paused.0;
         if paused.0 {

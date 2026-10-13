@@ -200,6 +200,25 @@ const TIMER_LEFT: u32 = 0x450C64;
 
 /// The Codec command (`command #4a243a ...`) in stage scripts.
 pub const CODEC_COMMAND: u32 = 0x4A243A;
+/// `cmd_944e11`: game features off / on (`-m "off" -r "on"` ...).
+pub const FLAGS_COMMAND: u32 = 0x944E11;
+
+/// The feature bits `cmd_944e11` sets (DAT_0017f498; `PAUSE` is DAT_0017f490
+/// 0x200, kept here as a high bit).
+pub mod flags {
+    /// `-m`: the weapon (1) and item (2) windows.
+    pub const MENUS: u32 = 3;
+    /// `-r`: the radar (`FUN_00393318` hides it).
+    pub const RADAR: u32 = 4;
+    /// `-g`.
+    pub const GUN: u32 = 8;
+    /// `-s`.
+    pub const S: u32 = 0x20;
+    /// `-A`.
+    pub const ACTION: u32 = 0x40000;
+    /// `-p`: pausing.
+    pub const PAUSE: u32 = 0x8000_0000;
+}
 /// A line of Codec dialogue.
 const CODEC_LINE: u32 = 0x3B91EB;
 /// `#01e658 <voice id> { lines }`: the lines spoken in one VOX.DAT clip.
@@ -220,6 +239,8 @@ pub enum CodecReq {
     /// Spoken dialogue that runs `then` when it ends.
     Speech { id: u32, then: Option<u32> },
     Reset,
+    /// Features switched on and off (`cmd_944e11`, [`flags`]).
+    Flags { on: u32, off: u32 },
     /// A raw sound driver command (`#f2eedc -c`).
     Sound(u32),
     /// A message to the holds' timer: 0 pause, 1 run.
@@ -481,6 +502,30 @@ impl<'a> Vm<'a> {
                 };
                 self.codec.extend(req);
             }
+            self.last = 0;
+            None
+        } else if is("command") && matches!(a.first(), Some(Value::Name(h)) if *h & 0x00FF_FFFF == FLAGS_COMMAND) {
+            // `command #944e11 -m "off" -r "on" ...` (`cmd_944e11`): turn
+            // parts of the game off and on again around scripted scenes;
+            // "off" sets the bit in DAT_0017f498, "on" clears it.
+            let (mut on, mut off) = (0u32, 0u32);
+            for (l, v) in options {
+                let bit = match l {
+                    b'm' => flags::MENUS,
+                    b'r' => flags::RADAR,
+                    b'g' => flags::GUN,
+                    b's' => flags::S,
+                    b'A' => flags::ACTION,
+                    b'p' => flags::PAUSE,
+                    _ => 0,
+                };
+                match v.first() {
+                    Some(Value::Str(s)) if s == "on" => on |= bit,
+                    Some(Value::Str(s)) if s == "off" => off |= bit,
+                    _ => {}
+                }
+            }
+            self.codec.push(CodecReq::Flags { on, off });
             self.last = 0;
             None
         } else if is("command") && let Some(id) = Self::command_id(a.first()) {
