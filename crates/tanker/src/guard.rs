@@ -50,6 +50,9 @@ mod motion {
     pub const RUN: usize = 2;
     /// Rifle raised, aiming.
     pub const AIM: usize = 4;
+    /// The "!": action 2 of the action table `FUN_002240f8`, motion
+    /// `FUN_0025da40` (0x5c; 0xec / 0x165 under flags 8 / 0x4000).
+    pub const EXCLAIM: usize = 92;
 }
 
 const WALK_SPEED: f32 = 1330.0;
@@ -169,15 +172,17 @@ pub struct Anim {
     /// Falling asleep, then lying.
     pub fall: usize,
     pub lie: usize,
+    /// The discovery "!" reaction.
+    pub exclaim: usize,
 }
 
 impl Anim {
     /// Gurlukovich soldiers, `gbs.mar`.
-    pub const SOLDIER: Anim = Anim { idle: motion::IDLE, walk: motion::WALK, run: motion::RUN, aim: motion::AIM, hands_up: 8, fall: sleep::FALL, lie: sleep::LIE };
+    pub const SOLDIER: Anim = Anim { idle: motion::IDLE, walk: motion::WALK, run: motion::RUN, aim: motion::AIM, hands_up: 8, fall: sleep::FALL, lie: sleep::LIE, exclaim: motion::EXCLAIM };
     /// US Marines, `ushold.mar`: 39 and 40 cover 1332 and 4057 mm/s, the
     /// soldiers' walk and run; 46 hands up, 151 falls forward, 152 lies.
     /// No rifle-raised motion was found, so they aim from the idle pose.
-    pub const MARINE: Anim = Anim { idle: 0, walk: 39, run: 40, aim: 0, hands_up: 46, fall: 151, lie: 152 };
+    pub const MARINE: Anim = Anim { idle: 0, walk: 39, run: 40, aim: 0, hands_up: 46, fall: 151, lie: 152, exclaim: 0 };
 }
 /// A held-up guard turns on Snake after this long without a gun on him.
 const HOLDUP_LOOSE: f32 = 120.0;
@@ -831,7 +836,7 @@ fn normal_brain(g: &mut Guard, body: &mut Body, snake: Vec3, dt: f32, game: &Gam
         State::Discovery { timer } => {
             // "!": face Snake while the reaction plays, then the meter goes
             // to 0x400, which raises the alert through the manager.
-            body.play(g.anim.idle);
+            body.play_once(g.anim.exclaim);
             face(body, snake, dt);
             let timer = timer + 1;
             if timer >= EXCLAIM_FRAMES {

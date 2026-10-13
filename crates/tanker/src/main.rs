@@ -874,6 +874,7 @@ fn main() -> Result<()> {
     app.add_plugins(cbox::plugin);
     app.add_plugins(grenade::plugin);
     app.add_systems(Update, motion_sheet.after(player::control).before(body::skin));
+    app.add_systems(Update, guard_sheet.after(guard::think).after(olga::think).before(body::skin));
     app.add_plugins(thunder::plugin);
     app.add_plugins(thunder::bolt_plugin);
     // MGS2_FPS=1: log frame rate and time every second.
@@ -1892,6 +1893,48 @@ fn capture(mut commands: Commands, time: Res<Time>, mut c: ResMut<Capture>, mut 
     }
 }
 
+/// `MGS2_GUARD_SHEET=<dir>` with `MGS2_SHEET=motion:frame,...`: from 3 s
+/// on, puts the nearest guard 1.5 m to Snake's right on screen and holds him in each
+/// listed pose in turn (half a second each), saving `<dir>/<motion>_<frame>.png`.
+fn guard_sheet(
+    mut commands: Commands,
+    time: Res<Time>,
+    players: Query<&body::Body, (With<player::Player>, Without<guard::Guard>)>,
+    mut guards: Query<&mut body::Body, With<guard::Guard>>,
+    cams: Query<&Transform, With<player::FollowCam>>,
+    mut last: Local<Option<usize>>,
+    mut exit: MessageWriter<AppExit>,
+) {
+    use bevy::render::view::screenshot::{Screenshot, save_to_disk};
+    let (Some(dir), Some(list)) = (std::env::var_os("MGS2_GUARD_SHEET"), std::env::var("MGS2_SHEET").ok()) else { return };
+    let poses: Vec<(usize, f32)> = list
+        .split(',')
+        .filter_map(|p| p.split_once(':').and_then(|(m, f)| Some((m.trim().parse().ok()?, f.trim().parse().ok()?))))
+        .collect();
+    let t = time.elapsed_secs() - 3.0;
+    let Ok(snake) = players.single() else { return };
+    if t < 0.0 {
+        return;
+    }
+    let n = (t / 0.5) as usize;
+    let Some(&(motion, frame)) = poses.get(n) else {
+        exit.write(AppExit::Success);
+        return;
+    };
+    // Beside Snake, across the camera's view.
+    let right = cams.single().map_or(Vec3::X, |c| c.right().as_vec3() * Vec3::new(1.0, 0.0, 1.0)).normalize_or(Vec3::X);
+    let Some(mut b) = guards.iter_mut().min_by(|a, c| a.pos.distance(snake.pos).total_cmp(&c.pos.distance(snake.pos))) else { return };
+    b.pos = snake.pos + right * 1500.0;
+    b.yaw = right.x.atan2(right.z);
+    b.motion = motion;
+    b.once = true;
+    b.frame = frame;
+    if (t % 0.5) > 0.35 && *last != Some(n) {
+        *last = Some(n);
+        commands.spawn(Screenshot::primary_window()).observe(save_to_disk(std::path::Path::new(&dir).join(format!("{motion:03}_{frame:03}.png"))));
+    }
+}
+
 /// `MGS2_MOTION_SHEET=<dir>`: from 3 s on, holds Snake in each of his
 /// motions in turn (its middle frame, half a second each) and saves a
 /// screenshot of each as `<dir>/<n>.png`, then exits (to identify motions).
@@ -1904,6 +1947,14 @@ fn motion_sheet(
     mut exit: MessageWriter<AppExit>,
 ) {
     use bevy::render::view::screenshot::{Screenshot, save_to_disk};
+    // MGS2_MOTION_LENGTHS=1: log each motion archive's lengths once.
+    if std::env::var_os("MGS2_MOTION_LENGTHS").is_some() && last.is_none() {
+        *last = Some(usize::MAX);
+        for (name, set) in &game.data.motions {
+            let l: Vec<String> = set.motions.iter().enumerate().map(|(i, m)| format!("{i}:{}", m.length)).collect();
+            info!("motions {name}: {}", l.join(" "));
+        }
+    }
     let Some(dir) = std::env::var_os("MGS2_MOTION_SHEET") else { return };
     let t = time.elapsed_secs() - 3.0;
     let Ok(mut b) = q.single_mut() else { return };

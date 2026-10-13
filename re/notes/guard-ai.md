@@ -50,6 +50,29 @@ the tracking flag is set.
   table at 0x3f0c20; sub 2 is the "!", sub 8 is aiming, which sets the meter
   to 0x400.
 
+## Actions: `FUN_002240f8`
+
+The state functions pick an action (body +0xfdc); `FUN_002240f8` maps it to
+a gbs.mar motion (+0xfe4) and a step function (+0x1334):
+
+| Action | Motion | Notes |
+|---|---|---|
+| 2 | `FUN_0025da40`: 92 (236 with flag 8, 357 with 0x4000) | the discovery "!" (174 frames) |
+| 4 / 5 | 15 / 16 | |
+| 6 | 17 (363 with 0x4000), step `FUN_00260320` | 580 frames; voice 0x11c (or thud 0x36e) at frames 70, 226 and 393 |
+| 7 / 8 | 275 / 274 | |
+| 9 | 231 | |
+| 10 | 6 | |
+| 0xb | 20 | |
+| 0xc | 232, step `FUN_00260320` | 999 frames |
+| 0x15 | 5 | |
+| 0x18 / 0x19 | 104 / 93 | |
+| 0x1a | none; +0xfb4 = 600 | |
+
+`MGS2_MOTION_LENGTHS=1` logs every archive's motion lengths and
+`MGS2_GUARD_SHEET=dir MGS2_SHEET=motion:frame,...` photographs a guard in
+given poses. The port plays motion 92 for the "!".
+
 ## Alert brain: `FUN_00229D30`
 
 Seen → meter 0x400. The tracking flag (+0x348 & 0x40) expires 60 frames
