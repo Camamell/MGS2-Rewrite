@@ -340,6 +340,13 @@ fn draw_bolts(
         b.life -= frames;
     }
     bolts.list.retain(|b| b.life > 0.0);
+    // Nothing to draw and already hidden: leave the mesh alone (no upload).
+    if bolts.list.is_empty()
+        && mesh_q.iter().all(|(_, v)| *v == Visibility::Hidden)
+        && !mesh_q.is_empty()
+    {
+        return;
+    }
     let Ok(cam) = cams.single() else { return };
     let eye = cam.translation / SCALE;
     let (mut pos, mut col, mut idx) = (Vec::new(), Vec::new(), Vec::new());
