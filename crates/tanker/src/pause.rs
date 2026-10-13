@@ -15,7 +15,7 @@ pub fn plugin(app: &mut App) {
     app.init_resource::<Paused>()
         .add_systems(Startup, setup)
         .add_systems(PreUpdate, toggle.after(InputSystems).after(crate::pad::feed).run_if(crate::codec::idle).run_if(crate::demo::idle))
-        .add_systems(Update, (show, fullscreen));
+        .add_systems(Update, (show, fullscreen, ui_scale));
 }
 
 /// F11 or Alt+Enter: fullscreen (borderless) on and off.
@@ -79,5 +79,14 @@ fn show(paused: Res<Paused>, mut q: Query<&mut Visibility, With<PauseText>>) {
         if *v != want {
             *v = want;
         }
+    }
+}
+
+/// The HUD is laid out for a 720-line window; scale it with the window.
+pub fn ui_scale(windows: Query<&Window>, mut scale: ResMut<UiScale>) {
+    let Some(w) = windows.iter().next() else { return };
+    let want = (w.height() / 720.0).max(0.5);
+    if (scale.0 - want).abs() > 0.01 {
+        scale.0 = want;
     }
 }

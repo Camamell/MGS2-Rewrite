@@ -62,7 +62,7 @@ pub fn run(pass: Vec<String>, difficulty: i16, fullscreen: bool) -> Option<Vec<S
         .add_plugins(crate::pad::plugin)
         .insert_resource(Menu { items, at: 0, difficulty, stage: 0, pass, chosen: None })
         .add_systems(Startup, setup)
-        .add_systems(Update, (input, draw, shot, crate::pause::fullscreen).chain())
+        .add_systems(Update, (input, draw, shot, crate::pause::fullscreen, crate::pause::ui_scale).chain())
         .add_systems(Last, move |menu: Res<Menu>, mut exit: MessageWriter<AppExit>| {
             if let Some(args) = &menu.chosen {
                 *out.lock().unwrap() = Some(args.clone());
