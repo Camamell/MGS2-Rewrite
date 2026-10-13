@@ -69,6 +69,20 @@ a gbs.mar motion (+0xfe4) and a step function (+0x1334):
 | 0x18 / 0x19 | 104 / 93 | |
 | 0x1a | none; +0xfb4 = 600 | |
 
+Motion numbers are archive indices: the body's motion table (+0x1328) is
+set by `FUN_0025ad08`, and every soldier passes 0, which selects the
+identity table at 0x402090 (0..0x179, gbs.mar's 378 entries; 274 on are
+1-frame placeholders with one shared id). `FUN_0025d470(body, 0, motion, 0,
+0xffffff, 0x28, mode, bank)` starts it (mode 3: `FUN_0025ce90`), and the
+flags at +0xf16 add upper-body layers through `FUN_002607a0`: bits 0..1
+pick 196 / 177 / 180, bits 2..3 199 / 183 / 186 (the viewer shows these as
+hand-to-head, arms-down and sitting poses: injuries and stances, not aims).
+Shooting alternates action 4 (motion 15) with action 6 (motion 17) on shot
+frames; reload is action 7 (motion 275, a placeholder) and lasts until the
+step function sees the motion's end flag. 15 / 16 / 17 are long standing
+loops in the viewer (no rifle drawn there), so the port keeps its aim pose
+(motion 4) until the layering is understood.
+
 `MGS2_MOTION_LENGTHS=1` logs every archive's motion lengths and
 `MGS2_GUARD_SHEET=dir MGS2_SHEET=motion:frame,...` photographs a guard in
 given poses. The port plays motion 92 for the "!" and 16 for the

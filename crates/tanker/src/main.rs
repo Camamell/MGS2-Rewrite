@@ -1953,7 +1953,7 @@ fn motion_sheet(
     if std::env::var_os("MGS2_MOTION_LENGTHS").is_some() && last.is_none() {
         *last = Some(usize::MAX);
         for (name, set) in &game.data.motions {
-            let l: Vec<String> = set.motions.iter().enumerate().map(|(i, m)| format!("{i}:{}", m.length)).collect();
+            let l: Vec<String> = set.motions.iter().enumerate().map(|(i, m)| format!("{i}:{:#x}:{}", m.id, m.length)).collect();
             info!("motions {name}: {}", l.join(" "));
         }
     }
