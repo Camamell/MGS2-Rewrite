@@ -210,6 +210,10 @@ const SONG: u32 = 0xD9C789;
 const SIN: u32 = 0x01D98E;
 const COS: u32 = 0x019A53;
 const ABS: u32 = 0x0190B3;
+/// `cmd_82bdc0 x1 y1 z1 x2 y2 z2`: the distance between two points.
+const DISTANCE: u32 = 0x82BDC0;
+/// `cmd_325c8e a b`: `atan2f(b, a)` as a 4096-unit angle.
+const ATAN: u32 = 0x325C8E;
 /// Snake's life (Bs16:0xf2; the maximum is Bs16:0xf4).
 pub const SNAKE_LIFE: u16 = 0xF2;
 /// `command #ee8b90 -s effect -p x y z`: a sound effect at a place.
@@ -594,6 +598,11 @@ impl<'a> Vm<'a> {
                     return self.block(b, args);
                 }
             // Other commands' results are not modelled; read as 0.
+            // MGS2_CMD_LOG=1: name them (finding what is still missing).
+            if std::env::var_os("MGS2_CMD_LOG").is_some() {
+                let opts: String = options.iter().map(|(l, _)| *l as char).collect();
+                eprintln!("gcl: unmodelled command {:?} -{opts}", a.first());
+            }
             self.last = 0;
             None
         } else if is("mesg") && matches!(a.first(), Some(Value::Name(h)) if *h & 0x00FF_FFFF == crate::timer::TIMER_ACTOR) {
@@ -668,6 +677,9 @@ impl<'a> Vm<'a> {
             None
         } else {
             // mesg, trap, print, load, restart, command, ...: not yet.
+            if std::env::var_os("MGS2_CMD_LOG").is_some() {
+                eprintln!("gcl: unmodelled #{name:06x}");
+            }
             None
         }
     }
@@ -693,7 +705,7 @@ impl<'a> Vm<'a> {
         };
         let known = CALL_AFTER.contains(&id)
             || CODEC_THEN.contains(&id)
-            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand"), SIN, COS, ABS, SONG].contains(&id);
+            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand"), SIN, COS, ABS, DISTANCE, ATAN, SONG].contains(&id);
         known.then_some(id)
     }
 
@@ -718,6 +730,14 @@ impl<'a> Vm<'a> {
                 let turn = f64::from(x) / 4096.0 * std::f64::consts::TAU;
                 let r = if id == SIN { turn.sin() } else { turn.cos() };
                 (r * 4096.0) as i32
+            };
+        } else if id == DISTANCE || id == ATAN {
+            let n: Vec<f32> = a[1..].iter().map(|v| self.value(v, args).int().unwrap_or(0) as f32).collect();
+            let at = |i: usize| n.get(i).copied().unwrap_or(0.0);
+            self.last = if id == DISTANCE {
+                ((at(0) - at(3)).powi(2) + (at(1) - at(4)).powi(2) + (at(2) - at(5)).powi(2)).sqrt() as i32
+            } else {
+                ((at(1).atan2(at(0)) * 2048.0 / std::f32::consts::PI) as i32) & 0xFFF
             };
         } else if id == TIMER_LEFT {
             self.last = self.timer;
