@@ -19,6 +19,9 @@
 //! | D-pad down | K | Codec |
 //! | Start | P, Enter, Esc | pause; continue / skip a cutscene, hang up |
 //! | Select | F4 | debug text |
+//!
+//! The pad rumbles when Snake is hit (the game's `vibrate.c` shakes it too;
+//! strength and length here are assumed).
 
 use bevy::input::InputSystems;
 use bevy::prelude::*;
@@ -33,6 +36,25 @@ pub struct Held(Vec<KeyCode>);
 
 pub fn plugin(app: &mut App) {
     app.init_resource::<Held>().init_resource::<Stick>().add_systems(PreUpdate, feed.after(InputSystems));
+}
+
+/// Rumble when Snake takes a hit (the game plugin adds this; the start menu
+/// has no player).
+pub fn rumble(
+    player: Query<&crate::player::Player>,
+    pads: Query<Entity, With<Gamepad>>,
+    mut last_life: Local<Option<i32>>,
+    mut out: MessageWriter<bevy::input::gamepad::GamepadRumbleRequest>,
+) {
+    use bevy::input::gamepad::{GamepadRumbleIntensity, GamepadRumbleRequest};
+    let Ok(p) = player.single() else { return };
+    if last_life.is_some_and(|l| p.life < l) {
+        let intensity = if p.dead() { GamepadRumbleIntensity::MAX } else { GamepadRumbleIntensity { strong_motor: 0.6, weak_motor: 0.4 } };
+        for gamepad in &pads {
+            out.write(GamepadRumbleRequest::Add { duration: std::time::Duration::from_millis(if p.dead() { 600 } else { 180 }), intensity, gamepad });
+        }
+    }
+    *last_life = Some(p.life);
 }
 
 const BUTTONS: [(GamepadButton, &[KeyCode]); 14] = [
