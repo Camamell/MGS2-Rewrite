@@ -512,7 +512,13 @@ pub fn think(
     mut gunshot: ResMut<Gunshot>,
     snake: Query<(&Body, &Player), Without<Guard>>,
     mut guards: Query<(Entity, &mut Guard, &mut Body)>,
+    mut clock: Local<f32>,
 ) {
+    // The game's logic runs once per 60 Hz frame; counters advance by the
+    // whole frames elapsed (movement uses the real time step).
+    *clock += time.delta_secs().min(0.05) * 60.0;
+    let ticks = clock.floor() as u32;
+    *clock -= ticks as f32;
     // Comrades lying on the floor (only after they have fallen).
     let sleepers: Vec<(Entity, Vec3)> = guards
         .iter()
@@ -632,7 +638,9 @@ pub fn think(
             phase.last_seen = Some(snake_pos);
             g.tracking = Some(0);
         }
-        update_meter(&mut g, phase.kind);
+        for _ in 0..ticks {
+            update_meter(&mut g, phase.kind);
+        }
         // A comrade down in sight: go and wake him; the alarm goes to
         // caution.
         if phase.kind != PhaseKind::Alert
@@ -705,7 +713,7 @@ pub fn think(
 
         match phase.kind {
             PhaseKind::Alert => {
-                if alert_brain(&mut g, &mut body, snake_pos, snake_dead, dt, &game, &mut rng) {
+                if alert_brain(&mut g, &mut body, snake_pos, snake_dead, dt, ticks, &game, &mut rng) {
                     let muzzle = body.pos + Vec3::Y * MUZZLE + body.forward() * 400.0;
                     let at = snake_pos + Vec3::Y * (snake_height * 0.6);
                     bullet::fire(&mut commands, &mut rng, muzzle, at);
@@ -719,12 +727,12 @@ pub fn think(
                     g.state = State::Discovery { timer: 0 };
                 }
                 if matches!(g.state, State::Discovery { .. }) {
-                    normal_brain(&mut g, &mut body, snake_pos, dt, &game);
+                    normal_brain(&mut g, &mut body, snake_pos, dt, ticks, &game);
                 } else {
-                    evasion_brain(&mut g, &mut body, &phase, dt, &game);
+                    evasion_brain(&mut g, &mut body, &phase, dt, ticks, &game);
                 }
             }
-            _ => normal_brain(&mut g, &mut body, snake_pos, dt, &game),
+            _ => normal_brain(&mut g, &mut body, snake_pos, dt, ticks, &game),
         }
         highest = highest.max(i32::from(g.meter));
     }
@@ -737,12 +745,14 @@ pub fn think(
             }
     }
 
-    manager(&mut phase, highest);
+    for _ in 0..ticks {
+        manager(&mut phase, highest);
+    }
 }
 
 /// `FUN_00227BC8` + transitions `FUN_00227520` (states the game can
 /// currently produce).
-fn normal_brain(g: &mut Guard, body: &mut Body, snake: Vec3, dt: f32, game: &Game) {
+fn normal_brain(g: &mut Guard, body: &mut Body, snake: Vec3, dt: f32, ticks: u32, game: &Game) {
     // Transitions out of patrol/wait/return, in the game's priority order
     // (later checks override earlier ones).
     if matches!(g.state, State::Patrol | State::Wait(_) | State::Return) {
@@ -800,7 +810,8 @@ fn normal_brain(g: &mut Guard, body: &mut Body, snake: Vec3, dt: f32, game: &Gam
         State::Investigate { target, sub, timer } => {
             // Sub-states: 0 glance toward the target, 1 walk there,
             // 2 look around (sub-state 10: up to 300 frames), then return.
-            let timer = timer + 1;
+            let before = timer;
+            let timer = timer + ticks;
             g.state = match sub {
                 0 => {
                     body.play(g.anim.idle);
@@ -829,7 +840,7 @@ fn normal_brain(g: &mut Guard, body: &mut Body, snake: Vec3, dt: f32, game: &Gam
                     }
                     // 120 frames after arriving: "?" and line 0x144 (w00a
                     // `FUN_0023c370`, not during Evasion).
-                    if timer == 120 {
+                    if before < 120 && timer >= 120 {
                         crate::sfx::play(0x144 + g.voice(), Some(body.pos));
                     }
                     if timer > 300 {
@@ -849,8 +860,18 @@ fn normal_brain(g: &mut Guard, body: &mut Body, snake: Vec3, dt: f32, game: &Gam
             // to 0x400, which raises the alert through the manager.
             body.play_once(g.anim.exclaim);
             face(body, snake, dt);
-            let timer = timer + 1;
+            let before = timer;
+            let mut timer = timer + ticks;
+            // Snake within a metre cuts it short after 7 frames
+            // (`FUN_00237128`).
+            if timer >= 7 && timer < EXCLAIM_FRAMES && body.pos.distance(snake) < 1000.0 {
+                timer = EXCLAIM_FRAMES;
+            }
             if timer >= EXCLAIM_FRAMES {
+                // As it ends the guard calls out (line 300 + voice).
+                if before < EXCLAIM_FRAMES {
+                    crate::sfx::play(0x12C + g.voice(), Some(body.pos));
+                }
                 g.meter = METER_MAX;
             }
             g.state = State::Discovery { timer };
@@ -876,6 +897,7 @@ fn alert_brain(
     snake: Vec3,
     snake_dead: bool,
     dt: f32,
+    ticks: u32,
     game: &Game,
     rng: &mut Rng,
 ) -> bool {
@@ -884,7 +906,7 @@ fn alert_brain(
     }
     // Tracking flag times out 60 frames after the last sighting.
     if let Some(t) = g.tracking.as_mut() {
-        *t += 1;
+        *t += ticks;
         if *t > 60 {
             g.tracking = None;
         }
@@ -933,7 +955,7 @@ fn alert_brain(
     a.firing = false;
     a.aim = 0.0;
 
-    g.repath = g.repath.saturating_sub(1);
+    g.repath = g.repath.saturating_sub(ticks);
     if g.path.is_empty() || g.repath == 0 {
         plan(g, body.pos, target, game);
     }
@@ -949,7 +971,7 @@ fn alert_brain(
 
 /// `FUN_0022C670` stand-in: walk to the last known position, then visit
 /// nav nodes nearby, pausing to look around.
-fn evasion_brain(g: &mut Guard, body: &mut Body, phase: &Phase, dt: f32, game: &Game) {
+fn evasion_brain(g: &mut Guard, body: &mut Body, phase: &Phase, dt: f32, ticks: u32, game: &Game) {
     let State::Search { wait } = g.state else {
         g.state = State::Search { wait: 0 };
         return;
@@ -957,8 +979,9 @@ fn evasion_brain(g: &mut Guard, body: &mut Body, phase: &Phase, dt: f32, game: &
     if wait > 0 {
         body.play(g.anim.idle);
         body.yaw += (wait as f32 / 40.0).sin() * dt;
-        g.state = State::Search { wait: wait - 1 };
-        if wait == 1 {
+        let left = wait.saturating_sub(ticks);
+        g.state = State::Search { wait: left };
+        if left == 0 {
             let around = phase.last_seen.unwrap_or(body.pos);
             if let Some(nav) = &game.nav {
                 let near = nav.nodes_near(around, 8000.0);

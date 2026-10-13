@@ -184,9 +184,13 @@ pub fn think(
     mut olgas: Query<(&mut Olga, &mut Body)>,
     trace: Option<Res<crate::guard::Trace>>,
     down_at: Option<Res<DownAt>>,
+    mut clock: Local<f32>,
 ) {
     let Some(img) = game.data.resident.as_deref() else { return };
     let dt = time.delta_secs().min(0.05);
+    *clock += dt * 60.0;
+    let ticks = clock.floor() as i32;
+    *clock -= ticks as f32;
     let Ok((sb, player)) = snake.single() else { return };
     let target = Target { feet: sb.pos, chest: sb.pos + Vec3::Y * (player.height() * 0.6), dead: player.dead() };
     for (mut o, mut b) in &mut olgas {
@@ -201,7 +205,7 @@ pub fn think(
                 o.ptr = table::START;
                 break;
             };
-            let mut ctx = Ctx { img, game: &game, dt, target, rng: &mut rng, commands: &mut commands };
+            let mut ctx = Ctx { img, game: &game, ticks, target, rng: &mut rng, commands: &mut commands };
             if !step(&mut o, &mut b, f, &mut ctx) {
                 break;
             }
@@ -233,7 +237,8 @@ struct Target {
 struct Ctx<'a, 'w, 's> {
     img: &'a [u8],
     game: &'a Game,
-    dt: f32,
+    /// Whole 60 Hz frames since the last update (timers count these).
+    ticks: i32,
     target: Target,
     rng: &'a mut Rng,
     commands: &'a mut Commands<'w, 's>,
@@ -250,7 +255,7 @@ fn step(o: &mut Olga, b: &mut Body, f: u32, cx: &mut Ctx) -> bool {
         let d = at - b.pos;
         o.target_yaw = d.x.atan2(d.z);
     }
-    let frames = (cx.dt * 60.0).round().max(1.0) as i32;
+    let frames = cx.ticks;
     let motion_done = |b: &Body| b.once && b.frame >= length(cx.game, b, b.motion) - 1.0;
     match f {
         // Init (FUN_00265E70): idle, then the start table.
