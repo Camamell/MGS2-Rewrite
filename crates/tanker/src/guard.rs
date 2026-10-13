@@ -279,6 +279,8 @@ pub struct Guard {
     darts: [u8; 3],
     /// Woken by a comrade (gets up with the other motion).
     roused: bool,
+    /// Seconds spent walking without getting anywhere.
+    stuck: f32,
     /// Has given up his dog tags.
     pub tagged: bool,
     pub anim: Anim,
@@ -319,11 +321,12 @@ const MUZZLE: f32 = 1350.0;
 pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
     let route = s.opt_int(b'r', 0)? as usize;
     let node = s.opt_int(b'n', 0).unwrap_or(0).max(0) as usize;
-    let pos = Vec3::new(
-        s.opt_int(b'd', 0).unwrap_or(0) as f32,
-        s.opt_int(b'd', 1).unwrap_or(0) as f32,
-        s.opt_int(b'd', 2).unwrap_or(0) as f32,
-    );
+    // `-d x y z map`: where he goes in an alert (controller +0x2b0); also
+    // the fallback start when his route is missing.
+    let post = s.opt(b'd').is_some().then(|| {
+        Vec3::new(s.opt_int(b'd', 0).unwrap_or(0) as f32, s.opt_int(b'd', 1).unwrap_or(0) as f32, s.opt_int(b'd', 2).unwrap_or(0) as f32)
+    });
+    let pos = post.unwrap_or(Vec3::ZERO);
     // `-i` d0 [d1 d2 d3]; FUN_00222F60 defaults 6000; vision uses d0.
     let distance = s.opt_int(b'i', 0).filter(|d| *d > 0).map_or(default_vision, |d| d as f32);
     let life = s.opt_int(b'l', 0).filter(|d| *d > 0).unwrap_or(DEFAULT_LIFE);
@@ -349,6 +352,7 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         resist: RESIST,
         darts: [0; 3],
         roused: false,
+        stuck: 0.0,
         tagged: false,
         anim: Anim::SOLDIER,
     };
@@ -379,6 +383,7 @@ pub fn patrol(route: usize, vision: f32, anim: Anim) -> Guard {
         resist: RESIST,
         darts: [0; 3],
         roused: false,
+        stuck: 0.0,
         tagged: false,
         anim,
     }
@@ -619,9 +624,13 @@ fn follow(g: &mut Guard, body: &mut Body, speed: f32, reach: f32, dt: f32, game:
                 }
             }
         }
+        // Barely moving (a wall, a corner): count it up for the brains.
+        let moved = Vec2::new(p.x - body.pos.x, p.z - body.pos.z).length();
+        g.stuck = if moved < step * 0.2 { g.stuck + dt } else { 0.0 };
         body.pos = p;
         return false;
     }
+    g.stuck = 0.0;
     true
 }
 
@@ -955,8 +964,23 @@ fn normal_brain(g: &mut Guard, body: &mut Body, snake: Vec3, dt: f32, ticks: u32
             if g.path.is_empty() {
                 g.path = vec![Vec3::from(wp.position)];
             }
+            // Walking straight at the next route point got nowhere: go round
+            // through the navigation graph, and failing that move on.
+            if g.stuck > 1.0 {
+                if g.path.len() <= 1 && game.nav.as_ref().is_some_and(|n| !n.is_empty()) {
+                    plan(g, body.pos, Vec3::from(wp.position), game);
+                } else {
+                    g.path.clear();
+                    g.node += 1;
+                }
+                g.stuck = 0.0;
+                return;
+            }
             if follow(g, body, WALK_SPEED, 150.0, dt, game) {
+                // A route of one point is a post: he stands there.
+                let posts = game.data.collision.as_ref().and_then(|c| c.routes.get(g.route)).is_some_and(|r| r.points.len() <= 1);
                 g.state = match wp.wait {
+                    _ if posts => State::Wait(f32::INFINITY),
                     0 => {
                         g.node += 1;
                         State::Patrol
@@ -1232,7 +1256,26 @@ pub fn trace(
     guards: Query<(&Guard, &Body)>,
     snake: Query<(&Body, &Player)>,
     bullets: Query<&bullet::Bullet>,
+    game: Res<Game>,
+    mut routes_shown: Local<bool>,
 ) {
+    if !*routes_shown && !guards.is_empty() {
+        *routes_shown = true;
+        if std::env::var_os("MGS2_ALL_ROUTES").is_some()
+            && let Some(c) = game.data.collision.as_ref()
+        {
+            for (i, r) in c.routes.iter().enumerate() {
+                let pts: Vec<String> = r.points.iter().take(3).map(|w| format!("({:.0},{:.0},{:.0})", w.position[0], w.position[1], w.position[2])).collect();
+                eprintln!("all route {i}: {}", pts.join(" "));
+            }
+        }
+        for (g, _) in &guards {
+            if let Some(r) = game.data.collision.as_ref().and_then(|c| c.routes.get(g.route)) {
+                let pts: Vec<String> = r.points.iter().map(|w| format!("({:.0},{:.0},{:.0} w{})", w.position[0], w.position[1], w.position[2], w.wait)).collect();
+                eprintln!("route {}: {}", g.route, pts.join(" "));
+            }
+        }
+    }
     t.0 += time.delta_secs();
     if t.0 < 1.0 {
         return;

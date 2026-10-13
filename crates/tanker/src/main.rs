@@ -559,6 +559,15 @@ fn prepare(
         let last = |i: usize| soldiers[i + 1..].iter().all(|o| actor(o) != actor(soldiers[i]));
         for s in (0..soldiers.len()).filter(|i| last(*i)).map(|i| soldiers[i]) {
             if let (Some((g, mut p)), Some(m)) = (guard::from_spawn(s, 6000.0), gm) {
+                // The soldier starts on his route at point `-n`
+                // (`FUN_002233e8` keeps `-d` apart as his alert post).
+                let start = data.collision.as_ref().and_then(|h| h.routes.get(g.route)).and_then(|r| {
+                    let n = r.points.len();
+                    (n > 0).then(|| Vec3::from(r.points[g.node % n].position))
+                });
+                if let Some(at) = start {
+                    p = at;
+                }
                 if let Some(col) = &collision
                     && let Some(y) = col.floor_below(p.x, p.z, p.y + 1000.0) {
                         p.y = y;
