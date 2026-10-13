@@ -1118,6 +1118,11 @@ fn alert_brain(
     }
     // Out of sight and no longer tracked: to his post if he has one
     // (`FUN_00228710` with +0x2c0 set), else after Snake's last place.
+    // (A post he cannot get to is given up.)
+    if g.stuck > 2.0 && g.level != 3 && g.tracking.is_none() && g.post.is_some() {
+        g.post = None;
+        g.stuck = 0.0;
+    }
     let target = match (g.level, g.tracking, g.post) {
         (3, _, _) => snake,
         (_, None, Some(post)) => post,
