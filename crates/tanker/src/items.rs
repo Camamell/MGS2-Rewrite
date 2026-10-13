@@ -64,14 +64,18 @@ pub fn m9_start(difficulty: i16) -> i32 {
     [106, 46, 16, 16, 16][level(difficulty)]
 }
 
-/// The most of each ammunition Snake can carry (the title script's
-/// Bs16:0x19c table by difficulty), if capped.
+/// The most of each ammunition and item Snake can carry (the title
+/// script's Bs16:0x19c and Bs16:0x244 tables by difficulty), if capped.
 pub fn max_count(key: (i32, i32), difficulty: i16) -> Option<i32> {
     let l = level(difficulty);
     match key {
         M9_AMMO => Some([106, 106, 46, 46, 46][l]),
         USP_AMMO => Some([61, 61, 46, 31, 16][l]),
         (2, 10) | (2, 11) => Some([50, 40, 20, 10, 6][l]),
+        // Items (Bs16:0x244): rations, cold medicine, bandages.
+        (0, 1) => Some([10, 7, 5, 3, 2][l]),
+        (0, 4) => Some([10, 10, 10, 5, 3][l]),
+        (0, 5) => Some([20, 15, 10, 5, 5][l]),
         _ => None,
     }
 }
