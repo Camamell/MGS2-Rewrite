@@ -830,6 +830,13 @@ fn main() -> Result<()> {
         _ => None,
     };
     level.game.prime_traps = arrival.is_none();
+    // A new game coming out of the opening (d01t): its script ends with
+    // Otacon's first call (`#f54f3e`: `command #4a243a -c 14112 33840365 4`)
+    // before loading w00a; the port plays the opening's demos straight
+    // into w00a, so the call is placed here.
+    if from.as_deref() == Some("d01t") && saved.is_none() && cli.stage == "w00a" {
+        level.game.codec_calls.push((14112, OPENING_CALL, None));
+    }
     // --snake-at wins over a script that places Snake itself.
     if let (Some(at), Some(snake)) = (cli.snake_at.as_ref().filter(|a| a.len() == 3), level.cast.snake.as_mut()) {
         let mut pos = Vec3::new(at[0], at[1], at[2]);
@@ -1480,6 +1487,9 @@ fn add_script_walls(col: &mut Collision, spawns: &[gcl::Spawn]) {
         col.add_script_wall(name as u32 & 0x00FF_FFFF, p, flags);
     }
 }
+
+/// Otacon's first call, which ends the opening (d01t `#f54f3e`).
+const OPENING_CALL: u32 = 33_840_365;
 
 /// `dsegment.c`'s actor: a wall the script places.
 const SCRIPT_WALL_ACTOR: u32 = 0xF91B9F;
