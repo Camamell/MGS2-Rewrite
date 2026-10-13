@@ -203,7 +203,9 @@ pub struct Game {
     /// (frequency, CODEC.DAT id) Snake reaches by calling from here.
     pub codec_area: Option<(i32, u32)>,
     /// The stage's default call (`-b`).
-    pub codec_base: Option<(i32, u32)>,
+    pub codec_base: Vec<(i32, u32)>,
+    /// A Codec save call has ended: save the game.
+    pub save_requested: bool,
     /// Features the script has switched off (`gcl::flags`).
     pub disabled: u32,
     /// The stage's game-over proc, continue proc (`#80b977`) and the voice
@@ -698,7 +700,8 @@ fn prepare(
         prime_traps: false,
         cameras,
         codec_area: None,
-        codec_base: None,
+        codec_base: Vec::new(),
+        save_requested: false,
         disabled: 0,
         over_proc: None,
         song,
@@ -934,7 +937,7 @@ fn main() -> Result<()> {
     // player's save alone.
     let testing = ["MGS2_GUARD_SHEET", "MGS2_MOTION_SHEET", "MGS2_NO_SAVE"].iter().any(|v| std::env::var_os(v).is_some());
     if cli.screenshot.is_none() && !testing {
-        app.add_systems(Update, save::autosave);
+        app.add_systems(Update, (save::autosave, save::codec_save));
     }
     app.add_plugins((pad::plugin, pause::plugin, scar::plugin)).add_systems(Update, pad::rumble);
     app.add_plugins(cbox::plugin);
@@ -1538,7 +1541,10 @@ fn apply_codec(game: &mut Game, reqs: &[gcl::CodecReq]) {
                 }
             }
             CodecReq::Area { freq, id, .. } => game.codec_area = Some((freq, id)),
-            CodecReq::Base { freq, id } => game.codec_base = Some((freq, id)),
+            CodecReq::Base { freq, id } => {
+                game.codec_base.retain(|b| b.0 != freq);
+                game.codec_base.push((freq, id));
+            }
             CodecReq::Call { freq, id } => {
                 if !game.codec_calls.iter().any(|c| (c.0, c.1) == (freq, id)) {
                     game.codec_calls.push((freq, id, None));

@@ -75,6 +75,7 @@ too.
 | G | throw a stun grenade (or chaff when out of stuns): stuns guards within 5 m of the blast; chaff jams the radar for 8 s |
 | B | put on / take off the cardboard box (once Snake has one): guards ignore it while it keeps still |
 | K | call the Codec (141.12); Space next line, Esc hang up |
+| L | call 140.96: Otacon saves the game when the call ends (`--continue` starts the stage over with the story and items as saved) |
 | C (holds, w04c) | digital camera: first-person view; A/D W/S aim, Q/E zoom, F take a photo |
 | P | pause |
 | F11 / Alt+Enter | fullscreen on / off (`--fullscreen` starts that way) |

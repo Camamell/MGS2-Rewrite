@@ -77,6 +77,31 @@ pub fn read() -> Option<Save> {
     Some(Save { stage, banks: Banks { a, b }, counts, usp: has, weapon })
 }
 
+/// Saves after a call on Otacon's save frequency (140.96): the story as it
+/// is now and the inventory; Snake starts the stage over from its entrance
+/// when continuing.
+pub fn codec_save(mut game: ResMut<Game>, inv: Res<Inventory>) {
+    if !std::mem::take(&mut game.save_requested) {
+        return;
+    }
+    let s = Save {
+        stage: game.data.name.clone(),
+        banks: Banks { a: game.banks.a.clone(), b: game.banks.b.clone() },
+        counts: inv.counts.clone(),
+        usp: inv.usp,
+        weapon: inv.weapon,
+    };
+    // Keep the stage's entrance as the place to start from.
+    let mut s = s;
+    for off in [crate::gcl::SNAKE_X, crate::gcl::SNAKE_Y, crate::gcl::SNAKE_Z, crate::gcl::SNAKE_DIR] {
+        s.banks.set_a32(off, game.start_banks.a32(off));
+    }
+    match write(&s) {
+        Ok(()) => info!("saved through the Codec at {}", s.stage),
+        Err(e) => warn!("save failed: {e}"),
+    }
+}
+
 /// Writes the save when a new stage has started.
 pub fn autosave(game: Res<Game>, inv: Res<Inventory>, mut last: Local<String>) {
     if *last == game.data.name {

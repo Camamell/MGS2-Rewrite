@@ -17,6 +17,10 @@ use mgs2_formats::gcx::{self, Gcx};
 use crate::Game;
 use crate::gcl::{Banks, Vm};
 
+/// Otacon's frequency (141.12) and his save frequency (140.96).
+pub const OTACON_FREQ: i32 = 14112;
+pub const SAVE_FREQ: i32 = 14096;
+
 #[derive(Resource)]
 pub struct CodecData {
     data: Vec<u8>,
@@ -210,6 +214,10 @@ pub fn input(
         };
         if end {
             game.codec_then.extend(call.then);
+            // Otacon's save frequency: the game saves when the call ends.
+            if call.freq == SAVE_FREQ {
+                game.save_requested = true;
+            }
             state.call = None;
         }
         return;
@@ -217,11 +225,17 @@ pub fn input(
     if let Some((freq, id, then)) = game.codec_calls.pop() {
         state.call = open(&mut game, &data, freq, id, then);
     } else if keys.just_pressed(KeyCode::KeyK) || auto.is_some_and(|mut a| a.0 <= time.elapsed_secs() && { a.0 = f32::MAX; true }) {
-        let call = match game.codec_area.or(game.codec_base) {
+        let base = game.codec_base.iter().find(|b| b.0 == OTACON_FREQ).copied();
+        let call = match game.codec_area.filter(|a| a.0 == OTACON_FREQ).or(base) {
             Some((freq, id)) => open(&mut game, &data, freq, id, None),
             None => None,
         };
-        state.call = Some(call.unwrap_or(Call { freq: 14112, lines: vec![(0, "(no answer)".into())], voices: vec![0], index: 0, then: None }));
+        state.call = Some(call.unwrap_or(Call { freq: OTACON_FREQ, lines: vec![(0, "(no answer)".into())], voices: vec![0], index: 0, then: None }));
+    } else if keys.just_pressed(KeyCode::KeyL) {
+        // L: 140.96, where Otacon saves the game.
+        let base = game.codec_base.iter().find(|b| b.0 == SAVE_FREQ).copied();
+        let call = base.and_then(|(freq, id)| open(&mut game, &data, freq, id, None));
+        state.call = Some(call.unwrap_or(Call { freq: SAVE_FREQ, lines: vec![(0, "(no answer)".into())], voices: vec![0], index: 0, then: None }));
     }
 }
 
