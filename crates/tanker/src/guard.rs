@@ -207,8 +207,13 @@ mod sleep {
 const DEFAULT_LIFE: i32 = 3000;
 /// Hearing range for Snake's running (assumed).
 const HEARING: f32 = 3000.0;
-/// How long a tranquilized guard sleeps (frames; not from the game yet).
-const SLEEP_FRAMES: f32 = 60.0 * 60.0;
+/// How long a tranquilized guard sleeps: the enemy manager's `-z`
+/// (`FUN_00221970`, default 18000 frames = 5 minutes; every Tanker stage
+/// passes 18000), counted down at body +0xf1a.
+const SLEEP_FRAMES: f32 = 18000.0;
+/// Knocked out (stamina +0xf0e gone): the manager's `-o` (default and
+/// every stage 1800 frames) plus 0..63 at random (`FUN_0024da30`).
+const KNOCKOUT_FRAMES: f32 = 1800.0;
 /// Body hits take a moment to work (frames; not from the game yet).
 const DART_DELAY: f32 = 150.0;
 
@@ -376,10 +381,12 @@ impl Guard {
         }
     }
 
-    /// Knocked out by punches: down at once, out for half as long as a
-    /// dart (not from the game yet).
+    /// Knocked out (punches, a stun grenade): down at once for
+    /// [`KNOCKOUT_FRAMES`] and a little more.
     pub fn knock_out(&mut self) {
-        self.state = State::Asleep { delay: 0.0, timer: 0.0, wake: SLEEP_FRAMES / 2.0 };
+        // The random 0..63 frames, from his route and node.
+        let extra = ((self.route * 37 + self.node * 11) % 64) as f32;
+        self.state = State::Asleep { delay: 0.0, timer: 0.0, wake: KNOCKOUT_FRAMES + extra };
         self.path.clear();
     }
 

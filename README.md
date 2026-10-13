@@ -179,7 +179,7 @@ What works:
   counts down on screen, ticking, and runs the script's proc at zero.
 
 Assumptions (not taken from the game yet): the M9 starts with 15 darts and the USP with 15 rounds (`MGS2_USP=1` starts with it), the USP is heard within 10 m,
-sleep and knock-out times and the reload pause. In the holds, the
+the reload pause and how long a dart takes to work. In the holds, the
 camera is always available, a photo goes to the first empty album slot (else
 over the worst one) and the Marines' slung rifles are not shown.
 
