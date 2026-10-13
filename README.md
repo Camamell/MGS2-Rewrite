@@ -67,7 +67,7 @@ too.
 | V | punch (three in a row knock a guard out) |
 | R | equip / unequip a ration (revives Snake at zero life) |
 | X (hold) | first-person view: A/D turn, W/S look up / down |
-| (walk into a wall) | back to the wall: sidestep along it, Space knocks (draws guards within 4 m), step away to leave |
+| (walk into a wall) | back to the wall: sidestep along it (keep going at its end to peek round the corner), Space knocks (draws guards within 4 m), step away to leave |
 | G | throw a stun grenade (or chaff when out of stuns): stuns guards within 5 m of the blast; chaff jams the radar for 8 s |
 | B | put on / take off the cardboard box (once Snake has one): guards ignore it while it keeps still |
 | K | call the Codec (141.12); Space next line, Esc hang up |

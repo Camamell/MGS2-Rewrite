@@ -42,6 +42,9 @@ pub mod motion {
     pub const WALL_CROUCH_KNOCK: usize = 91;
     /// Forward roll out of a run (52 frames, 625 mm forward).
     pub const ROLL: usize = 117;
+    /// Leaning out at a wall's end (the next motion holds it).
+    pub const PEEK_RIGHT: usize = 61;
+    pub const PEEK_LEFT: usize = 63;
 }
 
 /// Travel speeds measured from those motions' root tracks (mm/s).
@@ -437,6 +440,7 @@ pub fn control(
             }
             let along = dir.dot(Vec2::new(right3.x, right3.z));
             let mut step = if along.abs() > 0.3 { along.signum() } else { 0.0 };
+            let mut peek = 0.0;
             let mut next = body.pos + right3 * step * WALL_STEP_SPEED * dt;
             if let Some(col) = &game.collision {
                 next = col.push_out(next, RADIUS, p.height(), STEP_UP.min(p.height() - 1.0));
@@ -445,11 +449,27 @@ pub fn control(
                 let behind = col.ray(back, back - away * (RADIUS + 250.0));
                 if behind.is_none() || col.floor_below(next.x, next.z, next.y + STEP_UP).is_none() {
                     next = body.pos;
+                    // Still pushing at the wall's end: lean out and peek.
+                    if behind.is_none() {
+                        peek = step;
+                    }
                     step = 0.0;
                 }
             }
             body.pos = next;
             p.speed = if step != 0.0 { WALL_STEP_SPEED } else { 0.0 };
+            if peek != 0.0 {
+                // Peek motions: lean out (55 frames), then hold; standing
+                // 61 / 62 to his right, 63 / 64 to his left (crouched +24).
+                let base = if peek > 0.0 { motion::PEEK_RIGHT } else { motion::PEEK_LEFT } + if p.crouch { 24 } else { 0 };
+                if body.motion == base + 1 {
+                } else if body.motion == base && body.once && body.frame >= 54.0 {
+                    body.play(base + 1);
+                } else if body.motion != base {
+                    body.play_once(base);
+                }
+                return;
+            }
             body.play(match (p.crouch, step) {
                 (false, s) if s > 0.0 => motion::WALL_RIGHT,
                 (false, s) if s < 0.0 => motion::WALL_LEFT,
