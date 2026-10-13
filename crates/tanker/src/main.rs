@@ -1828,8 +1828,18 @@ fn hud(
     inv: Res<items::Inventory>,
     olgas: Query<&olga::Olga>,
     mut text: Query<&mut Text, With<Hud>>,
+    time: Res<Time>,
+    mut logged: Local<u32>,
 ) {
     let (Ok((b, p)), Ok(mut t)) = (player.single(), text.single_mut()) else { return };
+    // MGS2_POS_LOG=1: Snake's position twice a second (testing).
+    if std::env::var_os("MGS2_POS_LOG").is_some() {
+        let n = (time.elapsed_secs() * 2.0) as u32;
+        if *logged != n {
+            *logged = n;
+            info!("t {:.1} snake {:.0} {:.0} {:.0} motion {}", time.elapsed_secs(), b.pos.x, b.pos.y, b.pos.z, b.motion);
+        }
+    }
     let status = match phase.kind {
         guard::PhaseKind::Alert => format!("ALERT  (meter {})", phase.meter),
         guard::PhaseKind::Evasion => format!("EVASION {:.1}", phase.evasion as f32 / 60.0),
