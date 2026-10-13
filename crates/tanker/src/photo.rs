@@ -375,17 +375,17 @@ pub fn view(
 pub fn hud(mode: Res<PhotoMode>, game: Res<Game>, mut q: Query<&mut Text, With<PhotoHud>>) {
     let Ok(mut t) = q.single_mut() else { return };
     let mut s = String::new();
-    if !game.photos.is_empty() {
+    // Only while the camera view is up (the game shows nothing for it
+    // otherwise).
+    if mode.active && !game.photos.is_empty() {
         let album: Vec<String> = (0..SLOTS)
             .map(|i| match slot(&game.banks, i) {
                 EMPTY => "-".to_string(),
                 c => c.to_string(),
             })
             .collect();
-        s = format!("CAMERA [C]  album: {}", album.join(" "));
-        if mode.active {
-            s += &format!("\nA/D W/S aim  Q/E zoom ({:.0} deg)  F shoot", mode.fov.to_degrees());
-        }
+        s = format!("CAMERA  album: {}", album.join(" "));
+        s += &format!("\nA/D W/S aim  Q/E zoom ({:.0} deg)  F shoot  C close", mode.fov.to_degrees());
     }
     if mode.message_for > 0.0 {
         s += &format!("\n{}", mode.message);
