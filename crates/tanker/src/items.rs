@@ -37,8 +37,21 @@ impl Inventory {
         let usp = if self.usp { self.counts.get(&USP_AMMO).copied().unwrap_or(0) } else { -1 };
         banks.set_b16(WEAPON_AMMO + 2, m9 as i16);
         banks.set_b16(WEAPON_AMMO + 4, usp as i16);
+        // Items Snake carries (Bs16:0x1e4[id]): the stages leave out the
+        // goggles' and boxes' item boxes once he has them, and add rations
+        // when he has none.
+        for id in TRACKED_ITEMS {
+            let n = self.counts.get(&(0, id)).copied().unwrap_or(0);
+            banks.set_b16(ITEMS + 2 * id as u16, n.clamp(0, i16::MAX as i32) as i16);
+        }
     }
 }
+
+/// Snake's items as the scripts read them: Bs16:0x1e4[id].
+pub const ITEMS: u16 = 0x1E4;
+/// The items the port keeps (ration, cold medicine, bandage, thermal
+/// goggles, the boxes, dog tags).
+const TRACKED_ITEMS: [i32; 7] = [1, 4, 5, 13, 16, 24, 33];
 
 /// Difficulty (10..50) as an index 0..4.
 fn level(difficulty: i16) -> usize {
