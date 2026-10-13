@@ -200,6 +200,10 @@ const TIMER_LEFT: u32 = 0x450C64;
 
 /// The Codec command (`command #4a243a ...`) in stage scripts.
 pub const CODEC_COMMAND: u32 = 0x4A243A;
+/// Script maths: sin, cos (4096 = a full turn, results times 4096) and abs.
+const SIN: u32 = 0x01D98E;
+const COS: u32 = 0x019A53;
+const ABS: u32 = 0x0190B3;
 /// Snake's life (Bs16:0xf2; the maximum is Bs16:0xf4).
 pub const SNAKE_LIFE: u16 = 0xF2;
 /// `command #80b977 -g proc -c proc`: the stage's game-over proc and the
@@ -644,7 +648,7 @@ impl<'a> Vm<'a> {
         };
         let known = CALL_AFTER.contains(&id)
             || CODEC_THEN.contains(&id)
-            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand")].contains(&id);
+            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand"), SIN, COS, ABS].contains(&id);
         known.then_some(id)
     }
 
@@ -657,7 +661,18 @@ impl<'a> Vm<'a> {
             _ => None,
         };
         self.last = 0;
-        if id == TIMER_LEFT {
+        if id == SIN || id == COS || id == ABS {
+            // `cmd_01d98e` / `cmd_019a53`: sin / cos of a 4096-unit angle,
+            // times 4096 (a Taylor series on VU0); `cmd_0190b3`: abs.
+            let x = a.get(1).map_or(0, |v| self.value(v, args).int().unwrap_or(0));
+            self.last = if id == ABS {
+                x.wrapping_abs()
+            } else {
+                let turn = f64::from(x) / 4096.0 * std::f64::consts::TAU;
+                let r = if id == SIN { turn.sin() } else { turn.cos() };
+                (r * 4096.0) as i32
+            };
+        } else if id == TIMER_LEFT {
             self.last = self.timer;
             if std::env::var_os("GCL_TRACE").is_some() {
                 eprintln!("gcl: timer left {}", self.timer);
