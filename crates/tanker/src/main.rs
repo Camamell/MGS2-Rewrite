@@ -34,6 +34,7 @@ mod radar;
 mod rain;
 mod save;
 mod thunder;
+mod title;
 mod script_cam;
 
 use std::collections::HashMap;
@@ -63,6 +64,9 @@ struct Cli {
     /// Start from the autosave (written each time a stage starts).
     #[arg(long = "continue")]
     resume: bool,
+    /// Open the start menu (New game / Continue), then start the game.
+    #[arg(long)]
+    title: bool,
     /// Arrive as if coming from this stage (its script supplies Snake's start
     /// and the story marker). Defaults to the opening cutscene `d01t` for
     /// w00a; `none` uses `--entry` instead.
@@ -707,6 +711,16 @@ fn prepare(
 
 fn main() -> Result<()> {
     let mut cli = Cli::parse();
+    if cli.title {
+        let mut pass = Vec::new();
+        if let Some(iso) = &cli.iso {
+            pass.extend(["--iso".to_string(), iso.display().to_string()]);
+        }
+        if let Some(args) = title::run(pass, cli.difficulty) {
+            std::process::Command::new(std::env::current_exe()?).args(args).spawn().context("starting the game")?;
+        }
+        return Ok(());
+    }
     let saved = if cli.resume { save::read() } else { None };
     match &saved {
         Some(s) => {
@@ -867,8 +881,10 @@ fn main() -> Result<()> {
     app.add_plugins(fpv::plugin);
     app.add_plugins(hud::plugin);
     app.add_systems(Update, player::roll_hits.after(player::control));
-    // Test runs (--screenshot) leave the player's save alone.
-    if cli.screenshot.is_none() {
+    // Test runs (--screenshot, the pose sheets, MGS2_NO_SAVE) leave the
+    // player's save alone.
+    let testing = ["MGS2_GUARD_SHEET", "MGS2_MOTION_SHEET", "MGS2_NO_SAVE"].iter().any(|v| std::env::var_os(v).is_some());
+    if cli.screenshot.is_none() && !testing {
         app.add_systems(Update, save::autosave);
     }
     app.add_plugins(cbox::plugin);
