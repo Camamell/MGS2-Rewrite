@@ -164,6 +164,8 @@ pub fn fly(
                         Zone::Body => DART_BODY,
                         Zone::Limb(_) => DART_LIMB,
                     };
+                    // The dart's impact (0x86, also in `FUN_002680e0`).
+                    crate::sfx::play(DART_HIT, Some(ob.pos));
                     if !o.down() {
                         // Her cry, one of two at random (0x1f5 / 0x1f6).
                         crate::sfx::play(if o.stamina & 1 == 0 { 0x1F5 } else { 0x1F6 }, Some(ob.pos));
