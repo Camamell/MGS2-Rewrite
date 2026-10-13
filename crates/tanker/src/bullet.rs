@@ -8,12 +8,16 @@ use mgs2_bevy::scene::SCALE;
 
 use crate::Game;
 use crate::body::Body;
-use crate::guard::Guard;
+use crate::guard::{Guard, Zone};
 use crate::olga::Olga;
 use crate::player::{HEIGHT, Player, RADIUS};
 
 /// Hits above this height (mm over the feet) count as head shots.
 const HEAD_HEIGHT: f32 = 1500.0;
+/// Below this the legs (mm above the feet; assumed).
+const HIP_HEIGHT: f32 = 850.0;
+/// Further than this from the centre line, an arm (mm; assumed).
+const ARM_OFFSET: f32 = 170.0;
 
 pub const SPEED: f32 = 1000.0 * 60.0;
 pub const RANGE: f32 = 20000.0;
@@ -74,11 +78,35 @@ pub fn fire(commands: &mut Commands, rng: &mut Rng, from: Vec3, at: Vec3) {
 /// Where the segment `a`..`b` passes through a standing body's cylinder
 /// (feet at `base`), as the hit height above the feet.
 fn hits_body(a: Vec3, b: Vec3, base: Vec3, height: f32) -> Option<f32> {
+    hit_point(a, b, base, height).map(|p| p.y - base.y)
+}
+
+fn hit_point(a: Vec3, b: Vec3, base: Vec3, height: f32) -> Option<Vec3> {
     (0..=8).find_map(|i| {
         let p = a.lerp(b, i as f32 / 8.0);
         let flat = Vec2::new(p.x - base.x, p.z - base.z).length();
-        (flat < RADIUS && p.y > base.y && p.y < base.y + height).then_some(p.y - base.y)
+        (flat < RADIUS && p.y > base.y && p.y < base.y + height).then_some(p)
     })
+}
+
+/// The game tests hit spheres on the skeleton (three head and neck zones,
+/// one body, eight limb zones); here by height and by distance from the
+/// centre line across the guard (proportions assumed).
+fn zone(p: Vec3, body: &Body) -> Zone {
+    let h = p.y - body.pos.y;
+    let fwd = body.forward();
+    let right = Vec3::new(fwd.z, 0.0, -fwd.x);
+    let side = (p - body.pos).dot(right);
+    let left = u8::from(side >= 0.0);
+    if h > HEAD_HEIGHT {
+        Zone::Head
+    } else if h < HIP_HEIGHT {
+        Zone::Limb(2 + left)
+    } else if side.abs() > ARM_OFFSET {
+        Zone::Limb(left)
+    } else {
+        Zone::Body
+    }
 }
 
 /// Moves bullets, stops them at walls and applies hits to Snake.
@@ -104,11 +132,16 @@ pub fn fly(
                 if g.dead() {
                     continue;
                 }
-                if let Some(h) = hits_body(b.pos, end, gb.pos, HEIGHT) {
+                if let Some(p) = hit_point(b.pos, end, gb.pos, HEIGHT) {
+                    let h = p.y - gb.pos.y;
                     if b.lethal {
-                        // Hit voice (base 0x100), then down for good.
+                        // Hit voice (base 0x100); down for good once his
+                        // life is gone, else he knows where Snake is.
                         crate::sfx::play(0x100 + g.voice(), Some(gb.pos));
-                        g.kill();
+                        if !g.shot(zone(p, gb)) {
+                            g.last_seen = Some(sb.pos);
+                            g.meter = crate::guard::METER_MAX;
+                        }
                     } else {
                         if !g.asleep() {
                             crate::sfx::play(crate::sfx::GUARD_ASLEEP + g.voice(), Some(gb.pos));

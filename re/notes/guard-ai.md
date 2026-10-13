@@ -7,7 +7,7 @@ Addresses are in the w00a resident code image (loaded at `0x1F1480`, see
 
 | Actor | Role |
 |---|---|
-| `chara 0xf7f777` | soldier: `-r` route, `-n` first route point, `-d x y z` start, `-i d0 d1 d2` vision, `-l` (hearing?), `-f` |
+| `chara 0xf7f777` | soldier: `-r` route, `-n` first route point, `-d x y z` start, `-i d0 d1 d2` vision, `-l` life (default 3000), `-f` (default 9) |
 | `chara 0xddf5ca` | enemy manager: phases; `-h` caution time (default 0xE10); `-w proc` creates "wccomm" |
 | `chara 0x59eda8` | "wccomm": `-e proc` creates the soldiers |
 
@@ -87,6 +87,23 @@ loops in the viewer (no rifle drawn there), so the port keeps its aim pose
 `MGS2_GUARD_SHEET=dir MGS2_SHEET=motion:frame,...` photographs a guard in
 given poses. The port plays motion 92 for the "!" and 16 for the
 investigation's look-around (sub-state 10 sets action 5).
+
+## Damage: `FUN_0024a1e8`
+
+Life is body +0xf0c, set by `FUN_0025ad08` through `FUN_00247d20` from `-l`
+(As16:0x1c4: 3000 / 3000 / 3000 / 4000 / 6000 by difficulty; default 3000).
+A lethal hit is matched against three groups of hit zones on the skeleton:
+- +0x3a0, three zones (head and neck): life 0 at once;
+- +0x640, eight limb zones: -500, and the limb's bit in +0xf16 (zones 0-1,
+  2-3, 4-5, 6-7 set bits 1, 2, 4, 8); a second wound on the same pair
+  (both arms, both legs) sets life 0. Wounded guards get the +0xf16 layer
+  motions;
+- +0xd40, one zone (the body): -1000;
+- a hit with no zone: -1000.
+Life at 0 plays motion 0x71 (113, the fall); otherwise a hit reaction
+(motion 0x7b or `FUN_0025db68`). While the counter at +0xf25 lasts, a hit
+pings instead (effect 0x27, sparks: `FUN_00248f68`). The port picks the zone
+by hit height and distance from the guard's centre line.
 
 ## Alert brain: `FUN_00229D30`
 

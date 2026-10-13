@@ -67,7 +67,7 @@ const EYE: f32 = 1600.0;
 const ANGLE: f32 = TAU / 4096.0;
 /// Frames the "!" reaction lasts (stand-in for the action's animation).
 const EXCLAIM_FRAMES: u32 = 45;
-const METER_MAX: i16 = 0x400;
+pub const METER_MAX: i16 = 0x400;
 
 /// Global phase, `Bs16:0x112`, as run by the enemy manager.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -203,6 +203,10 @@ mod sleep {
     pub const LIE: usize = 114;
     pub const FALL_FRAMES: f32 = 140.0;
 }
+/// Life without `-l`.
+const DEFAULT_LIFE: i32 = 3000;
+/// Hearing range for Snake's running (assumed).
+const HEARING: f32 = 3000.0;
 /// How long a tranquilized guard sleeps (frames; not from the game yet).
 const SLEEP_FRAMES: f32 = 60.0 * 60.0;
 /// Body hits take a moment to work (frames; not from the game yet).
@@ -225,10 +229,15 @@ pub struct Guard {
     path: Vec<Vec3>,
     repath: u32,
     attack: Attack,
-    /// `-l` (As16:0x1c4 by difficulty: 3000..6000 mm). Taken here as the
-    /// distance at which the guard hears Snake running; not yet confirmed
-    /// in the code.
+    /// Distance (mm) at which the guard hears Snake running (assumed).
     pub hearing: f32,
+    /// Life (body +0xf0c): `-l`, As16:0x1c4 by difficulty (3000 / 3000 /
+    /// 3000 / 4000 / 6000), default 3000 (`FUN_0025ad08` via
+    /// `FUN_00247d20`).
+    pub life: i32,
+    max_life: i32,
+    /// Wounded limbs (+0xf16 bits 0..3: the arms, then the legs).
+    pub wounds: u8,
     /// Has given up his dog tags.
     pub tagged: bool,
     pub anim: Anim,
@@ -276,6 +285,7 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
     );
     // `-i` d0 [d1 d2 d3]; FUN_00222F60 defaults 6000; vision uses d0.
     let distance = s.opt_int(b'i', 0).filter(|d| *d > 0).map_or(default_vision, |d| d as f32);
+    let life = s.opt_int(b'l', 0).filter(|d| *d > 0).unwrap_or(DEFAULT_LIFE);
     let guard = Guard {
         route,
         node,
@@ -288,7 +298,10 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         path: Vec::new(),
         repath: 0,
         attack: Attack::default(),
-        hearing: s.opt_int(b'l', 0).filter(|d| *d > 0).map_or(3000.0, |d| d as f32),
+        hearing: HEARING,
+        life,
+        max_life: life,
+        wounds: 0,
         tagged: false,
         anim: Anim::SOLDIER,
     };
@@ -310,7 +323,10 @@ pub fn patrol(route: usize, vision: f32, anim: Anim) -> Guard {
         path: Vec::new(),
         repath: 0,
         attack: Attack::default(),
-        hearing: 3000.0,
+        hearing: HEARING,
+        life: DEFAULT_LIFE,
+        max_life: DEFAULT_LIFE,
+        wounds: 0,
         tagged: false,
         anim,
     }
@@ -387,7 +403,42 @@ impl Guard {
         self.last_seen = None;
         self.path.clear();
         self.attack = Attack::default();
+        self.life = self.max_life;
+        self.wounds = 0;
     }
+
+    /// A lethal round (`FUN_0024a1e8`): a head hit kills; the body takes
+    /// 1000; a limb takes 500 and is wounded, and both arms or both legs
+    /// wounded kill. Returns true when he dies.
+    pub fn shot(&mut self, zone: Zone) -> bool {
+        match zone {
+            Zone::Head => self.life = 0,
+            Zone::Body => self.life -= 1000,
+            Zone::Limb(bit) => {
+                self.life -= 500;
+                self.wounds |= 1 << bit;
+                let pair = if bit < 2 { 0b0011 } else { 0b1100 };
+                if self.wounds & pair == pair {
+                    self.life = 0;
+                }
+            }
+        }
+        if self.life <= 0 {
+            self.kill();
+            true
+        } else {
+            false
+        }
+    }
+}
+
+/// Where a round strikes a guard.
+#[derive(Clone, Copy, Debug)]
+pub enum Zone {
+    Head,
+    Body,
+    /// 0 / 1 the arms, 2 / 3 the legs (left, right).
+    Limb(u8),
 }
 
 /// Signed difference of two 4096-unit angles (`FUN_001413B8`).
@@ -1110,4 +1161,28 @@ pub fn draw(game: Res<Game>, guards: Query<(&Guard, &Body)>, mut gizmos: Gizmos)
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
 
+    #[test]
+    fn three_body_hits_kill() {
+        let mut g = patrol(0, 6000.0, Anim::SOLDIER);
+        assert!(!g.shot(Zone::Body));
+        assert!(!g.shot(Zone::Body));
+        assert!(g.shot(Zone::Body));
+        assert!(g.dead());
+    }
+
+    #[test]
+    fn head_kills_and_limb_pairs_kill() {
+        let mut g = patrol(0, 6000.0, Anim::SOLDIER);
+        assert!(g.shot(Zone::Head));
+        let mut g = patrol(0, 6000.0, Anim::SOLDIER);
+        assert!(!g.shot(Zone::Limb(0)));
+        assert!(!g.shot(Zone::Limb(2)));
+        assert!(g.shot(Zone::Limb(1)));
+        g.reset();
+        assert_eq!((g.life, g.wounds), (DEFAULT_LIFE, 0));
+    }
+}
