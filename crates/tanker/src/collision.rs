@@ -77,32 +77,37 @@ impl Collision {
 
     /// `chara #f91b9f <name> -p x1 y1 z1 h1 x2 y2 z2 h2 -a flags`: a wall
     /// from point 1 to point 2 (feet heights y, heights h above them).
+    /// (One actor name can carry several segments, e.g. a corner.)
     pub fn add_script_wall(&mut self, name: u32, p: [i32; 8], flags: u32) {
-        self.script_walls.retain(|(n, _)| *n != name);
-        self.script_walls.push((name, script_wall(p, flags)));
+        let w = script_wall(p, flags);
+        let same = |o: &Wall| o.a == w.a && o.b == w.b && o.bottom == w.bottom && o.top == w.top;
+        if !self.script_walls.iter().any(|(n, o)| *n == name && same(o)) {
+            self.script_walls.push((name, w));
+        }
     }
 
     /// A message to a script wall (`FUN_00291e30`): 0 removes it, 1 / 2
     /// switch it on / off, 3 moves it to new points, 5 shifts it.
     pub fn script_wall_message(&mut self, name: u32, code: u32, args: &[i32]) {
-        let Some(i) = self.script_walls.iter().position(|(n, _)| *n == name) else { return };
-        let w = &mut self.script_walls[i].1;
-        match code {
-            0 => {
-                self.script_walls.remove(i);
+        if code == 0 {
+            self.script_walls.retain(|(n, _)| *n != name);
+            return;
+        }
+        for (_, w) in self.script_walls.iter_mut().filter(|(n, _)| *n == name) {
+            match code {
+                1 => w.flags &= !WALL_OFF,
+                2 => w.flags |= WALL_OFF,
+                3 if args.len() >= 8 => {
+                    let flags = w.flags;
+                    *w = script_wall(args[..8].try_into().unwrap(), flags);
+                }
+                5 if args.len() >= 3 => {
+                    let d = Vec2::new(args[0] as f32, args[2] as f32);
+                    (w.a, w.b) = (w.a + d, w.b + d);
+                    (w.bottom, w.top) = (w.bottom + args[1] as f32, w.top + args[1] as f32);
+                }
+                _ => {}
             }
-            1 => w.flags &= !WALL_OFF,
-            2 => w.flags |= WALL_OFF,
-            3 if args.len() >= 8 => {
-                let flags = w.flags;
-                *w = script_wall(args[..8].try_into().unwrap(), flags);
-            }
-            5 if args.len() >= 3 => {
-                let d = Vec2::new(args[0] as f32, args[2] as f32);
-                (w.a, w.b) = (w.a + d, w.b + d);
-                (w.bottom, w.top) = (w.bottom + args[1] as f32, w.top + args[1] as f32);
-            }
-            _ => {}
         }
     }
 
