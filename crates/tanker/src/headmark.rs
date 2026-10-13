@@ -139,7 +139,7 @@ fn update(
         let want = match &g.state {
             State::Discovery { .. } => Some(Kind::Exclaim),
             State::Investigate { .. } => Some(Kind::Question),
-            State::Asleep { delay, .. } if *delay <= 0.0 => Some(Kind::Sleep),
+            State::Asleep { .. } => Some(Kind::Sleep),
             _ => None,
         };
         if want != m.kind {

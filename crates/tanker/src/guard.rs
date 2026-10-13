@@ -149,10 +149,9 @@ pub enum State {
     Search { wait: u32 },
     /// Going back to the route after alert/evasion/investigation.
     Return,
-    /// Darted or knocked out: `delay` frames of staying on his feet (dart
-    /// body hits), then falls (motion 113) and lies (motion 114) until
-    /// `timer` reaches `wake`.
-    Asleep { delay: f32, timer: f32, wake: f32 },
+    /// Darted to sleep or knocked out: falls (motion 113) and lies
+    /// (motion 114) until `timer` reaches `wake`.
+    Asleep { timer: f32, wake: f32 },
     /// Shot dead with the USP: falls (motion 113) and stays down.
     Dead { timer: f32 },
     /// Saw a comrade down: goes over and wakes him (raising caution).
@@ -432,7 +431,7 @@ impl Guard {
     }
 
     fn fall_asleep(&mut self) {
-        self.state = State::Asleep { delay: 0.0, timer: 0.0, wake: SLEEP_FRAMES };
+        self.state = State::Asleep { timer: 0.0, wake: SLEEP_FRAMES };
         self.path.clear();
     }
 
@@ -441,7 +440,7 @@ impl Guard {
     pub fn knock_out(&mut self) {
         // The random 0..63 frames, from his route and node.
         let extra = ((self.route * 37 + self.node * 11) % 64) as f32;
-        self.state = State::Asleep { delay: 0.0, timer: 0.0, wake: KNOCKOUT_FRAMES + extra };
+        self.state = State::Asleep { timer: 0.0, wake: KNOCKOUT_FRAMES + extra };
         self.path.clear();
     }
 
@@ -639,7 +638,7 @@ pub fn think(
     let sleepers: Vec<(Entity, Vec3)> = guards
         .iter()
         .filter(|(_, g, _)| match g.state {
-            State::Asleep { delay, timer, .. } => delay <= 0.0 && timer >= sleep::FALL_FRAMES,
+            State::Asleep { timer, .. } => timer >= sleep::FALL_FRAMES,
             State::Dead { timer } => timer >= sleep::FALL_FRAMES,
             _ => false,
         })
@@ -679,17 +678,12 @@ pub fn think(
             g.state = State::Dead { timer: timer + frames };
             continue;
         }
-        if let State::Asleep { delay, timer, wake } = g.state {
+        if let State::Asleep { timer, wake } = g.state {
             let frames = dt * 60.0;
             g.level = 0;
             g.meter = 0;
             g.tracking = None;
-            if delay > 0.0 {
-                // Groggy: stands and sways until the dart takes effect.
-                body.play(g.anim.idle);
-                body.yaw += (delay / 20.0).sin() * dt;
-                g.state = State::Asleep { delay: delay - frames, timer, wake };
-            } else if timer < wake {
+            if timer < wake {
                 if timer < sleep::FALL_FRAMES {
                     body.play_once(g.anim.fall);
                     if timer + frames >= sleep::FALL_FRAMES {
@@ -698,7 +692,7 @@ pub fn think(
                 } else {
                     body.play(g.anim.lie);
                 }
-                g.state = State::Asleep { delay: 0.0, timer: timer + frames, wake };
+                g.state = State::Asleep { timer: timer + frames, wake };
             } else {
                 g.last_seen = None;
                 g.stamina = g.max_stamina;
@@ -866,7 +860,7 @@ pub fn think(
     for e in woken {
         if let Ok((_, mut g, _)) = guards.get_mut(e)
             && let State::Asleep { wake, .. } = g.state {
-                g.state = State::Asleep { delay: 0.0, timer: wake, wake };
+                g.state = State::Asleep { timer: wake, wake };
             }
     }
 
