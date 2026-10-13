@@ -15,7 +15,21 @@ pub fn plugin(app: &mut App) {
     app.init_resource::<Paused>()
         .add_systems(Startup, setup)
         .add_systems(PreUpdate, toggle.after(InputSystems).after(crate::pad::feed).run_if(crate::codec::idle).run_if(crate::demo::idle))
-        .add_systems(Update, show);
+        .add_systems(Update, (show, fullscreen));
+}
+
+/// F11 or Alt+Enter: fullscreen (borderless) on and off.
+pub fn fullscreen(keys: Res<ButtonInput<KeyCode>>, mut windows: Query<&mut Window>) {
+    let alt = keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]);
+    if !keys.just_pressed(KeyCode::F11) && !(alt && keys.just_pressed(KeyCode::Enter)) {
+        return;
+    }
+    for mut w in &mut windows {
+        w.mode = match w.mode {
+            bevy::window::WindowMode::Windowed => bevy::window::WindowMode::BorderlessFullscreen(bevy::window::MonitorSelection::Current),
+            _ => bevy::window::WindowMode::Windowed,
+        };
+    }
 }
 
 fn setup(mut commands: Commands) {

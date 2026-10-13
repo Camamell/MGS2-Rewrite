@@ -77,6 +77,7 @@ too.
 | K | call the Codec (141.12); Space next line, Esc hang up |
 | C (holds, w04c) | digital camera: first-person view; A/D W/S aim, Q/E zoom, F take a photo |
 | P | pause |
+| F11 / Alt+Enter | fullscreen on / off (`--fullscreen` starts that way) |
 | Enter | continue after a game over |
 | Q / E, right mouse drag | turn the camera |
 | F1 | collision, plus patrol routes |

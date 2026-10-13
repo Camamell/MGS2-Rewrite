@@ -69,6 +69,9 @@ struct Cli {
     /// Open the start menu (New game / Continue), then start the game.
     #[arg(long)]
     title: bool,
+    /// Start in fullscreen (F11 or Alt+Enter toggles).
+    #[arg(long)]
+    fullscreen: bool,
     /// Arrive as if coming from this stage (its script supplies Snake's start
     /// and the story marker). Defaults to the opening cutscene `d01t` for
     /// w00a; `none` uses `--entry` instead.
@@ -718,7 +721,7 @@ fn main() -> Result<()> {
         if let Some(iso) = &cli.iso {
             pass.extend(["--iso".to_string(), iso.display().to_string()]);
         }
-        if let Some(args) = title::run(pass, cli.difficulty) {
+        if let Some(args) = title::run(pass, cli.difficulty, cli.fullscreen) {
             std::process::Command::new(std::env::current_exe()?).args(args).spawn().context("starting the game")?;
         }
         return Ok(());
@@ -808,7 +811,15 @@ fn main() -> Result<()> {
 
     let mut app = App::new();
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
-        primary_window: Some(Window { title: "MGS2 Tanker".into(), ..default() }),
+        primary_window: Some(Window {
+            title: "MGS2 Tanker".into(),
+            mode: if cli.fullscreen {
+                bevy::window::WindowMode::BorderlessFullscreen(bevy::window::MonitorSelection::Current)
+            } else {
+                bevy::window::WindowMode::Windowed
+            },
+            ..default()
+        }),
         ..default()
     }))
     .insert_resource(ClearColor(Color::srgb(0.02, 0.03, 0.05)))

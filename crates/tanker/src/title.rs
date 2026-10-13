@@ -35,7 +35,7 @@ struct Menu {
 struct Line(usize);
 
 /// Runs the menu; returns the arguments to start the game with (None: quit).
-pub fn run(pass: Vec<String>, difficulty: i16) -> Option<Vec<String>> {
+pub fn run(pass: Vec<String>, difficulty: i16, fullscreen: bool) -> Option<Vec<String>> {
     let mut items = vec![Item::NewGame];
     if crate::save::read().is_some() {
         items.insert(0, Item::Continue);
@@ -47,14 +47,22 @@ pub fn run(pass: Vec<String>, difficulty: i16) -> Option<Vec<String>> {
     let out = chosen.clone();
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window { title: "MGS2 Tanker".into(), ..default() }),
+            primary_window: Some(Window {
+                title: "MGS2 Tanker".into(),
+                mode: if fullscreen {
+                    bevy::window::WindowMode::BorderlessFullscreen(bevy::window::MonitorSelection::Current)
+                } else {
+                    bevy::window::WindowMode::Windowed
+                },
+                ..default()
+            }),
             ..default()
         }))
         .insert_resource(ClearColor(Color::srgb(0.0, 0.0, 0.0)))
         .add_plugins(crate::pad::plugin)
         .insert_resource(Menu { items, at: 0, difficulty, stage: 0, pass, chosen: None })
         .add_systems(Startup, setup)
-        .add_systems(Update, (input, draw, shot).chain())
+        .add_systems(Update, (input, draw, shot, crate::pause::fullscreen).chain())
         .add_systems(Last, move |menu: Res<Menu>, mut exit: MessageWriter<AppExit>| {
             if let Some(args) = &menu.chosen {
                 *out.lock().unwrap() = Some(args.clone());
@@ -93,7 +101,7 @@ fn setup(mut commands: Commands, menu: Res<Menu>) {
         });
 }
 
-fn input(keys: Res<ButtonInput<KeyCode>>, mut menu: ResMut<Menu>, mut exit: MessageWriter<AppExit>) {
+fn input(keys: Res<ButtonInput<KeyCode>>, windows: Query<&Window>, mut menu: ResMut<Menu>, mut exit: MessageWriter<AppExit>) {
     let n = menu.items.len();
     if keys.any_just_pressed([KeyCode::KeyW, KeyCode::ArrowUp]) {
         menu.at = (menu.at + n - 1) % n;
@@ -121,8 +129,12 @@ fn input(keys: Res<ButtonInput<KeyCode>>, mut menu: ResMut<Menu>, mut exit: Mess
         exit.write(AppExit::Success);
         return;
     }
-    if keys.any_just_pressed([KeyCode::Enter, KeyCode::NumpadEnter, KeyCode::Space]) {
+    let alt = keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]);
+    if keys.any_just_pressed([KeyCode::Enter, KeyCode::NumpadEnter, KeyCode::Space]) && !alt {
         let mut args = menu.pass.clone();
+        if windows.iter().any(|w| w.mode != bevy::window::WindowMode::Windowed) {
+            args.push("--fullscreen".into());
+        }
         match menu.items[menu.at] {
             Item::NewGame => args.extend(["--difficulty".to_string(), DIFFICULTIES[menu.difficulty].0.to_string()]),
             Item::Continue => args.push("--continue".into()),
