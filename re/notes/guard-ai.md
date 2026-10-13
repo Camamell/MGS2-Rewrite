@@ -7,7 +7,7 @@ Addresses are in the w00a resident code image (loaded at `0x1F1480`, see
 
 | Actor | Role |
 |---|---|
-| `chara 0xf7f777` | soldier: `-r` route, `-n` first route point, `-d x y z` start, `-i d0 d1 d2` vision, `-l` life (default 3000), `-f` (default 9) |
+| `chara 0xf7f777` | soldier: `-r` route, `-n` first route point (where he starts), `-d x y z map` alert post, `-i d0 d1 d2` vision, `-l` life (default 3000), `-f` (default 9) |
 | `chara 0xddf5ca` | enemy manager: phases; `-h` caution time (default 0xE10); `-w proc` creates "wccomm" |
 | `chara 0x59eda8` | "wccomm": `-e proc` creates the soldiers |
 
@@ -24,6 +24,11 @@ guard+0x24d0.
 | 30 Normal | 6000 | 9000 | 6000 | 3000 | 9 | 100 |
 | 40 Hard | 7000 | 12000 | 8000 | 4000 | 14 | 75 |
 | 50 Extreme | 7000 | 12000 | 8000 | 6000 | 19 | 50 |
+
+`-d` is not the start position: `FUN_002233e8` keeps it at controller
++0x2b0 (map at +0x2c0; without `-d`, his own position). The alert brain
+(`FUN_00228710`) sends a guard who has lost Snake there. A route of a single
+point is a post he stands at.
 
 ## Perception: `FUN_002559C0`
 
