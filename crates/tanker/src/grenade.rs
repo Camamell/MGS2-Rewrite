@@ -113,7 +113,7 @@ fn fly(
         if g.fuse > 0.0 {
             continue;
         }
-        commands.entity(e).despawn();
+        commands.entity(e).try_despawn();
         if g.stun {
             crate::sfx::play(0x41, Some(g.pos));
             for (b, mut guard) in &mut guards {
@@ -145,7 +145,7 @@ fn flash(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut Fla
     for (e, mut f, mut bg) in &mut q {
         f.0 -= time.delta_secs();
         if f.0 <= 0.0 {
-            commands.entity(e).despawn();
+            commands.entity(e).try_despawn();
         } else {
             bg.0 = Color::srgba(1.0, 1.0, 1.0, (f.0 / 0.8).min(1.0) * 0.9);
         }

@@ -40,6 +40,8 @@ pub mod motion {
     pub const WALL_CROUCH_RIGHT: usize = 81;
     pub const WALL_CROUCH_LEFT: usize = 82;
     pub const WALL_CROUCH_KNOCK: usize = 91;
+    /// Forward roll out of a run (52 frames, 625 mm forward).
+    pub const ROLL: usize = 117;
 }
 
 /// Travel speeds measured from those motions' root tracks (mm/s).
@@ -109,8 +111,12 @@ pub struct Player {
     pub wall: Option<Vec2>,
     /// Seconds spent pushing into a wall (presses at [`WALL_PRESS`]).
     pub wall_push: f32,
+    /// Frames left of a forward roll (motion 117).
+    pub roll: f32,
 }
 
+/// Roll travel: motion 117 moves 625 mm in 52 frames.
+const ROLL_SPEED: f32 = 624.6 / 52.0 * 60.0;
 /// Pushing into a wall this long puts Snake's back to it (assumed).
 const WALL_PRESS: f32 = 0.25;
 /// Sidestep along a wall: motions 57 / 58 travel 453 mm in 48 frames.
@@ -215,6 +221,24 @@ pub fn control(
     if p.dead() {
         p.speed = 0.0;
         body.play_once(motion::DEATH);
+        return;
+    }
+    // Rolling: carried forward by the motion's travel, then crouched.
+    if p.roll > 0.0 {
+        p.roll -= dt * 60.0;
+        let f = body.forward();
+        let mut next = body.pos + f * ROLL_SPEED * dt;
+        if let Some(col) = &game.collision {
+            next = col.push_out(next, RADIUS, 1000.0, STEP_UP);
+            if col.floor_below(next.x, next.z, next.y + STEP_UP).is_none() {
+                next = body.pos;
+            }
+        }
+        body.pos = next;
+        p.speed = ROLL_SPEED;
+        if p.roll <= 0.0 {
+            p.crouch = true;
+        }
         return;
     }
     if p.busy > 0.0 {
@@ -340,6 +364,14 @@ pub fn control(
     }
     if auto.as_ref().is_some_and(|a| (a.from..a.from + a.seconds).contains(&time.elapsed_secs())) {
         input = Vec2::Y;
+    }
+    // C while running: a forward roll (as in the game).
+    // MGS2_ROLL_AT=seconds (testing): press C then.
+    let roll_test = std::env::var("MGS2_ROLL_AT").ok().and_then(|v| v.parse::<f32>().ok()).is_some_and(|t| (t..t + dt * 1.5).contains(&time.elapsed_secs()));
+    if (keys.just_pressed(KeyCode::KeyC) || roll_test) && p.speed >= RUN_SPEED && !p.crouch && !p.boxed && p.wall.is_none() {
+        p.roll = 52.0;
+        body.play_once(motion::ROLL);
+        return;
     }
     if keys.just_pressed(KeyCode::KeyC) {
         // From prone, C gets back up to a crouch.
@@ -615,4 +647,18 @@ pub fn follow_camera(
     tf.look_at(target, Vec3::Y);
 }
 
-
+/// A roll into a guard bowls him over (knocked out briefly).
+pub fn roll_hits(snake: Query<(&Body, &Player)>, mut guards: Query<(&Body, &mut crate::guard::Guard), Without<Player>>) {
+    let Ok((b, p)) = snake.single() else { return };
+    if p.roll <= 0.0 {
+        return;
+    }
+    let f = b.forward();
+    for (gb, mut g) in &mut guards {
+        let to = gb.pos - b.pos;
+        if !g.asleep() && to.length() < 700.0 && to.normalize_or_zero().dot(f) > 0.3 && (to.y).abs() < 800.0 {
+            crate::sfx::play(crate::sfx::BODY_FALL, Some(gb.pos));
+            g.knock_out();
+        }
+    }
+}

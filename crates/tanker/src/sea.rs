@@ -115,7 +115,7 @@ pub fn setup(
     }
     *stage = game.data.name.clone();
     for e in &layers {
-        commands.entity(e).despawn();
+        commands.entity(e).try_despawn();
     }
     let Some(spec) = game.data.script.as_ref().and_then(from_script) else { return };
     let mut cache = MaterialCache::default();

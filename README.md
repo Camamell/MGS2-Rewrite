@@ -59,7 +59,7 @@ too.
 |---|---|
 | W A S D | run (camera-relative) |
 | Shift | walk |
-| C | crouch |
+| C | crouch; while running, a forward roll (knocks over a guard in the way) |
 | Z | prone / crawl (lower to the guards' eyes and bullets; fits under low gaps) |
 | Space | action: open doors (stage exits load the next stage); at a deck edge, hang over the railing (A/D shimmy, Space climb up, Z let go; the grip gauge runs down); some traps react to it too |
 | F (hold, release) | aim (A/D turn) and fire the weapon in hand; aiming at an unaware guard from behind holds him up, and from his front he gives up his dog tags |

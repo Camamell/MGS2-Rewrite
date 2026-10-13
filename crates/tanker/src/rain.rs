@@ -68,7 +68,7 @@ pub fn setup(
         return;
     }
     for e in &fields {
-        commands.entity(e).despawn();
+        commands.entity(e).try_despawn();
     }
     let Some(spec) = &game.rain else { return };
     // rain.c starts the rain loop (effect 0x1d4) with the first field.

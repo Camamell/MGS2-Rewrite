@@ -133,7 +133,7 @@ fn update(
     let cam = cams.single().ok();
     for (e, mut m, mut t, mut vis, mut mesh, mut mat) in &mut marks {
         let Ok((g, b)) = guards.get(m.owner) else {
-            commands.entity(e).despawn();
+            commands.entity(e).try_despawn();
             continue;
         };
         let want = match &g.state {

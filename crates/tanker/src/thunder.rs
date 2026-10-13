@@ -79,7 +79,7 @@ fn run(
 ) {
     let Some(spec) = game.thunder else {
         for (e, _, _) in &flashes {
-            commands.entity(e).despawn();
+            commands.entity(e).try_despawn();
         }
         return;
     };
@@ -141,7 +141,7 @@ fn run(
     let on = st.left >= 0;
     for (e, f, mut vis) in &mut flashes {
         if !on {
-            commands.entity(e).despawn();
+            commands.entity(e).try_despawn();
             continue;
         }
         let shown = rand(&mut st) >> 8 & 1 != 0;

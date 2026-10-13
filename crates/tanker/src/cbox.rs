@@ -66,7 +66,7 @@ fn show(
     let mut found = false;
     for (e, w, mut t, mut bv) in &mut boxes {
         if w.stage != game.data.name {
-            commands.entity(e).despawn();
+            commands.entity(e).try_despawn();
             continue;
         }
         found = true;

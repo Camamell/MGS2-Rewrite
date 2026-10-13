@@ -115,7 +115,7 @@ pub fn load(
     *stage = game.data.name.clone();
     let Some(data) = data else { return };
     for e in &parts {
-        commands.entity(e).despawn();
+        commands.entity(e).try_despawn();
     }
     let Some(name) = pack_name(&game.data.name) else { return };
     let files = match mgs2_formats::iso::Iso::open(&data.iso).and_then(|iso| iso.open_file("MGS2/FACE.DAT")).map_err(anyhow::Error::from).and_then(|mut f| Ok(face::read(&mut f, &name)?)) {

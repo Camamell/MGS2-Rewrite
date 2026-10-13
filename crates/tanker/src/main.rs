@@ -866,6 +866,7 @@ fn main() -> Result<()> {
     app.add_plugins(headmark::plugin);
     app.add_plugins(fpv::plugin);
     app.add_plugins(hud::plugin);
+    app.add_systems(Update, player::roll_hits.after(player::control));
     // Test runs (--screenshot) leave the player's save alone.
     if cli.screenshot.is_none() {
         app.add_systems(Update, save::autosave);
@@ -1209,7 +1210,7 @@ fn script_event(
         }
     };
     for e in level.iter().chain(bullets.iter()) {
-        commands.entity(e).despawn();
+        commands.entity(e).try_despawn();
     }
     *game = new.game;
     commands.insert_resource(new.phase);
