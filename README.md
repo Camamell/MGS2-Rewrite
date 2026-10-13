@@ -83,6 +83,12 @@ too.
 | F3 | stage cameras on/off |
 | F4 | debug text (stage, phase, position, controls) |
 
+A gamepad works too, laid out like the original: left stick to move
+(tilt gently to walk), right stick to turn the camera, Cross/A crouch,
+Circle/B action, Square/X aim and fire, Triangle/Y punch, R1 first person,
+L1 prone, R2 grenade, L2 ration, D-pad left/right M9/USP, D-pad up box,
+D-pad down Codec, Start continue/skip, Select debug text (`pad.rs`).
+
 Testing hooks: `--auto-walk <seconds>` holds forward (`--walk-from`),
 `--cam-yaw/--cam-dist/--cam-pitch`, `--follow-guard N`, `--trace` (guard
 states every second, trap events), `--spawns` (every actor the script

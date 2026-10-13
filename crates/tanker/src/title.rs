@@ -51,6 +51,7 @@ pub fn run(pass: Vec<String>, difficulty: i16) -> Option<Vec<String>> {
             ..default()
         }))
         .insert_resource(ClearColor(Color::srgb(0.0, 0.0, 0.0)))
+        .add_plugins(crate::pad::plugin)
         .insert_resource(Menu { items, at: 0, difficulty, stage: 0, pass, chosen: None })
         .add_systems(Startup, setup)
         .add_systems(Update, (input, draw, shot).chain())
@@ -85,7 +86,7 @@ fn setup(mut commands: Commands, menu: Res<Menu>) {
             }
             p.spawn(Node { height: Val::Px(40.0), ..default() });
             p.spawn((
-                Text::new("W/S choose   A/D difficulty   Q/E stage   Enter start   Esc quit"),
+                Text::new("W/S choose   A/D difficulty   Q/E stage   Enter start   Esc quit   (pad: stick, Circle / Start)"),
                 TextFont { font_size: bevy::text::FontSize::Px(16.0), ..default() },
                 TextColor(DIM),
             ));
@@ -115,7 +116,8 @@ fn input(keys: Res<ButtonInput<KeyCode>>, mut menu: ResMut<Menu>, mut exit: Mess
             menu.stage = (menu.stage + 1) % STAGES.len();
         }
     }
-    if keys.just_pressed(KeyCode::Escape) {
+    // (A pad's Start sends Enter and Esc together: Enter wins.)
+    if keys.just_pressed(KeyCode::Escape) && !keys.just_pressed(KeyCode::Enter) {
         exit.write(AppExit::Success);
         return;
     }

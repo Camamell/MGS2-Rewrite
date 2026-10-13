@@ -27,6 +27,7 @@ mod headmark;
 mod hud;
 mod items;
 mod nav;
+mod pad;
 mod olga;
 mod photo;
 mod player;
@@ -887,6 +888,7 @@ fn main() -> Result<()> {
     if cli.screenshot.is_none() && !testing {
         app.add_systems(Update, save::autosave);
     }
+    app.add_plugins(pad::plugin);
     app.add_plugins(cbox::plugin);
     app.add_plugins(grenade::plugin);
     app.add_systems(Update, motion_sheet.after(player::control).before(body::skin));
