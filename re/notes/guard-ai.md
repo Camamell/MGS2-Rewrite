@@ -79,7 +79,11 @@ investigation's look-around (sub-state 10 sets action 5).
 Seen → meter 0x400. The tracking flag (+0x348 & 0x40) expires 60 frames
 after the last sighting (+0x33C).
 
-Shooting (`FUN_00228710` / `FUN_00228F80`): aim for 21 frames, then fire
+Shooting (`FUN_00228710` / `FUN_00228F80`): a guard aims (action 4) when
+he sees Snake (+0x18E level 3) or Snake is within 0x5dd mm (+0x188), and
+`FUN_002285b0` agrees (only when DAT_001ecd40 bit 35 is set: Snake must be
+within ±0x400 of facing him); within 1000 mm and seen it switches to
+sub-state 6 instead (close quarters). Each shot is action 6. Aim for 21 frames, then fire
 every 4 frames with a 1-in-3 chance to stop after each shot; reload after
 31 shots.
 

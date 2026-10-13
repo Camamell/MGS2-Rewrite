@@ -22,7 +22,7 @@
 //!   bullets in `bullet.rs`.
 //!
 //! Simplified for now: one "!" duration for every guard (the action
-//! animation length is not read yet), the fire range and reload time,
+//! animation length is not read yet), the reload time,
 //! close-quarters sub-states, radio reports, noise/body/footprint stimuli, and the evasion search
 //! pattern (guards visit nav nodes around the last known position).
 
@@ -259,8 +259,9 @@ const SHOT_FRAMES: f32 = 4.0;
 const MAGAZINE: u32 = 31;
 /// Reload pause (the reload motion's length; not read yet).
 const RELOAD_FRAMES: f32 = 90.0;
-/// Guards open fire inside this range when they can see Snake.
-const FIRE_RANGE: f32 = 9000.0;
+/// Guards aim when they see Snake (level 3, inside their near range) or
+/// when he is closer than this (`FUN_00228710`: 0x5dd mm).
+const POINT_BLANK: f32 = 1501.0;
 /// Muzzle height above the feet (approximate).
 const MUZZLE: f32 = 1350.0;
 
@@ -899,7 +900,7 @@ fn alert_brain(
         face(body, target, dt);
         return false;
     }
-    if g.level == 3 && body.pos.distance(snake) < FIRE_RANGE && !snake_dead {
+    if (g.level == 3 || body.pos.distance(snake) < POINT_BLANK) && !snake_dead {
         g.path.clear();
         body.play(g.anim.aim);
         face(body, snake, dt);
