@@ -248,6 +248,8 @@ pub struct Game {
     pub speech: Option<(u32, Option<u32>, f32)>,
     /// Motion sound variants by floor material (`#b44bbb`).
     pub sound_tables: Vec<gcl::SoundTable>,
+    /// Materials (bits) whose struck surfaces make an impact sound.
+    pub impact_sounds: u16,
     /// The spoken line's volume (`#339bd9`, 0-63), with its line id.
     pub speech_volume: Option<(u32, u8)>,
     /// Sound driver commands from the script, for `music::update`.
@@ -263,6 +265,22 @@ pub struct Game {
 }
 
 impl Game {
+    /// Motion sound `sound` of character table `table` on floor `material`,
+    /// through the `#b44bbb` tables (`FUN_0011cc10`): the raw sound when no
+    /// table has it, `None` when the variant is empty.
+    pub fn motion_sound(&self, table: u8, sound: u16, material: u32) -> Option<u32> {
+        let id = match self.sound_tables.iter().find(|t| t.table == table && t.sound == sound) {
+            Some(t) => t.ids[if t.which == 0 { (material & 7) as usize } else { 0 }],
+            None => sound & 0xFFF,
+        };
+        (id != 0xFFFF).then_some(u32::from(id))
+    }
+
+    /// The sound of a round striking `material`, if the stage hooks one.
+    pub fn impact_sound(&self, material: u32) -> Option<u32> {
+        (self.impact_sounds >> material & 1 != 0).then(|| self.motion_sound(0, 0x27, material)).flatten()
+    }
+
     /// Marks Snake's entrance as over (bank A 0x7e8 bit 5).
     pub fn entrance_done(&mut self) {
         self.entrance = 0.0;
@@ -737,6 +755,7 @@ fn prepare(
         speech: None,
         speech_volume: None,
         sound_tables: Vec::new(),
+        impact_sounds: 0,
         sound_cmds: Vec::new(),
         photos: photos.0,
         photo_done: photos.1,
@@ -1567,6 +1586,7 @@ fn apply_codec(game: &mut Game, reqs: &[gcl::CodecReq]) {
             }
             CodecReq::Then { id, then } => game.codec_calls.push((14112, id, then)),
             CodecReq::Speech { id, then } => game.speech = Some((id, then, SPEECH_SECONDS)),
+            CodecReq::ImpactSound(n) => game.impact_sounds |= 1 << n,
             CodecReq::SoundTable(None) => game.sound_tables.clear(),
             CodecReq::SoundTable(Some(t)) => {
                 game.sound_tables.retain(|o| (o.table, o.sound) != (t.table, t.sound));

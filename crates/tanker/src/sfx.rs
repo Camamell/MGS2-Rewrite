@@ -100,12 +100,8 @@ pub fn motion_sounds(
         let passed = |t: f32| if now >= prev { t > prev && t <= now } else { t > prev || t <= now };
         for ev in events.iter().filter(|ev| passed(f32::from(ev.time))) {
             let material = game.collision.as_ref().and_then(|c| c.floor_material(body.pos.x, body.pos.z, body.pos.y + 100.0)).unwrap_or(0);
-            let id = match game.sound_tables.iter().find(|t| t.table == table && t.sound == ev.sound) {
-                Some(t) => t.ids[if t.which == 0 { (material & 7) as usize } else { 0 }],
-                None => ev.sound & 0xFFF,
-            };
-            if id != 0xFFFF {
-                play(u32::from(id), Some(body.pos));
+            if let Some(id) = game.motion_sound(table, ev.sound, material) {
+                play(id, Some(body.pos));
             }
         }
     }

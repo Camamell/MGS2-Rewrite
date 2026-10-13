@@ -235,8 +235,9 @@ impl Collision {
 
 
     /// Where the segment `a`..`b` first meets a wall or floor, with the
-    /// surface's normal facing `a`.
-    pub fn ray_normal(&self, a: Vec3, b: Vec3) -> Option<(f32, Vec3)> {
+    /// surface's normal facing `a` and its element flags (the material in
+    /// the top four bits).
+    pub fn ray_normal(&self, a: Vec3, b: Vec3) -> Option<(f32, Vec3, u32)> {
         let d = b - a;
         let r = Vec2::new(d.x, d.z);
         let walls = self.walls.iter().filter_map(|w| {
@@ -255,7 +256,7 @@ impl Collision {
                 return None;
             }
             let n = Vec3::new(-s.y, 0.0, s.x).normalize_or_zero();
-            Some((t, if n.dot(d) > 0.0 { -n } else { n }))
+            Some((t, if n.dot(d) > 0.0 { -n } else { n }, w.flags))
         });
         let floors = self.floors.iter().filter_map(|f| {
             let denom = f.normal.dot(d);
@@ -268,7 +269,7 @@ impl Collision {
             }
             let h = a + d * t;
             let hp = Vec2::new(h.x, h.z);
-            (hp.cmpge(f.min).all() && hp.cmple(f.max).all() && inside(&f.outline, hp)).then(|| (t, if denom > 0.0 { -f.normal } else { f.normal }))
+            (hp.cmpge(f.min).all() && hp.cmple(f.max).all() && inside(&f.outline, hp)).then(|| (t, if denom > 0.0 { -f.normal } else { f.normal }, f.flags))
         });
         walls.chain(floors).min_by(|x, y| x.0.total_cmp(&y.0))
     }

@@ -127,6 +127,10 @@ const VOLUME: u32 = 0x339BD9;
 /// (`cmd_b44bbb`): the eight variants of a motion sound by floor material
 /// for one character table; `-c` clears them.
 const SOUND_TABLE: u32 = 0xB44BBB;
+/// `#41cf4e -n <material>` (`cmd_41cf4e`): rounds striking that material
+/// sound its variant of motion sound 0x27 (`FUN_003a5cf8`); bullets look
+/// the hook up by the struck element's flags >> 28 (`FUN_0036c630`).
+const IMPACT_SOUND: u32 = 0x41CF4E;
 /// `#f2eedc -c <command>`: a raw sound driver command (sound effects
 /// when the high byte is 0).
 const SOUND: u32 = 0xF2EEDC;
@@ -272,6 +276,8 @@ pub enum CodecReq {
     /// A motion sound's variants by floor material (`#b44bbb`); `None`
     /// clears them all.
     SoundTable(Option<SoundTable>),
+    /// Rounds striking this material make its impact sound (`#41cf4e`).
+    ImpactSound(u8),
     /// The volume (0-63) of the spoken line `handle`.
     Volume { handle: u32, vol: u8 },
     Reset,
@@ -728,7 +734,7 @@ impl<'a> Vm<'a> {
         };
         let known = CALL_AFTER.contains(&id)
             || CODEC_THEN.contains(&id)
-            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, VOLUME, SOUND_TABLE, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand"), SIN, COS, ABS, DISTANCE, ATAN, SONG].contains(&id);
+            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, VOLUME, SOUND_TABLE, IMPACT_SOUND, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand"), SIN, COS, ABS, DISTANCE, ATAN, SONG].contains(&id);
         known.then_some(id)
     }
 
@@ -837,6 +843,10 @@ impl<'a> Vm<'a> {
                     }
                 }
                 self.codec.push(CodecReq::SoundTable(Some(SoundTable { table: table as u8, which: which as u8, sound: sound as u16, ids })));
+            }
+        } else if id == IMPACT_SOUND {
+            if let Some(n) = opt(self, b'n').first().and_then(Val::int).filter(|n| (0..16).contains(n)) {
+                self.codec.push(CodecReq::ImpactSound(n as u8));
             }
         } else if id == VOLUME {
             if let Some(h) = a.get(1).and_then(|v| self.value(v, args).int()) {

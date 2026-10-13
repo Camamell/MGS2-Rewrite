@@ -182,10 +182,13 @@ pub fn fly(
             continue;
         }
         // Rounds (not darts) leave a mark where they strike.
-        if let Some((_, n)) = surface
+        if let Some((_, n, flags)) = surface
             && (!b.dart || b.lethal)
         {
             crate::scar::add(end, n);
+            if let Some(id) = game.impact_sound(flags >> 28) {
+                crate::sfx::play(id, Some(end));
+            }
         }
         let wall = wall.is_some();
         b.pos = next;
