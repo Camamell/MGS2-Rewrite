@@ -281,6 +281,8 @@ pub struct Guard {
     roused: bool,
     /// Seconds spent walking without getting anywhere.
     stuck: f32,
+    /// Where he goes in an alert once Snake is out of sight (`-d`).
+    pub post: Option<Vec3>,
     /// Has given up his dog tags.
     pub tagged: bool,
     pub anim: Anim,
@@ -327,6 +329,7 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         Vec3::new(s.opt_int(b'd', 0).unwrap_or(0) as f32, s.opt_int(b'd', 1).unwrap_or(0) as f32, s.opt_int(b'd', 2).unwrap_or(0) as f32)
     });
     let pos = post.unwrap_or(Vec3::ZERO);
+    let post_at = post;
     // `-i` d0 [d1 d2 d3]; FUN_00222F60 defaults 6000; vision uses d0.
     let distance = s.opt_int(b'i', 0).filter(|d| *d > 0).map_or(default_vision, |d| d as f32);
     let life = s.opt_int(b'l', 0).filter(|d| *d > 0).unwrap_or(DEFAULT_LIFE);
@@ -353,6 +356,7 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         darts: [0; 3],
         roused: false,
         stuck: 0.0,
+        post: post_at,
         tagged: false,
         anim: Anim::SOLDIER,
     };
@@ -384,6 +388,7 @@ pub fn patrol(route: usize, vision: f32, anim: Anim) -> Guard {
         darts: [0; 3],
         roused: false,
         stuck: 0.0,
+        post: None,
         tagged: false,
         anim,
     }
@@ -1111,7 +1116,13 @@ fn alert_brain(
             g.tracking = None;
         }
     }
-    let target = if g.level == 3 { snake } else { g.last_seen.unwrap_or(snake) };
+    // Out of sight and no longer tracked: to his post if he has one
+    // (`FUN_00228710` with +0x2c0 set), else after Snake's last place.
+    let target = match (g.level, g.tracking, g.post) {
+        (3, _, _) => snake,
+        (_, None, Some(post)) => post,
+        _ => g.last_seen.unwrap_or(snake),
+    };
     let frames = dt * 60.0;
 
     // In sight and in range: stand and shoot.
