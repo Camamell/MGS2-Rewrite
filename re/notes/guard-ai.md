@@ -112,8 +112,16 @@ Stamina is body +0xf0e (`-f`, default 9). A punch (`FUN_0024b8e8`, motion
 0x7d, voice 0x104) takes 5. At 0 he is knocked out (voice 0x120) for the
 enemy manager's `-o` (`FUN_00221970`: default and every stage 1800 frames)
 plus `FUN_0022d648(0x40)` (0..63), and stamina refills from +0xf06. A
-tranquilized guard (+0xf12 below 0) sleeps for the manager's `-z` (18000
+tranquilized guard (+0xf12 below 0; see darts below) sleeps for the manager's `-z` (18000
 frames); the count runs down at +0xf1a.
+
+Darts (`FUN_0024f490`, hit flag 2): resistance +0xf12 starts at +0xf0a
+(3000: `FUN_0025ad08` passes 6000, `FUN_00247d20` halves it). A head-zone
+dart takes 3000 and counts in +0xf21, a limb dart 500 (+0xf22), a body dart
+1000 (+0xf23); every frame `FUN_00258528` takes per dart 3000 (head), and
+by difficulty Bs16:0x8 < 20: 3000 for every dart; < 30: 4 per limb and 8
+per body dart; otherwise 2 and 4. Below 0 he falls asleep. On Normal one
+body dart takes 501 frames, one limb dart 1251.
 
 ## Alert brain: `FUN_00229D30`
 

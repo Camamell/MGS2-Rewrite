@@ -207,6 +207,8 @@ mod sleep {
 const DEFAULT_LIFE: i32 = 3000;
 /// Stamina without `-f`.
 const DEFAULT_STAMINA: i32 = 9;
+/// Dart resistance (`FUN_0025ad08` passes 6000; `FUN_00247d20` halves it).
+const RESIST: i32 = 3000;
 /// Hearing range for Snake's running (assumed).
 const HEARING: f32 = 3000.0;
 /// How long a tranquilized guard sleeps: the enemy manager's `-z`
@@ -216,8 +218,6 @@ const SLEEP_FRAMES: f32 = 18000.0;
 /// Knocked out (stamina +0xf0e gone): the manager's `-o` (default and
 /// every stage 1800 frames) plus 0..63 at random (`FUN_0024da30`).
 const KNOCKOUT_FRAMES: f32 = 1800.0;
-/// Body hits take a moment to work (frames; not from the game yet).
-const DART_DELAY: f32 = 150.0;
 
 #[derive(Component)]
 pub struct Guard {
@@ -249,6 +249,11 @@ pub struct Guard {
     /// comes round.
     pub stamina: i32,
     max_stamina: i32,
+    /// Resistance to the darts (+0xf12, from +0xf0a: 3000); asleep when it
+    /// drops below 0.
+    pub resist: i32,
+    /// Darts in him by zone (+0xf21 head, +0xf22 limbs, +0xf23 body).
+    darts: [u8; 3],
     /// Has given up his dog tags.
     pub tagged: bool,
     pub anim: Anim,
@@ -316,6 +321,8 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         wounds: 0,
         stamina,
         max_stamina: stamina,
+        resist: RESIST,
+        darts: [0; 3],
         tagged: false,
         anim: Anim::SOLDIER,
     };
@@ -343,6 +350,8 @@ pub fn patrol(route: usize, vision: f32, anim: Anim) -> Guard {
         wounds: 0,
         stamina: DEFAULT_STAMINA,
         max_stamina: DEFAULT_STAMINA,
+        resist: RESIST,
+        darts: [0; 3],
         tagged: false,
         anim,
     }
@@ -384,12 +393,47 @@ impl Guard {
         }
     }
 
-    /// A dart hit: head shots work at once.
-    pub fn tranquilize(&mut self, head: bool) {
-        if !self.asleep() {
-            self.state = State::Asleep { delay: if head { 0.0 } else { DART_DELAY }, timer: 0.0, wake: SLEEP_FRAMES };
-            self.path.clear();
+    /// A dart (`FUN_0024f490`): the head takes 3000 off his resistance,
+    /// a limb 500, the body 1000, and each dart keeps draining it every
+    /// frame ([`Guard::drowse`]).
+    pub fn dart(&mut self, zone: Zone) {
+        if self.asleep() {
+            return;
         }
+        let (cost, i) = match zone {
+            Zone::Head => (3000, 0),
+            Zone::Limb(_) => (500, 1),
+            Zone::Body => (1000, 2),
+        };
+        self.resist -= cost;
+        self.darts[i] = self.darts[i].saturating_add(1);
+        if self.resist < 0 {
+            self.fall_asleep();
+        }
+    }
+
+    /// The darts' drain per frame (`FUN_00258528`), by difficulty
+    /// (Bs16:0x8): Very Easy 3000 per dart; Easy 4 per limb dart and 8 per
+    /// body dart; Normal and up 2 and 4. A head dart is always 3000.
+    pub fn drowse(&mut self, ticks: u32, difficulty: i16) {
+        if self.asleep() || self.darts == [0; 3] {
+            return;
+        }
+        let [h, l, b] = self.darts.map(i32::from);
+        let per_frame = match difficulty {
+            d if d < 20 => (h + l + b) * 3000,
+            d if d < 30 => h * 3000 + l * 4 + b * 8,
+            _ => h * 3000 + l * 2 + b * 4,
+        };
+        self.resist -= per_frame * ticks as i32;
+        if self.resist < 0 {
+            self.fall_asleep();
+        }
+    }
+
+    fn fall_asleep(&mut self) {
+        self.state = State::Asleep { delay: 0.0, timer: 0.0, wake: SLEEP_FRAMES };
+        self.path.clear();
     }
 
     /// Knocked out (punches, a stun grenade): down at once for
@@ -424,6 +468,8 @@ impl Guard {
         self.life = self.max_life;
         self.wounds = 0;
         self.stamina = self.max_stamina;
+        self.resist = RESIST;
+        self.darts = [0; 3];
     }
 
     /// A lethal round (`FUN_0024a1e8`): a head hit kills; the body takes
@@ -610,7 +656,13 @@ pub fn think(
     let mut highest = 0i32;
 
     let shot = gunshot.0.take();
+    let difficulty = game.banks.b16(crate::gcl::DIFFICULTY);
     for (me, mut g, mut body) in &mut guards {
+        let was_down = g.asleep();
+        g.drowse(ticks, difficulty);
+        if !was_down && g.asleep() {
+            crate::sfx::play(crate::sfx::GUARD_ASLEEP + g.voice(), Some(body.pos));
+        }
         if let State::Dead { timer } = g.state {
             g.level = 0;
             g.meter = 0;
@@ -650,6 +702,8 @@ pub fn think(
             } else {
                 g.last_seen = None;
                 g.stamina = g.max_stamina;
+                g.resist = RESIST;
+                g.darts = [0; 3];
                 if let Some(wp) = waypoint(&game, g.route, g.node) {
                     plan(&mut g, body.pos, Vec3::from(wp.position), &game);
                 }
@@ -1184,6 +1238,27 @@ pub fn draw(game: Res<Game>, guards: Query<(&Guard, &Body)>, mut gizmos: Gizmos)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn darts_follow_the_game_drain() {
+        // Normal: a body dart leaves 2000, drained 4 a frame.
+        let mut g = patrol(0, 6000.0, Anim::SOLDIER);
+        g.dart(Zone::Body);
+        g.drowse(500, 30);
+        assert!(!g.asleep());
+        g.drowse(1, 30);
+        assert!(g.asleep());
+        // A head dart leaves 0; the next frame's drain puts him under.
+        let mut g = patrol(0, 6000.0, Anim::SOLDIER);
+        g.dart(Zone::Head);
+        g.drowse(1, 30);
+        assert!(g.asleep());
+        // Very Easy: any dart within a frame.
+        let mut g = patrol(0, 6000.0, Anim::SOLDIER);
+        g.dart(Zone::Limb(2));
+        g.drowse(1, 10);
+        assert!(g.asleep());
+    }
 
     #[test]
     fn three_body_hits_kill() {

@@ -133,7 +133,6 @@ pub fn fly(
                     continue;
                 }
                 if let Some(p) = hit_point(b.pos, end, gb.pos, HEIGHT) {
-                    let h = p.y - gb.pos.y;
                     if b.lethal {
                         // Hit voice (base 0x100); down for good once his
                         // life is gone, else he knows where Snake is.
@@ -143,10 +142,11 @@ pub fn fly(
                             g.meter = crate::guard::METER_MAX;
                         }
                     } else {
-                        if !g.asleep() {
+                        let was_down = g.asleep();
+                        g.dart(zone(p, gb));
+                        if !was_down && g.asleep() {
                             crate::sfx::play(crate::sfx::GUARD_ASLEEP + g.voice(), Some(gb.pos));
                         }
-                        g.tranquilize(h > HEAD_HEIGHT);
                     }
                     commands.entity(e).despawn();
                     continue 'bullets;

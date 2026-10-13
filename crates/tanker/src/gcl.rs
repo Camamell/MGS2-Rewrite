@@ -239,6 +239,11 @@ impl Banks {
         self.b[o..o + 4].copy_from_slice(&v.to_le_bytes());
     }
 
+    pub fn b16(&self, offset: u16) -> i16 {
+        let o = offset as usize;
+        self.b.get(o..o + 2).map_or(0, |b| i16::from_le_bytes(b.try_into().unwrap()))
+    }
+
     pub fn set_b16(&mut self, offset: u16, v: i16) {
         let o = offset as usize;
         self.b[o..o + 2].copy_from_slice(&v.to_le_bytes());
