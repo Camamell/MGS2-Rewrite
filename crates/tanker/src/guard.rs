@@ -205,6 +205,8 @@ mod sleep {
 }
 /// Life without `-l`.
 const DEFAULT_LIFE: i32 = 3000;
+/// Stamina without `-f`.
+const DEFAULT_STAMINA: i32 = 9;
 /// Hearing range for Snake's running (assumed).
 const HEARING: f32 = 3000.0;
 /// How long a tranquilized guard sleeps: the enemy manager's `-z`
@@ -243,6 +245,10 @@ pub struct Guard {
     max_life: i32,
     /// Wounded limbs (+0xf16 bits 0..3: the arms, then the legs).
     pub wounds: u8,
+    /// Stamina against blows (+0xf0e): `-f`, default 9; refilled when he
+    /// comes round.
+    pub stamina: i32,
+    max_stamina: i32,
     /// Has given up his dog tags.
     pub tagged: bool,
     pub anim: Anim,
@@ -291,6 +297,7 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
     // `-i` d0 [d1 d2 d3]; FUN_00222F60 defaults 6000; vision uses d0.
     let distance = s.opt_int(b'i', 0).filter(|d| *d > 0).map_or(default_vision, |d| d as f32);
     let life = s.opt_int(b'l', 0).filter(|d| *d > 0).unwrap_or(DEFAULT_LIFE);
+    let stamina = s.opt_int(b'f', 0).filter(|d| *d > 0).unwrap_or(DEFAULT_STAMINA);
     let guard = Guard {
         route,
         node,
@@ -307,6 +314,8 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         life,
         max_life: life,
         wounds: 0,
+        stamina,
+        max_stamina: stamina,
         tagged: false,
         anim: Anim::SOLDIER,
     };
@@ -332,6 +341,8 @@ pub fn patrol(route: usize, vision: f32, anim: Anim) -> Guard {
         life: DEFAULT_LIFE,
         max_life: DEFAULT_LIFE,
         wounds: 0,
+        stamina: DEFAULT_STAMINA,
+        max_stamina: DEFAULT_STAMINA,
         tagged: false,
         anim,
     }
@@ -412,6 +423,7 @@ impl Guard {
         self.attack = Attack::default();
         self.life = self.max_life;
         self.wounds = 0;
+        self.stamina = self.max_stamina;
     }
 
     /// A lethal round (`FUN_0024a1e8`): a head hit kills; the body takes
@@ -637,6 +649,7 @@ pub fn think(
                 g.state = State::Asleep { delay: 0.0, timer: timer + frames, wake };
             } else {
                 g.last_seen = None;
+                g.stamina = g.max_stamina;
                 if let Some(wp) = waypoint(&game, g.route, g.node) {
                     plan(&mut g, body.pos, Vec3::from(wp.position), &game);
                 }

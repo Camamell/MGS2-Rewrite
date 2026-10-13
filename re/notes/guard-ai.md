@@ -105,6 +105,16 @@ Life at 0 plays motion 0x71 (113, the fall); otherwise a hit reaction
 pings instead (effect 0x27, sparks: `FUN_00248f68`). The port picks the zone
 by hit height and distance from the guard's centre line.
 
+## Blows, sleep and knock-outs
+
+Stamina is body +0xf0e (`-f`, default 9). A punch (`FUN_0024b8e8`, motion
+0x79, voice 0x114) takes 1; the knock-down blow (`FUN_0024c3a8`, motion
+0x7d, voice 0x104) takes 5. At 0 he is knocked out (voice 0x120) for the
+enemy manager's `-o` (`FUN_00221970`: default and every stage 1800 frames)
+plus `FUN_0022d648(0x40)` (0..63), and stamina refills from +0xf06. A
+tranquilized guard (+0xf12 below 0) sleeps for the manager's `-z` (18000
+frames); the count runs down at +0xf1a.
+
 ## Alert brain: `FUN_00229D30`
 
 Seen → meter 0x400. The tracking flag (+0x348 & 0x40) expires 60 frames

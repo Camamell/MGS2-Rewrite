@@ -68,7 +68,7 @@ too.
 | Space | action: open doors (stage exits load the next stage); at a deck edge, hang over the railing (A/D shimmy, Space climb up, Z let go; the grip gauge runs down); some traps react to it too |
 | F (hold, release) | aim (A/D turn) and fire the weapon in hand; aiming at an unaware guard from behind holds him up, and from his front he gives up his dog tags |
 | 1 / 2 | M9 tranquilizer / USP (Snake takes Olga's USP when she goes down; a head shot kills, the body takes three rounds, limbs wound, and guards within ~10 m hear it) |
-| V | punch (three in a row knock a guard out) |
+| V | punch (three in a row: punch, punch and a knock-down blow; two such combos knock a soldier out) |
 | R | equip / unequip a ration (revives Snake at zero life) |
 | X (hold) | first-person view: A/D turn, W/S look up / down |
 | (walk into a wall) | back to the wall: sidestep along it (keep going at its end to peek round the corner), Space knocks (draws guards within 4 m), step away to leave |

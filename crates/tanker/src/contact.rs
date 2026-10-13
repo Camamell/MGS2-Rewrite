@@ -12,8 +12,10 @@ const SPACING: f32 = RADIUS * 2.0;
 /// Punch reach in front of Snake (mm) and half-angle (radians).
 const PUNCH_REACH: f32 = 1000.0;
 const PUNCH_ARC: f32 = 0.8;
-/// Punches in a row that knock a guard out.
-const KNOCKOUT_HITS: u32 = 3;
+/// Hits in a combo; the last is the knock-down blow.
+const COMBO_HITS: u32 = 3;
+/// Voice of a guard knocked down (base; + his voice).
+const KNOCKED_DOWN: u32 = 0x104;
 /// A combo breaks if the next punch comes later than this (seconds).
 const COMBO_GAP: f32 = 0.8;
 /// How long a punch holds Snake in place (seconds).
@@ -96,7 +98,8 @@ pub struct Punches {
 }
 
 /// V punches whoever stands right in front of Snake. A guard punched
-/// awake turns on Snake (discovery); three in a row knock him out.
+/// awake turns on Snake (discovery); blows wear down his stamina (9: a
+/// punch-punch-blow combo takes 7, so two combos knock him out).
 pub fn punch(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
@@ -141,12 +144,21 @@ pub fn punch(
     punches.count += 1;
     punches.last = now;
     punches.target = Some(e);
-    if punches.count >= KNOCKOUT_HITS {
+    // Punches take 1 stamina (`FUN_0024b8e8`, voice 0x114); the combo's
+    // third blow knocks him down for 5 (`FUN_0024c3a8`, voice 0x104). Out
+    // of stamina he is out cold (voice 0x120).
+    let finisher = punches.count >= COMBO_HITS;
+    g.stamina -= if finisher { 5 } else { 1 };
+    if finisher {
+        punches.count = 0;
+    }
+    if g.stamina <= 0 {
         crate::sfx::play(crate::sfx::GUARD_KNOCKED_OUT + g.voice(), Some(gb.pos));
         g.knock_out();
         punches.count = 0;
     } else {
-        crate::sfx::play(crate::sfx::GUARD_PUNCHED + g.voice(), Some(gb.pos));
+        let voice = if finisher { KNOCKED_DOWN } else { crate::sfx::GUARD_PUNCHED };
+        crate::sfx::play(voice + g.voice(), Some(gb.pos));
         g.punched(sb.pos);
     }
 }
