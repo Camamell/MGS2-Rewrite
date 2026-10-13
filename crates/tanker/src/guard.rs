@@ -146,7 +146,7 @@ pub enum State {
     /// Alert brain: chase.
     Chase,
     /// Evasion brain: search near the last known position (frames to wait).
-    Search { wait: u32 },
+    Search { wait: u32, facing: f32 },
     /// Going back to the route after alert/evasion/investigation.
     Return,
     /// Darted to sleep or knocked out: falls (motion 113) and lies
@@ -224,6 +224,8 @@ mod sleep {
     pub const ROUSED: usize = 133;
     pub const FALL_FRAMES: f32 = 140.0;
 }
+/// Evasion: frames spent looking around at each stop.
+const LOOK_FRAMES: u32 = 180;
 /// Life without `-l`.
 const DEFAULT_LIFE: i32 = 3000;
 /// Stamina without `-f`.
@@ -869,7 +871,7 @@ pub fn think(
                 PhaseKind::Evasion => {
                     let to = phase.last_seen.unwrap_or(snake_pos);
                     plan(&mut g, body.pos, to, &game);
-                    g.state = State::Search { wait: 0 };
+                    g.state = State::Search { wait: 0, facing: body.yaw };
                 }
                 PhaseKind::Caution | PhaseKind::Infiltration => {
                     if matches!(g.state, State::Chase | State::Search { .. }) {
@@ -1146,15 +1148,24 @@ fn alert_brain(
 /// `FUN_0022C670` stand-in: walk to the last known position, then visit
 /// nav nodes nearby, pausing to look around.
 fn evasion_brain(g: &mut Guard, body: &mut Body, phase: &Phase, dt: f32, ticks: u32, game: &Game) {
-    let State::Search { wait } = g.state else {
-        g.state = State::Search { wait: 0 };
+    let State::Search { wait, facing } = g.state else {
+        g.state = State::Search { wait: 0, facing: body.yaw };
         return;
     };
     if wait > 0 {
+        // Looking around where he stopped (`FUN_0022adc0` sub-state 6):
+        // 0x200 (45 degrees) to one side for frames 1..59, to the other
+        // for 61..119, of 180.
         body.play(g.anim.idle);
-        body.yaw += (wait as f32 / 40.0).sin() * dt;
+        let seen = LOOK_FRAMES.saturating_sub(wait);
+        let aim = match seen {
+            1..=59 => facing + 0x200 as f32 * ANGLE,
+            61..=119 => facing - 0x200 as f32 * ANGLE,
+            _ => facing,
+        };
+        body.yaw = turn_toward(body.yaw, aim, TURN_RATE * dt);
         let left = wait.saturating_sub(ticks);
-        g.state = State::Search { wait: left };
+        g.state = State::Search { wait: left, facing };
         if left == 0 {
             let around = phase.last_seen.unwrap_or(body.pos);
             if let Some(nav) = &game.nav {
@@ -1169,7 +1180,7 @@ fn evasion_brain(g: &mut Guard, body: &mut Body, phase: &Phase, dt: f32, ticks: 
     }
     body.play(g.anim.walk);
     if follow(g, body, WALK_SPEED, 400.0, dt, game) {
-        g.state = State::Search { wait: 120 };
+        g.state = State::Search { wait: LOOK_FRAMES, facing: body.yaw };
     }
 }
 
