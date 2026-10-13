@@ -154,6 +154,9 @@ pub enum State {
     Asleep { timer: f32, wake: f32 },
     /// Shot dead with the USP: falls (motion 113) and stays down.
     Dead { timer: f32 },
+    /// Hit by a round and still alive: knocked down (motion 0x7b) and
+    /// getting up again (frames so far).
+    Hurt { timer: f32 },
     /// Saw a comrade down: goes over and wakes him (raising caution).
     Rouse { sleeper: Entity, at: Vec3 },
     /// Held up at gunpoint: hands raised (motion 8). `loose` counts frames
@@ -179,15 +182,17 @@ pub struct Anim {
     /// Looking around at the end of an investigation (`None`: idle and
     /// turning).
     pub look: Option<usize>,
+    /// Knocked down by a hit and getting up (`None`: no reaction).
+    pub knocked: Option<(usize, usize)>,
 }
 
 impl Anim {
     /// Gurlukovich soldiers, `gbs.mar`.
-    pub const SOLDIER: Anim = Anim { idle: motion::IDLE, walk: motion::WALK, run: motion::RUN, aim: motion::AIM, hands_up: 8, fall: sleep::FALL, lie: sleep::LIE, exclaim: motion::EXCLAIM, look: Some(motion::LOOK) };
+    pub const SOLDIER: Anim = Anim { idle: motion::IDLE, walk: motion::WALK, run: motion::RUN, aim: motion::AIM, hands_up: 8, fall: sleep::FALL, lie: sleep::LIE, exclaim: motion::EXCLAIM, look: Some(motion::LOOK), knocked: Some((hurt::FALL, hurt::GET_UP)) };
     /// US Marines, `ushold.mar`: 39 and 40 cover 1332 and 4057 mm/s, the
     /// soldiers' walk and run; 46 hands up, 151 falls forward, 152 lies.
     /// No rifle-raised motion was found, so they aim from the idle pose.
-    pub const MARINE: Anim = Anim { idle: 0, walk: 39, run: 40, aim: 0, hands_up: 46, fall: 151, lie: 152, exclaim: 0, look: None };
+    pub const MARINE: Anim = Anim { idle: 0, walk: 39, run: 40, aim: 0, hands_up: 46, fall: 151, lie: 152, exclaim: 0, look: None, knocked: None };
 }
 /// A held-up guard turns on Snake after this long without a gun on him.
 const HOLDUP_LOOSE: f32 = 120.0;
@@ -195,6 +200,16 @@ const HOLDUP_LOOSE: f32 = 120.0;
 const TAG_FRAMES: f32 = 120.0;
 /// Hold-ups work within this range (mm).
 const HOLDUP_RANGE: f32 = 2500.0;
+
+/// gbs.mar: knocked down by a hit (0x7b, the motion the damage code picks
+/// while life remains) and getting up from lying (130, assumed from its
+/// poses).
+mod hurt {
+    pub const FALL: usize = 123;
+    pub const FALL_FRAMES: f32 = 119.0;
+    pub const GET_UP: usize = 130;
+    pub const GET_UP_FRAMES: f32 = 119.0;
+}
 
 mod sleep {
     /// gbs.mar: falling prone, lying asleep.
@@ -491,6 +506,10 @@ impl Guard {
             self.kill();
             true
         } else {
+            if !self.asleep() && self.anim.knocked.is_some() {
+                self.state = State::Hurt { timer: 0.0 };
+                self.path.clear();
+            }
             false
         }
     }
@@ -706,6 +725,21 @@ pub fn think(
             continue;
         }
 
+        // Knocked down by a round: falls, gets up, then knows where Snake is.
+        if let (State::Hurt { timer }, Some((fall, get_up))) = (g.state.clone(), g.anim.knocked) {
+            g.level = 0;
+            let t = timer + dt * 60.0;
+            body.play_once(if t < hurt::FALL_FRAMES { fall } else { get_up });
+            g.state = if t >= hurt::FALL_FRAMES + hurt::GET_UP_FRAMES {
+                g.last_seen = Some(snake_pos);
+                g.meter = METER_MAX;
+                State::Discovery { timer: EXCLAIM_FRAMES }
+            } else {
+                State::Hurt { timer: t }
+            };
+            highest = highest.max(i32::from(g.meter));
+            continue;
+        }
         // Hold-ups: Snake's gun on an unaware guard at close range.
         let to_guard = Vec2::new(body.pos.x - snake_pos.x, body.pos.z - snake_pos.z);
         let snake_fwd = snake_body.forward();
@@ -1003,7 +1037,7 @@ fn normal_brain(g: &mut Guard, body: &mut Body, snake: Vec3, dt: f32, ticks: u32
             }
         }
         State::Chase | State::Search { .. } => g.state = State::Return,
-        State::Asleep { .. } | State::Dead { .. } | State::Rouse { .. } | State::HeldUp { .. } => {}
+        State::Asleep { .. } | State::Dead { .. } | State::Rouse { .. } | State::HeldUp { .. } | State::Hurt { .. } => {}
     }
 }
 
