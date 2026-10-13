@@ -134,13 +134,24 @@ impl Collision {
 
     /// Highest floor at `(x, z)` that is no higher than `max_y`.
     pub fn floor_below(&self, x: f32, z: f32, max_y: f32) -> Option<f32> {
+        self.floor_at(x, z, max_y).map(|f| f.0)
+    }
+
+    /// The material of the floor under `(x, z)`: the top four bits of its
+    /// element flags (the soldiers' `FUN_00257bc0` passes `flags >> 28` to the motion
+    /// sounds, which pick a footstep variant by it).
+    pub fn floor_material(&self, x: f32, z: f32, max_y: f32) -> Option<u32> {
+        self.floor_at(x, z, max_y).map(|f| f.1 >> 28)
+    }
+
+    fn floor_at(&self, x: f32, z: f32, max_y: f32) -> Option<(f32, u32)> {
         let p = Vec2::new(x, z);
         self.floors
             .iter()
             .filter(|f| p.cmpge(f.min).all() && p.cmple(f.max).all() && inside(&f.outline, p))
-            .map(|f| f.point.y - (f.normal.x * (x - f.point.x) + f.normal.z * (z - f.point.z)) / f.normal.y)
-            .filter(|y| *y <= max_y)
-            .max_by(f32::total_cmp)
+            .map(|f| (f.point.y - (f.normal.x * (x - f.point.x) + f.normal.z * (z - f.point.z)) / f.normal.y, f.flags))
+            .filter(|y| y.0 <= max_y)
+            .max_by(|a, b| a.0.total_cmp(&b.0))
     }
 
     /// Pushes a cylinder (feet at `pos.y`) out of walls that overlap its

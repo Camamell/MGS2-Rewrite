@@ -313,7 +313,8 @@ image (w00a addresses `0x3AF000..0x3B5000`).
 - Root track (flag 0x20): fp16 values in units of 100 mm; hip heights
   0.8 / 0.42 / 0.14 m (stand / crouch / prone).
 - Not decoded: tangents of the root curve, flags 0x01 / 0x04 / 0x10 / 0x40
-  tracks, the `.sar` (per-motion events?) and `.var` (motion lists) files.
+  tracks and the `.var` (motion lists) files. The `.sar` holds the motion
+  sound events (see below).
 - Snake (`snake.mar`, in `r_tnk0`) motions identified from root motion:
   0 idle, 5 crouch idle, 7 prone idle, 17 walk (1.25 m/s), 18 run
   (3.05 m/s), 53 crouch walk. `re/scripts/mar_root.py` prints all of them.
@@ -443,3 +444,19 @@ clears flag bit 8 (on), 2 sets it (off), 3 moves it to new points, 5
 shifts it. The stages place them in setup and toggle them in events (w04a
 14, w01f 8...). The port pushes Snake out of the ones that are on
 (`MGS2_NO_SCRIPT_WALLS=1` ignores them).
+
+## Motion sounds (`.sar`, `#b44bbb`)
+
+The `.sar` named like a `.mar` lists, per motion (same index), sounds keyed
+to motion time (`frame x step`): a table `u32 n, n x {u16 sound, u8 mode,
+u8 joint, u32 ?}` and a stream `{u16 time, u8 length, u8 table index}` up
+to time 0xffff (`FUN_003b3568`, `FUN_003b33b0`; `mgs2_formats::sar`).
+Snake's run (motion 18, 53 frames) steps at 5 and 135 with sounds 2 / 3 on
+joints 20 / 16 (the feet). The characters' handler (`FUN_003b3768`) maps the
+sound through the tables `#b44bbb -i <table> -t <which> -s <sound> -d (id,
+byte) x 8` registers (`cmd_b44bbb`, 256 slots at 0x1ccd60, keyed by table
+and sound; `-c` clears): the id is `ids[material]` (`-t 0`; `-t 1` reads a
+second byte), where the material is the floor element's flags >> 28 and the
+table is 0 for Snake (`FUN_002898d0`) and 1 + voice for soldiers
+(`FUN_00257bc0`). Without a table the raw sound plays. w00a: Snake's steps
+2 / 3 become 422..437, the soldiers' 358..421.

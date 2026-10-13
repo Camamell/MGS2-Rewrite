@@ -134,7 +134,9 @@ What works:
   plays the stage's songs from their sequences and samples, switching with
   the alert phase as `bgmanage.c` does (`re/notes/sound.md`; not yet checked
   by ear against the game), and its sound effects: the M9, guards' and Olga's
-  shots, doors, damage, footsteps and the alert sting, placed by the camera.
+  shots, doors, damage and the alert sting, placed by the camera, and the
+  footsteps the motions themselves call for (`.sar` events, Snake's and the
+  soldiers', with the stage's variant for the floor underfoot).
 - Stage lighting from the stage's `.lt2`, as the game computes it on VU0:
   ambient and a directional light plus point, spot and strip lights and
   shadow spheres, per vertex, on the map, props and (assumed the same way)

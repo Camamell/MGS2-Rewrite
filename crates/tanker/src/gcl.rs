@@ -123,6 +123,10 @@ const SPEECH: u32 = 0x7AA13A;
 /// started by `#7aa13a` (the holds fade the commandant's speech with
 /// Snake's distance); the pan is not applied.
 const VOLUME: u32 = 0x339BD9;
+/// `#b44bbb [-c] -i <table> -t <which> -s <sound> -d <id byte> x 8`
+/// (`cmd_b44bbb`): the eight variants of a motion sound by floor material
+/// for one character table; `-c` clears them.
+const SOUND_TABLE: u32 = 0xB44BBB;
 /// `#f2eedc -c <command>`: a raw sound driver command (sound effects
 /// when the high byte is 0).
 const SOUND: u32 = 0xF2EEDC;
@@ -265,6 +269,9 @@ pub enum CodecReq {
     Then { id: u32, then: Option<u32> },
     /// Spoken dialogue that runs `then` when it ends.
     Speech { id: u32, then: Option<u32> },
+    /// A motion sound's variants by floor material (`#b44bbb`); `None`
+    /// clears them all.
+    SoundTable(Option<SoundTable>),
     /// The volume (0-63) of the spoken line `handle`.
     Volume { handle: u32, vol: u8 },
     Reset,
@@ -282,6 +289,16 @@ pub enum CodecReq {
     Sound(u32),
     /// A message to the holds' timer: 0 pause, 1 run.
     Timer(u32),
+}
+
+/// One `#b44bbb` entry: motion sound `sound` of character table `table`
+/// becomes `ids[material]` (`which` 0: the floor under the character).
+#[derive(Clone, Copy, Debug)]
+pub struct SoundTable {
+    pub table: u8,
+    pub which: u8,
+    pub sound: u16,
+    pub ids: [u16; 8],
 }
 
 impl Banks {
@@ -711,7 +728,7 @@ impl<'a> Vm<'a> {
         };
         let known = CALL_AFTER.contains(&id)
             || CODEC_THEN.contains(&id)
-            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, VOLUME, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand"), SIN, COS, ABS, DISTANCE, ATAN, SONG].contains(&id);
+            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, VOLUME, SOUND_TABLE, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand"), SIN, COS, ABS, DISTANCE, ATAN, SONG].contains(&id);
         known.then_some(id)
     }
 
@@ -804,6 +821,22 @@ impl<'a> Vm<'a> {
                 self.codec.push(CodecReq::Speech { id: sid as u32, then });
                 // The handle the game returns; the line's id stands in.
                 self.last = sid;
+            }
+        } else if id == SOUND_TABLE {
+            if options.iter().any(|(l, _)| *l == b'c') {
+                self.codec.push(CodecReq::SoundTable(None));
+            }
+            let int = |s: &mut Self, l: u8| opt(s, l).first().and_then(Val::int);
+            if let (Some(table), Some(sound)) = (int(self, b'i'), int(self, b's')) {
+                let which = int(self, b't').unwrap_or(0);
+                let d: Vec<i32> = opt(self, b'd').iter().filter_map(Val::int).collect();
+                let mut ids = [0xFFFFu16; 8];
+                for (i, id) in ids.iter_mut().enumerate() {
+                    if let Some(v) = d.get(i * 2) {
+                        *id = *v as u16;
+                    }
+                }
+                self.codec.push(CodecReq::SoundTable(Some(SoundTable { table: table as u8, which: which as u8, sound: sound as u16, ids })));
             }
         } else if id == VOLUME {
             if let Some(h) = a.get(1).and_then(|v| self.value(v, args).int()) {

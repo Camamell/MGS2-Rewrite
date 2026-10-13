@@ -246,6 +246,8 @@ pub struct Game {
     pub crowd_sight: (f32, f32),
     /// Spoken line playing: (id, proc to run after, seconds left).
     pub speech: Option<(u32, Option<u32>, f32)>,
+    /// Motion sound variants by floor material (`#b44bbb`).
+    pub sound_tables: Vec<gcl::SoundTable>,
     /// The spoken line's volume (`#339bd9`, 0-63), with its line id.
     pub speech_volume: Option<(u32, u8)>,
     /// Sound driver commands from the script, for `music::update`.
@@ -734,6 +736,7 @@ fn prepare(
         crowd_sight: crowd_procs.1,
         speech: None,
         speech_volume: None,
+        sound_tables: Vec::new(),
         sound_cmds: Vec::new(),
         photos: photos.0,
         photo_done: photos.1,
@@ -981,7 +984,7 @@ fn main() -> Result<()> {
         }).before(bevy::transform::TransformSystems::Propagate));
     }
     app.add_systems(Update, (sea::setup, sea::animate.after(player::follow_camera)));
-    app.add_systems(Update, sfx::footsteps.run_if(demo::idle).run_if(codec::idle));
+    app.add_systems(Update, sfx::motion_sounds.after(body::skin).run_if(demo::idle).run_if(codec::idle));
     app.init_resource::<photo::PhotoMode>()
         .add_systems(Startup, photo::setup_hud)
         .add_systems(
@@ -1564,6 +1567,11 @@ fn apply_codec(game: &mut Game, reqs: &[gcl::CodecReq]) {
             }
             CodecReq::Then { id, then } => game.codec_calls.push((14112, id, then)),
             CodecReq::Speech { id, then } => game.speech = Some((id, then, SPEECH_SECONDS)),
+            CodecReq::SoundTable(None) => game.sound_tables.clear(),
+            CodecReq::SoundTable(Some(t)) => {
+                game.sound_tables.retain(|o| (o.table, o.sound) != (t.table, t.sound));
+                game.sound_tables.push(t);
+            }
             CodecReq::Volume { handle, vol } => {
                 if game.speech_volume != Some((handle, vol)) {
                     game.speech_volume = Some((handle, vol));

@@ -4,7 +4,7 @@
 //! the queue is turned into driver commands with pan and volume from the
 //! camera, as `FUN_00114ce8` does. Ids (from the Tanker resident's calls):
 //! 0x52 the M9, 1 the USP, 4 an empty gun, 0x6f a door, 0x19 Snake hurt,
-//! 7 / 8 footsteps, 0x16 an item taken, 0x2a the alert sting.
+//! 0x16 an item taken, 0x2a the alert sting.
 
 use std::sync::Mutex;
 
@@ -24,7 +24,6 @@ pub const GUARD_PUNCHED: u32 = 0x114;
 pub const GUARD_KNOCKED_OUT: u32 = 0x120;
 pub const GUARD_ASLEEP: u32 = 0x11C;
 pub const BODY_FALL: u32 = 0x36E;
-const STEPS: [u32; 2] = [0x07, 0x08];
 
 static QUEUE: Mutex<Vec<(u32, Option<Vec3>, f32)>> = Mutex::new(Vec::new());
 
@@ -66,20 +65,48 @@ pub fn drain(listener: Vec3, right: Vec3) -> Vec<u32> {
         .collect()
 }
 
-/// Footsteps from Snake's travel: a step every 0.75 m running, quieter and
-/// every 0.6 m walking.
-pub fn footsteps(time: Res<Time>, q: Query<(&crate::body::Body, &crate::player::Player)>, mut walked: Local<(f32, usize)>) {
-    let Ok((body, p)) = q.single() else { return };
-    if p.speed < 300.0 {
-        walked.0 = 0.0;
-        return;
-    }
-    let running = p.speed > 2000.0;
-    walked.0 += p.speed * time.delta_secs();
-    let stride = if running { 750.0 } else { 600.0 };
-    if walked.0 >= stride {
-        walked.0 -= stride;
-        walked.1 ^= 1;
-        play_gain(STEPS[walked.1], Some(body.pos), if running { 1.0 } else { 0.5 });
+/// Motion sounds (`mgs2_formats::sar`): as a body's motion passes an
+/// event, its sound plays at the body, first mapped through the stage's
+/// `#b44bbb` tables for the character (Snake 0, soldiers 1 + voice, as
+/// `FUN_002898d0` / `FUN_00257bc0` set it) by the floor's material, as the
+/// characters' event handler (`FUN_003b3768`) does. These are the game's
+/// footsteps. (Placed at the feet, not the event's joint.)
+pub fn motion_sounds(
+    game: Res<crate::Game>,
+    bodies: Query<(Entity, &crate::body::Body, Option<&crate::player::Player>, Option<&crate::guard::Guard>)>,
+    mut last: Local<std::collections::HashMap<Entity, (usize, f32)>>,
+) {
+    last.retain(|e, _| bodies.contains(*e));
+    for (e, body, player, guard) in &bodies {
+        let table = match (player, guard) {
+            (Some(_), _) => 0u8,
+            (_, Some(g)) => 1 + g.voice() as u8,
+            _ => continue,
+        };
+        let Some(m) = body.motions else { continue };
+        let Some((hash, mar)) = game.data.motions.get(m) else { continue };
+        let Some(motion) = mar.motions.get(body.motion).filter(|mo| mo.length > 0) else { continue };
+        let Some(events) = game.data.sars.iter().find(|(h, _)| h == hash).and_then(|(_, s)| s.motions.get(body.motion)) else { continue };
+        let step = motion.step.max(1) as f32;
+        let span = motion.length as f32 * step;
+        let now = if body.once { body.frame * step } else { (body.frame * step).rem_euclid(span) };
+        let prev = match last.insert(e, (body.motion, now)) {
+            Some((mo, t)) if mo == body.motion => t,
+            _ => -1.0,
+        };
+        if events.is_empty() || now == prev {
+            continue;
+        }
+        let passed = |t: f32| if now >= prev { t > prev && t <= now } else { t > prev || t <= now };
+        for ev in events.iter().filter(|ev| passed(f32::from(ev.time))) {
+            let material = game.collision.as_ref().and_then(|c| c.floor_material(body.pos.x, body.pos.z, body.pos.y + 100.0)).unwrap_or(0);
+            let id = match game.sound_tables.iter().find(|t| t.table == table && t.sound == ev.sound) {
+                Some(t) => t.ids[if t.which == 0 { (material & 7) as usize } else { 0 }],
+                None => ev.sound & 0xFFF,
+            };
+            if id != 0xFFFF {
+                play(u32::from(id), Some(body.pos));
+            }
+        }
     }
 }

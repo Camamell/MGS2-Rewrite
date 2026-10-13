@@ -15,6 +15,7 @@ pub mod kms;
 pub mod lt2;
 pub mod mar;
 pub mod names;
+pub mod sar;
 pub mod sd;
 pub mod stage_dat;
 pub mod tri;

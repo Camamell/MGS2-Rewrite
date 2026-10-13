@@ -62,6 +62,8 @@ pub struct StageData {
     pub collision: Option<hzx::Hzx>,
     /// (file name hash, motion archive).
     pub motions: Vec<(u32, mar::Mar)>,
+    /// (file name hash, motion sound events) for the `.mar` of that name.
+    pub sars: Vec<(u32, mgs2_formats::sar::Sar)>,
     /// (file name hash, skinned cutscene mesh).
     pub evms: Vec<(u32, mgs2_formats::evm::Model)>,
     /// (file name hash, lighting).
@@ -116,6 +118,7 @@ pub fn load(disc: &mut Disc, name: &str) -> Result<StageData> {
         models: Vec::new(),
         collision: None,
         motions: Vec::new(),
+        sars: Vec::new(),
         evms: Vec::new(),
         lights: Vec::new(),
         script: None,
@@ -126,7 +129,7 @@ pub fn load(disc: &mut Disc, name: &str) -> Result<StageData> {
     };
     let level = str_code(name.as_bytes());
     // Stage files first so they win over resident ones with the same hash.
-    let resident_files = resident.files().filter(|(_, f)| matches!(f.type_id(), 4 | 10 | 12 | 19));
+    let resident_files = resident.files().filter(|(_, f)| matches!(f.type_id(), 4 | 10 | 12 | 18 | 19));
     for (page, f) in stage.files().chain(resident_files) {
         let bytes = page.file_data(f);
         let what = format!("{:06x}.{}", f.name_hash(), f.extension());
@@ -151,6 +154,10 @@ pub fn load(disc: &mut Disc, name: &str) -> Result<StageData> {
             },
             12 if bytes.starts_with(b"MARa") && data.motions.iter().all(|(h, _)| *h != f.name_hash()) => match mar::parse(bytes) {
                 Ok(m) => data.motions.push((f.name_hash(), m)),
+                Err(e) => data.warnings.push(format!("{what}: {e}")),
+            },
+            18 if data.sars.iter().all(|(h, _)| *h != f.name_hash()) => match mgs2_formats::sar::parse(bytes) {
+                Ok(s) => data.sars.push((f.name_hash(), s)),
                 Err(e) => data.warnings.push(format!("{what}: {e}")),
             },
             4 if data.evms.iter().all(|(h, _)| *h != f.name_hash()) => match mgs2_formats::evm::parse(bytes) {
