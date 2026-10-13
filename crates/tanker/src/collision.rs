@@ -223,6 +223,45 @@ impl Collision {
     }
 
 
+    /// Where the segment `a`..`b` first meets a wall or floor, with the
+    /// surface's normal facing `a`.
+    pub fn ray_normal(&self, a: Vec3, b: Vec3) -> Option<(f32, Vec3)> {
+        let d = b - a;
+        let r = Vec2::new(d.x, d.z);
+        let walls = self.walls.iter().filter_map(|w| {
+            let s = w.b - w.a;
+            let denom = r.perp_dot(s);
+            if denom.abs() < 1e-6 {
+                return None;
+            }
+            let q = w.a - Vec2::new(a.x, a.z);
+            let (t, u) = (q.perp_dot(s) / denom, q.perp_dot(r) / denom);
+            if !(0.0..=1.0).contains(&t) || !(0.0..=1.0).contains(&u) {
+                return None;
+            }
+            let y = a.y + d.y * t;
+            if !(y > w.bottom && y < w.top) {
+                return None;
+            }
+            let n = Vec3::new(-s.y, 0.0, s.x).normalize_or_zero();
+            Some((t, if n.dot(d) > 0.0 { -n } else { n }))
+        });
+        let floors = self.floors.iter().filter_map(|f| {
+            let denom = f.normal.dot(d);
+            if denom.abs() < 1e-6 {
+                return None;
+            }
+            let t = f.normal.dot(f.point - a) / denom;
+            if !(0.0..=1.0).contains(&t) {
+                return None;
+            }
+            let h = a + d * t;
+            let hp = Vec2::new(h.x, h.z);
+            (hp.cmpge(f.min).all() && hp.cmple(f.max).all() && inside(&f.outline, hp)).then(|| (t, if denom > 0.0 { -f.normal } else { f.normal }))
+        });
+        walls.chain(floors).min_by(|x, y| x.0.total_cmp(&y.0))
+    }
+
     /// Walls crossed by the segment `a`..`b`: (fraction, wall flags).
     pub fn wall_hits(&self, a: Vec3, b: Vec3) -> impl Iterator<Item = (f32, u32)> + '_ {
         let (p, r) = (Vec2::new(a.x, a.z), Vec2::new(b.x - a.x, b.z - a.z));

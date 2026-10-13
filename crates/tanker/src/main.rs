@@ -35,6 +35,7 @@ mod player;
 mod radar;
 mod rain;
 mod save;
+mod scar;
 mod thunder;
 mod title;
 mod script_cam;
@@ -442,7 +443,7 @@ struct Level {
 
 /// Everything that belongs to the current stage; despawned on a change.
 #[derive(Component, Clone)]
-struct LevelEntity;
+pub struct LevelEntity;
 
 /// Set while a newly loaded stage waits to be spawned.
 #[derive(Resource)]
@@ -928,7 +929,7 @@ fn main() -> Result<()> {
     if cli.screenshot.is_none() && !testing {
         app.add_systems(Update, save::autosave);
     }
-    app.add_plugins((pad::plugin, pause::plugin)).add_systems(Update, pad::rumble);
+    app.add_plugins((pad::plugin, pause::plugin, scar::plugin)).add_systems(Update, pad::rumble);
     app.add_plugins(cbox::plugin);
     app.add_plugins(grenade::plugin);
     app.add_systems(Update, motion_sheet.after(player::control).before(body::skin));

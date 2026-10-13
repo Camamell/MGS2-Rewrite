@@ -127,7 +127,8 @@ pub fn fly(
         let step = SPEED * dt;
         let next = b.pos + b.dir * step;
         // Stop at the first wall or floor on this frame's segment.
-        let wall = game.collision.as_ref().and_then(|c| c.ray(b.pos, next));
+        let surface = game.collision.as_ref().and_then(|c| c.ray_normal(b.pos, next));
+        let wall = surface.map(|s| s.0);
         let end = wall.map_or(next, |t| b.pos.lerp(next, t));
         if b.dart {
             for (gb, mut g) in &mut guards {
@@ -179,6 +180,12 @@ pub fn fly(
             player.damage(DAMAGE);
             commands.entity(e).despawn();
             continue;
+        }
+        // Rounds (not darts) leave a mark where they strike.
+        if let Some((_, n)) = surface
+            && (!b.dart || b.lethal)
+        {
+            crate::scar::add(end, n);
         }
         let wall = wall.is_some();
         b.pos = next;
