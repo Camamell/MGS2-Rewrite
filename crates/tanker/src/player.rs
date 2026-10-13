@@ -412,11 +412,15 @@ pub fn control(
     }
 
     // MGS2_WALK_DIR=x,z (testing): walk that world direction meanwhile.
+    // (Several segments: `x,z@until;x,z@until` seconds.)
     if let Ok(v) = std::env::var("MGS2_WALK_DIR")
-        && let Some((x, z)) = v.split_once(',')
         && auto.as_ref().is_some_and(|a| (a.from..a.from + a.seconds).contains(&time.elapsed_secs()))
     {
-        dir = Vec2::new(x.parse().unwrap_or(0.0), z.parse().unwrap_or(0.0)).normalize_or_zero();
+        let now = time.elapsed_secs();
+        let seg = v.split(';').find(|seg| seg.split_once('@').is_none_or(|(_, t)| now < t.parse().unwrap_or(f32::MAX)));
+        if let Some((x, z)) = seg.map(|seg| seg.split('@').next().unwrap_or("")).and_then(|d| d.split_once(',')) {
+            dir = Vec2::new(x.parse().unwrap_or(0.0), z.parse().unwrap_or(0.0)).normalize_or_zero();
+        }
     }
     let moving = dir != Vec2::ZERO;
 
