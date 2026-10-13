@@ -18,7 +18,7 @@
 //! | D-pad up | B | cardboard box |
 //! | D-pad down | K | Codec |
 //! | Start | P, Enter, Esc | pause; continue / skip a cutscene, hang up |
-//! | Select | F4 | debug text |
+//! | Select | L | Codec 140.96 (save) |
 //!
 //! The pad rumbles when Snake is hit (the game's `vibrate.c` shakes it too;
 //! strength and length here are assumed).
@@ -71,7 +71,7 @@ const BUTTONS: [(GamepadButton, &[KeyCode]); 14] = [
     (GamepadButton::DPadUp, &[KeyCode::KeyB]),
     (GamepadButton::DPadDown, &[KeyCode::KeyK]),
     (GamepadButton::Start, &[KeyCode::KeyP, KeyCode::Enter, KeyCode::Escape]),
-    (GamepadButton::Select, &[KeyCode::F4]),
+    (GamepadButton::Select, &[KeyCode::KeyL]),
 ];
 
 /// Stick deflection that counts as a direction, and below which a held
