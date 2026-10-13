@@ -44,6 +44,9 @@ script output. Dictionary-only matches are shown as `~name`.
 cargo run --release -p tanker -- --iso "path/to/mgs2.iso" w00a
 ```
 
+On Windows, `play.bat` asks for the .iso once and offers New game (with
+difficulty), Continue and a stage list.
+
 Progress is saved automatically each time a stage starts (stage, story
 variables and inventory, in `%APPDATA%\mgs2-tanker\save.txt`); add
 `--continue` to pick up from there.
