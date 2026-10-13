@@ -13,6 +13,8 @@ use crate::olga::Olga;
 use crate::player::{HEIGHT, Player, RADIUS};
 
 /// Hits above this height (mm over the feet) count as head shots.
+/// A dart striking someone (stage-independent effect).
+const DART_HIT: u32 = 0x86;
 const HEAD_HEIGHT: f32 = 1500.0;
 /// Below this the legs (mm above the feet; assumed).
 const HIP_HEIGHT: f32 = 850.0;
@@ -143,6 +145,8 @@ pub fn fly(
                         }
                     } else {
                         let was_down = g.asleep();
+                        // The dart's impact (effect 0x86, `FUN_0024f490`).
+                        crate::sfx::play(DART_HIT, Some(gb.pos));
                         g.dart(zone(p, gb));
                         if !was_down && g.asleep() {
                             crate::sfx::play(crate::sfx::GUARD_ASLEEP + g.voice(), Some(gb.pos));
