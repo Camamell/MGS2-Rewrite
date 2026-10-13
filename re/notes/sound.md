@@ -121,4 +121,22 @@ songs 1-3 are one piece whose `f8` commands raise different track sets.
   knocks him out, `FUN_0024d020`), 0x108 (falls, motions 0x89 / 0x99),
   0x110 (hit), 0x114 (punched, motion 0x79, `FUN_0024b8e8`), 0x118 (motion
   0x74), 0x11c (falling asleep, `FUN_00260320`, then the thud 0x36e).
-- Guards' spoken reactions go through `FUN_0021c0a0(base, guard)` (w04c resident; one line at a time, played by `FUN_0021cd20` as `base + voice`), each next to a head-mark command `FUN_0023d800(guard, 0xc, 0x8000 | kind)`: 0x14c with kind 0 (the counted "!", discovery), 0x144 with kind 5 ("?", not in Evasion), 0x140 with kind 4, 0x158 with kind 6, and 0x150 / 0x154 / 0x160 elsewhere. `0x8f + voice` plays on a frame counter (mode 5). The port plays 0x14c on discovery and 0x144 when an investigation starts.
+- Guards' spoken reactions go through `FUN_0021c0a0(base, guard)` (w04c resident; one line at a time, played by `FUN_0021cd20` as `base + voice`), each next to a head-mark command `FUN_0023d800(guard, 0xc, 0x8000 | kind)`: 0x14c with kind 0 (the counted "!", discovery), 0x144 with kind 5 ("?", not in Evasion), 0x140 with kind 4, 0x158 with kind 6, and 0x150 / 0x154 / 0x160 elsewhere. `0x8f + voice` plays on a frame counter (mode 5). In w00a (`FUN_0021c620` there):
+  - investigation (normal state 6, `FUN_0023c470`): 0x140 on the first
+    frame of sub-state 0 (`FUN_0023c028`, entered by `FUN_0023c568`), 0x144
+    at frame 120 of sub-state 3 (`FUN_0023c370`, after the walk; skipped in
+    Evasion);
+  - state 5 (`FUN_0023b580`, stimulus 0x200 = message kind 3 from
+    `FUN_0021e7a8`; in Evasion the same stimulus starts discovery): 0x150
+    after 31 frames when `FUN_002527d0` is 0, 0x154 on entering sub-state
+    0xd (`FUN_0023ac28`);
+  - 0x158 with kind 6 when the noise source's flags have 0x20
+    (`FUN_0023df78`);
+  - discovery (normal state 8, table 0x3f0c20): sub-state 2
+    (`FUN_00237128`, and 22 `FUN_00237320`) says 0x148 on its first frame
+    with the mark command kind 0, plays effect 0x53 at the guard
+    (`FUN_00114ce8(0x53, .., 1)`, unless DAT_0017f48c & 1) and counts the
+    discovery (`FUN_00220d60`). 0x14c (`FUN_002321b8`) belongs to another
+    state that checks a second controller (+0x2f4).
+  The port plays 0x148 and 0x53 on discovery, 0x140 when an investigation starts and
+  0x144 120 frames after the guard arrives.

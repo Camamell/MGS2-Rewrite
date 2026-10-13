@@ -811,6 +811,11 @@ fn normal_brain(g: &mut Guard, body: &mut Body, snake: Vec3, dt: f32, game: &Gam
                 _ => {
                     body.play(g.anim.idle);
                     body.yaw += (timer as f32 / 60.0).sin() * dt;
+                    // 120 frames after arriving: "?" and line 0x144 (w00a
+                    // `FUN_0023c370`, not during Evasion).
+                    if timer == 120 {
+                        crate::sfx::play(0x144 + g.voice(), Some(body.pos));
+                    }
                     if timer > 300 {
                         g.last_seen = None;
                         if let Some(wp) = waypoint(game, g.route, g.node) {

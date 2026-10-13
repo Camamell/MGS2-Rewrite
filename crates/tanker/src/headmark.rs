@@ -145,15 +145,22 @@ fn update(
         if want != m.kind {
             // The voice that goes with the mark (`FUN_0021c0a0(base, guard)`:
             // base + the guard's voice, together with the mark command
-            // `FUN_0023d800(guard, 0xc, 0x8000 | kind)`): 0x14c with the
-            // counted "!", 0x144 with a "?".
+            // `FUN_0023d800(guard, 0xc, 0x8000 | kind)`): the discovery
+            // "!" (w00a `FUN_00237128`, discovery sub-state 2) says 0x148
+            // and plays effect 0x53 at the guard; 0x140 as an
+            // investigation starts (w00a
+            // `FUN_0023c028`, its first frame; the 0x144 that follows the
+            // look-around is played by the guard).
             let base = match want {
-                Some(Kind::Exclaim) => Some(0x14C),
-                Some(Kind::Question) => Some(0x144),
+                Some(Kind::Exclaim) => Some(0x148),
+                Some(Kind::Question) => Some(0x140),
                 _ => None,
             };
             if let Some(base) = base {
                 crate::sfx::play(base + g.voice(), Some(b.pos));
+            }
+            if want == Some(Kind::Exclaim) {
+                crate::sfx::play(0x53, Some(b.pos));
             }
             m.kind = want;
             m.age = 0.0;

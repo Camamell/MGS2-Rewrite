@@ -34,6 +34,10 @@ pub fn play(id: u32, at: Option<Vec3>) {
 }
 
 pub fn play_gain(id: u32, at: Option<Vec3>, gain: f32) {
+    // MGS2_SFX_LOG=1: log every effect (testing).
+    if std::env::var_os("MGS2_SFX_LOG").is_some() {
+        info!("sfx {id:#x} at {at:?}");
+    }
     if let Ok(mut q) = QUEUE.lock() {
         q.push((id, at, gain));
     }
