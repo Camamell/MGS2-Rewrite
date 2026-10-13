@@ -114,12 +114,17 @@ What works:
   you can pick up (inventory kept across stages).
 - Guards see, hear running, investigate, raise the alert, chase along the
   navigation graph and shoot (aim, bursts, reloads as in the game's code).
-  Darted or punched guards fall asleep and later return to their route;
-  guards who find them wake them and raise caution. An alert brings in the
-  stage's reinforcements (its own script proc), who leave again once the
-  alert is over.
-- Snake's life follows the difficulty (200/150/100/75/50); he collapses with
-  his own death motion at zero.
+  Damage follows the game's numbers: guards have life by difficulty and hit
+  zones (a head shot kills, three body hits, limb wounds), darts drain their
+  resistance until they drop (head at once, body about 8 s on Normal),
+  blows wear down their stamina, and they sleep 5 minutes or stay knocked
+  out 30 s before getting up. Guards who find a sleeping comrade wake him
+  and raise caution. An alert brings in the stage's reinforcements (its
+  own script proc), who leave again once the alert is over.
+- Snake's life follows the difficulty (200/150/100/75/50) and carries over
+  from stage to stage; he collapses with his own death motion at zero, the
+  stage's game-over proc runs (Otacon calls out to him) and continuing
+  restores life the way the stage's continue proc does.
 - Doors and traps run the stage script's own handlers, so walking through a
   door or into an exit area loads the next stage with Snake where the
   script puts him (after his walk-in). Difficulty settings come from the
