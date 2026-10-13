@@ -170,6 +170,10 @@ pub struct Vm<'a> {
     pub eager: bool,
     /// Frames left on the holds' timer (`command #450c64`).
     pub timer: i32,
+    /// The song last requested of the sound driver (`FUN_00112b88`: a
+    /// command 0x01000001..8 sets it, 0x0200000a..d clears it), as
+    /// `command #d9c789` reports it.
+    pub song: i32,
     /// Codec requests from the stage script.
     pub codec: Vec<CodecReq>,
     /// Running a CODEC.DAT record: collect its dialogue lines.
@@ -200,6 +204,8 @@ const TIMER_LEFT: u32 = 0x450C64;
 
 /// The Codec command (`command #4a243a ...`) in stage scripts.
 pub const CODEC_COMMAND: u32 = 0x4A243A;
+/// `cmd_d9c789`: the song last requested ([`Vm::song`]).
+const SONG: u32 = 0xD9C789;
 /// Script maths: sin, cos (4096 = a full turn, results times 4096) and abs.
 const SIN: u32 = 0x01D98E;
 const COS: u32 = 0x019A53;
@@ -300,6 +306,7 @@ impl<'a> Vm<'a> {
             load: None,
             eager: false,
             timer: 0,
+            song: 0,
             codec: Vec::new(),
             codec_mode: false,
             lines: Vec::new(),
@@ -580,7 +587,7 @@ impl<'a> Vm<'a> {
             // `mesg #9b5b7f <target> <command>`: the sound relay actor
             // (`chara #c88afa #9b5b7f`) passes the command to the driver.
             if let Some(c) = a.get(2).and_then(|v| self.value(v, args).int()) {
-                self.codec.push(CodecReq::Sound(c as u32));
+                self.sound(c);
             }
             None
         } else if self.codec_mode && name == CODEC_LINE {
@@ -640,6 +647,18 @@ impl<'a> Vm<'a> {
     }
 
     /// The id of a `command` this VM models beyond the Codec.
+    /// A sound driver command, noting song requests.
+    fn sound(&mut self, c: i32) {
+        let u = c as u32;
+        if u.wrapping_sub(0x0100_0001) < 8 {
+            self.song = c;
+        }
+        if u.wrapping_sub(0x0200_000A) < 4 {
+            self.song = 0;
+        }
+        self.codec.push(CodecReq::Sound(u));
+    }
+
     fn command_id(v: Option<&Value>) -> Option<u32> {
         let id = match v? {
             Value::Name(h) => *h & 0x00FF_FFFF,
@@ -648,7 +667,7 @@ impl<'a> Vm<'a> {
         };
         let known = CALL_AFTER.contains(&id)
             || CODEC_THEN.contains(&id)
-            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand"), SIN, COS, ABS].contains(&id);
+            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand"), SIN, COS, ABS, SONG].contains(&id);
         known.then_some(id)
     }
 
@@ -661,7 +680,9 @@ impl<'a> Vm<'a> {
             _ => None,
         };
         self.last = 0;
-        if id == SIN || id == COS || id == ABS {
+        if id == SONG {
+            self.last = self.song;
+        } else if id == SIN || id == COS || id == ABS {
             // `cmd_01d98e` / `cmd_019a53`: sin / cos of a 4096-unit angle,
             // times 4096 (a Taylor series on VU0); `cmd_0190b3`: abs.
             let x = a.get(1).map_or(0, |v| self.value(v, args).int().unwrap_or(0));
@@ -723,7 +744,7 @@ impl<'a> Vm<'a> {
             }
         } else if id == SOUND {
             if let Some(c) = opt(self, b'c').first().and_then(Val::int) {
-                self.codec.push(CodecReq::Sound(c as u32));
+                self.sound(c);
             }
         } else if id == SPEECH {
             if let Some(sid) = a.get(1).and_then(|v| self.value(v, args).int()) {

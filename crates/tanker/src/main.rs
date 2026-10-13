@@ -208,6 +208,8 @@ pub struct Game {
     /// The stage's game-over proc, continue proc (`#80b977`) and the voice
     /// the game-over proc picked (`#5a4652`).
     pub over_proc: Option<u32>,
+    /// The song the scripts last requested (kept between script runs).
+    pub song: i32,
     pub continue_proc: Option<u32>,
     pub death_voice: Option<u32>,
     /// Incoming calls waiting to open, with the proc to run after each.
@@ -521,6 +523,7 @@ fn prepare(
     let mut on_alert = None;
     let mut rain_spec = None;
     let mut holds_timer = None;
+    let mut song = 0;
     let mut fog_spec = None;
     let mut radar_turn = None;
     let mut thunder_spec = None;
@@ -539,6 +542,7 @@ fn prepare(
     if let Some(script) = &data.script {
         let mut vm = gcl::Vm::with_banks(script, banks);
         vm.run(&script.main);
+        song = vm.song;
         let (gm, gmar) = (model_index(&data, "gbs_def"), motions_index(&data, "gbs"));
         // An actor created again under the same name replaces the first.
         let actor = |s: &gcl::Spawn| s.args.first().and_then(|v| v.int());
@@ -690,6 +694,7 @@ fn prepare(
         codec_base: None,
         disabled: 0,
         over_proc: None,
+        song,
         continue_proc: None,
         death_voice: None,
         codec_calls: Vec::new(),
@@ -1209,7 +1214,9 @@ fn script_event(
     let mut vm = gcl::Vm::with_banks(script, banks);
     vm.eager = true;
     vm.timer = game.timer.as_ref().map_or(0, timer::Timer::frames);
+    vm.song = game.song;
     run(&mut vm);
+    game.song = vm.song;
     let (load, spawns, codec, banks) = vm.finish();
     if let Some(t) = spawns.iter().filter(|s| s.kind == timer::TIMER_ACTOR).find_map(timer::Timer::from_spawn) {
         game.timer = Some(t);
