@@ -23,12 +23,16 @@
 use bevy::input::InputSystems;
 use bevy::prelude::*;
 
+/// The left stick (y forward, x right), for analog steering.
+#[derive(Resource, Default)]
+pub struct Stick(pub Vec2);
+
 /// Keys the pad is holding down (so physical key presses are left alone).
 #[derive(Resource, Default)]
 pub struct Held(Vec<KeyCode>);
 
 pub fn plugin(app: &mut App) {
-    app.init_resource::<Held>().add_systems(PreUpdate, feed.after(InputSystems));
+    app.init_resource::<Held>().init_resource::<Stick>().add_systems(PreUpdate, feed.after(InputSystems));
 }
 
 const BUTTONS: [(GamepadButton, &[KeyCode]); 14] = [
@@ -53,8 +57,9 @@ const BUTTONS: [(GamepadButton, &[KeyCode]); 14] = [
 const DEAD: f32 = 0.3;
 const WALK: f32 = 0.7;
 
-pub fn feed(pads: Query<&Gamepad>, mut keys: ResMut<ButtonInput<KeyCode>>, mut held: ResMut<Held>) {
+pub fn feed(pads: Query<&Gamepad>, mut keys: ResMut<ButtonInput<KeyCode>>, mut held: ResMut<Held>, mut stick: ResMut<Stick>) {
     let mut want: Vec<KeyCode> = Vec::new();
+    stick.0 = Vec2::ZERO;
     for pad in &pads {
         for (button, mapped) in BUTTONS {
             if pad.pressed(button) {
@@ -62,6 +67,9 @@ pub fn feed(pads: Query<&Gamepad>, mut keys: ResMut<ButtonInput<KeyCode>>, mut h
             }
         }
         let s = pad.left_stick();
+        if s.length() > DEAD {
+            stick.0 = s;
+        }
         if s.y > DEAD {
             want.push(KeyCode::KeyW);
         }

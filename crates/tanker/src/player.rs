@@ -215,6 +215,7 @@ pub fn control(
     mut gunshot: ResMut<crate::guard::Gunshot>,
     mut game: ResMut<Game>,
     cam: Query<&Transform, With<FollowCam>>,
+    stick: Option<Res<crate::pad::Stick>>,
     mut q: Query<(&mut Player, &mut Body)>,
 ) {
     let Ok((mut p, mut body)) = q.single_mut() else { return };
@@ -364,6 +365,10 @@ pub fn control(
         if keys.pressed(k) {
             input += v;
         }
+    }
+    // A gamepad's stick steers freely (not just the eight key directions).
+    if let Some(s) = stick.as_ref().map(|s| s.0).filter(|s| *s != Vec2::ZERO) {
+        input = s.normalize();
     }
     if auto.as_ref().is_some_and(|a| (a.from..a.from + a.seconds).contains(&time.elapsed_secs())) {
         input = Vec2::Y;
