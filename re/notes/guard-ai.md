@@ -210,6 +210,13 @@ of his facing; clear line); the members' own state machine is not ported.
 
 ## Olga (w00b): step tables run, selector simplified
 
+- Stamina +0xfb2 starts at 0x80. Her eleven hit zones (table 0x1F6090,
+  0x20 bytes each: joint at +0xc, damage at +0x1c as `(u32)float >> 17`
+  unless the actor passes `-c`): two head / neck zones 32, eight limb zones
+  8, the body 10. A dart (`FUN_002680e0`) plays 0x1f5 or 0x1f6 and takes
+  the zone's damage; on Very Easy (Bs16:0x8 < 0x15) a dart also drains 4
+  more every 128 frames down to 64 below where she was (+0x1072).
+
 - Actor `chara 0x7798f6` (`-m org_def_sh_mt -a orga -p -18800 13000 -19300`),
   handler `cmd_7798f6` at 0x25EE10 in **w00b's** resident image (each stage
   carries the actor code it needs; analysed in a separate Ghidra project).
@@ -222,8 +229,7 @@ of his facing; clear line); the members' own state machine is not ported.
   ported: the selectors and cover choice (they depend on cover objects at
   +0x107C and Snake's zone at +0x109C); the stand-in alternates moves to her
   positions (0x1F5D80..0x1F5E30) with the shoot sequences 0x1F6410..0x1F6530
-  and reloads (0x1F62A0) when empty. Darts take 15 (head 30) of 100 stamina
-  (not from the game). Her positions sit at y 13000, her raised platform.
+  and reloads (0x1F62A0) when empty. Her positions sit at y 13000, her raised platform.
 - Steps decoded so far: most call `FUN_00327BC0(motion ctl, layer, motion, ...)`
   to play an orga.mar motion, set flags at +0xF70 and advance. `FUN_002617E8`
   14 then `FUN_00261878` 15 when she has ammo (+0xFB6 > 0; aims via`

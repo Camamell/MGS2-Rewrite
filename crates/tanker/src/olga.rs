@@ -72,9 +72,13 @@ const MAGAZINE: i32 = 15;
 const RUN_SPEED: f32 = 3000.0;
 const WALK_SPEED: f32 = 1300.0;
 const TURN_RATE: f32 = 5.0;
-/// Stamina lost to a dart in the body / head (not from the game yet).
-const DART_BODY: i32 = 15;
-const DART_HEAD: i32 = 30;
+/// Her stamina (+0xfb2, set to 0x80 at start).
+pub const STAMINA: i32 = 0x80;
+/// Dart damage by hit zone: her table at 0x1f6090 (eleven zones: head and
+/// neck 32, the eight limb zones 8, the body 10; each entry's +0x1c >> 17).
+pub const DART_HEAD: i32 = 32;
+pub const DART_BODY: i32 = 10;
+pub const DART_LIMB: i32 = 8;
 
 #[derive(Component, Debug)]
 pub struct Olga {
@@ -106,7 +110,7 @@ pub struct Olga {
 impl Olga {
     pub fn new(on_down: Option<u32>) -> Self {
         Self {
-            stamina: 100,
+            stamina: STAMINA,
             ptr: table::START,
             timer: 0,
             rounds: MAGAZINE,
@@ -126,11 +130,13 @@ impl Olga {
         }
     }
 
-    pub fn hit(&mut self, head: bool) {
+    /// A dart (`FUN_002680e0`): her stamina (+0xfb2) loses the zone's
+    /// damage.
+    pub fn hit(&mut self, damage: i32) {
         if self.down() {
             return;
         }
-        self.stamina -= if head { DART_HEAD } else { DART_BODY };
+        self.stamina -= damage;
         self.hit = true;
         if self.stamina <= 0 {
             self.stamina = 0;
@@ -196,7 +202,7 @@ pub fn think(
     for (mut o, mut b) in &mut olgas {
         if down_at.as_ref().is_some_and(|d| time.elapsed_secs() >= d.0) && !o.down() {
             o.stamina = 1;
-            o.hit(false);
+            o.hit(1);
         }
         b.yaw = turn_toward(b.yaw, o.target_yaw, TURN_RATE * dt);
         // Run instant steps until one waits (bounded, as a safety net).

@@ -153,8 +153,18 @@ pub fn fly(
                 }
             }
             for (ob, mut o) in &mut olgas {
-                if let Some(h) = hits_body(b.pos, end, ob.pos, HEIGHT) {
-                    o.hit(h > HEAD_HEIGHT);
+                if let Some(p) = hit_point(b.pos, end, ob.pos, HEIGHT) {
+                    use crate::olga::{DART_BODY, DART_HEAD, DART_LIMB};
+                    let damage = match zone(p, ob) {
+                        Zone::Head => DART_HEAD,
+                        Zone::Body => DART_BODY,
+                        Zone::Limb(_) => DART_LIMB,
+                    };
+                    if !o.down() {
+                        // Her cry, one of two at random (0x1f5 / 0x1f6).
+                        crate::sfx::play(if o.stamina & 1 == 0 { 0x1F5 } else { 0x1F6 }, Some(ob.pos));
+                    }
+                    o.hit(damage);
                     commands.entity(e).despawn();
                     continue 'bullets;
                 }

@@ -1874,7 +1874,7 @@ fn hud(
     };
     let mut prompt = if door_in_reach(&game, b.pos).is_some() { "  [Space] open door".to_string() } else { String::new() };
     for o in &olgas {
-        prompt += &if o.down() { "   OLGA: down".to_string() } else { format!("   OLGA {}", bar(o.stamina, 100)) };
+        prompt += &if o.down() { "   OLGA: down".to_string() } else { format!("   OLGA {}", bar(o.stamina, olga::STAMINA)) };
     }
     let mut carried: Vec<String> =
         inv.counts.iter().filter(|(_, n)| **n > 0).map(|((k, i), n)| format!("{} {n}", items::name(*k, *i))).collect();

@@ -166,7 +166,7 @@ fn update(
         *v = if boss.is_some() && !hidden { Visibility::Inherited } else { Visibility::Hidden };
     }
     if let (Some(o), Ok(mut n)) = (boss, nodes.p1().single_mut()) {
-        n.width = pct(o.stamina, 100);
+        n.width = pct(o.stamina, crate::olga::STAMINA);
     }
     if let Ok(mut v) = vis.p1().single_mut() {
         *v = if p.hang.is_some() { Visibility::Inherited } else { Visibility::Hidden };
