@@ -432,3 +432,14 @@ Other frequent unhandled commands, by handler: `#6a725a` 0x3a59d0 (options
 w r m p c), `#b44bbb` 0x11cca8 (i t s d c), `#56ef97` 0x10ebb0 (runs its
 `-s` block under a mask; the port runs the block), `#0acf09` 0x2d7d08,
 `#fbeb7f` 0x105d48. The command table is the resident's (header +0xC).
+
+## Script walls (`chara #f91b9f`, `dsegment.c`)
+
+`chara #f91b9f <name> -p x1 y1 z1 h1 x2 y2 z2 h2 -a flags [-d]` adds a wall
+from point 1 to point 2 (feet height y, height h above it) to the map's
+collision (`FUN_00292160` -> `FUN_00150bc8`; flags `-a`, plus 0x27800
+without `-d`, plus `-N` << 28). Messages (`FUN_00291e30`): 0 removes it, 1
+clears flag bit 8 (on), 2 sets it (off), 3 moves it to new points, 5
+shifts it. The stages place them in setup and toggle them in events (w04a
+14, w01f 8...). The port pushes Snake out of the ones that are on
+(`MGS2_NO_SCRIPT_WALLS=1` ignores them).

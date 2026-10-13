@@ -28,7 +28,14 @@ struct Wall {
 pub struct Collision {
     floors: Vec<Floor>,
     walls: Vec<Wall>,
+    /// Walls the stage script adds (`chara #f91b9f`, `dsegment.c`), by
+    /// actor name; they stop Snake only.
+    script_walls: Vec<(u32, Wall)>,
 }
+
+/// A script wall's flag bit for "switched off" (`dsegment.c` messages 1 / 2
+/// clear and set it).
+const WALL_OFF: u32 = 8;
 
 impl Collision {
     /// Uses the primary wall/floor set (the second set's purpose is unknown).
@@ -65,7 +72,52 @@ impl Collision {
                 }
             }
         }
-        Self { floors, walls }
+        Self { floors, walls, script_walls: Vec::new() }
+    }
+
+    /// `chara #f91b9f <name> -p x1 y1 z1 h1 x2 y2 z2 h2 -a flags`: a wall
+    /// from point 1 to point 2 (feet heights y, heights h above them).
+    pub fn add_script_wall(&mut self, name: u32, p: [i32; 8], flags: u32) {
+        self.script_walls.retain(|(n, _)| *n != name);
+        self.script_walls.push((name, script_wall(p, flags)));
+    }
+
+    /// A message to a script wall (`FUN_00291e30`): 0 removes it, 1 / 2
+    /// switch it on / off, 3 moves it to new points, 5 shifts it.
+    pub fn script_wall_message(&mut self, name: u32, code: u32, args: &[i32]) {
+        let Some(i) = self.script_walls.iter().position(|(n, _)| *n == name) else { return };
+        let w = &mut self.script_walls[i].1;
+        match code {
+            0 => {
+                self.script_walls.remove(i);
+            }
+            1 => w.flags &= !WALL_OFF,
+            2 => w.flags |= WALL_OFF,
+            3 if args.len() >= 8 => {
+                let flags = w.flags;
+                *w = script_wall(args[..8].try_into().unwrap(), flags);
+            }
+            5 if args.len() >= 3 => {
+                let d = Vec2::new(args[0] as f32, args[2] as f32);
+                (w.a, w.b) = (w.a + d, w.b + d);
+                (w.bottom, w.top) = (w.bottom + args[1] as f32, w.top + args[1] as f32);
+            }
+            _ => {}
+        }
+    }
+
+    /// How many walls the script has placed.
+    pub fn script_wall_count(&self) -> usize {
+        self.script_walls.len()
+    }
+
+    /// Pushes Snake out of the script's walls that are switched on.
+    pub fn push_out_script(&self, pos: Vec3, radius: f32, height: f32, step: f32) -> Vec3 {
+        if std::env::var_os("MGS2_NO_SCRIPT_WALLS").is_some() {
+            return pos;
+        }
+        let walls: Vec<&Wall> = self.script_walls.iter().map(|(_, w)| w).filter(|w| w.flags & WALL_OFF == 0).collect();
+        push_out(walls.into_iter(), pos, radius, height, step)
     }
 
     /// Highest floor at `(x, z)` that is no higher than `max_y`.
@@ -82,32 +134,41 @@ impl Collision {
     /// Pushes a cylinder (feet at `pos.y`) out of walls that overlap its
     /// height, ignoring the lowest `step` mm so kerbs can be climbed.
     pub fn push_out(&self, pos: Vec3, radius: f32, height: f32, step: f32) -> Vec3 {
-        let mut p = Vec2::new(pos.x, pos.z);
-        let (lo, hi) = (pos.y + step, pos.y + height);
-        for _ in 0..4 {
-            let mut moved = false;
-            for w in self.walls.iter().filter(|w| w.top > lo && w.bottom < hi) {
-                let ab = w.b - w.a;
-                let len2 = ab.length_squared();
-                if len2 < 1.0 {
-                    continue;
-                }
-                let t = ((p - w.a).dot(ab) / len2).clamp(0.0, 1.0);
-                let closest = w.a + ab * t;
-                let d = p - closest;
-                let dist = d.length();
-                if dist < radius {
-                    let dir = if dist > 1e-3 { d / dist } else { Vec2::new(-ab.y, ab.x).normalize() };
-                    p = closest + dir * radius;
-                    moved = true;
-                }
+        push_out(self.walls.iter(), pos, radius, height, step)
+    }
+}
+
+fn script_wall(p: [i32; 8], flags: u32) -> Wall {
+    let [x1, y1, z1, h1, x2, y2, z2, h2] = p.map(|v| v as f32);
+    Wall { a: Vec2::new(x1, z1), b: Vec2::new(x2, z2), bottom: y1.min(y2), top: (y1 + h1).max(y2 + h2), flags }
+}
+
+fn push_out<'a>(walls: impl Iterator<Item = &'a Wall> + Clone, pos: Vec3, radius: f32, height: f32, step: f32) -> Vec3 {
+    let mut p = Vec2::new(pos.x, pos.z);
+    let (lo, hi) = (pos.y + step, pos.y + height);
+    for _ in 0..4 {
+        let mut moved = false;
+        for w in walls.clone().filter(|w| w.top > lo && w.bottom < hi) {
+            let ab = w.b - w.a;
+            let len2 = ab.length_squared();
+            if len2 < 1.0 {
+                continue;
             }
-            if !moved {
-                break;
+            let t = ((p - w.a).dot(ab) / len2).clamp(0.0, 1.0);
+            let closest = w.a + ab * t;
+            let d = p - closest;
+            let dist = d.length();
+            if dist < radius {
+                let dir = if dist > 1e-3 { d / dist } else { Vec2::new(-ab.y, ab.x).normalize() };
+                p = closest + dir * radius;
+                moved = true;
             }
         }
-        Vec3::new(p.x, pos.y, p.y)
+        if !moved {
+            break;
+        }
     }
+    Vec3::new(p.x, pos.y, p.y)
 }
 
 impl Collision {

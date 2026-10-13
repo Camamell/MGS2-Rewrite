@@ -508,7 +508,7 @@ fn prepare(
     let mut banks = banks;
     banks.set_b32(gcl::STAGE_NAME, mgs2_formats::str_code(name.as_bytes()) as i32);
     let mut data = stage::load(disc, name)?;
-    let collision = data.collision.as_ref().map(Collision::new);
+    let mut collision = data.collision.as_ref().map(Collision::new);
     let nav = data.collision.as_ref().map(nav::Nav::new);
 
     let mut guards = Vec::new();
@@ -543,6 +543,12 @@ fn prepare(
         let mut vm = gcl::Vm::with_banks(script, banks);
         vm.run(&script.main);
         song = vm.song;
+        if let Some(col) = collision.as_mut() {
+            add_script_walls(col, &vm.spawns);
+            if col.script_wall_count() > 0 {
+                eprintln!("{name}: {} script walls", col.script_wall_count());
+            }
+        }
         let (gm, gmar) = (model_index(&data, "gbs_def"), motions_index(&data, "gbs"));
         // An actor created again under the same name replaces the first.
         let actor = |s: &gcl::Spawn| s.args.first().and_then(|v| v.int());
@@ -1222,6 +1228,9 @@ fn script_event(
         game.timer = Some(t);
     }
     game.cameras.apply(&spawns);
+    if let Some(col) = game.collision.as_mut() {
+        add_script_walls(col, &spawns);
+    }
     apply_codec(game, &codec);
     game.arrivals.extend(spawns.into_iter().filter(|s| s.kind == guard::TROOPER_ACTOR).map(|s| (s, TROOPER_DELAY)));
     let Some(mut next) = load else {
@@ -1455,12 +1464,31 @@ fn boss_defeat(
     }
 }
 
+/// The stage script's walls (`chara #f91b9f <name> -p x1 y1 z1 h1 x2 y2 z2
+/// h2 -a flags [-d]`, `dsegment.c`): flags are `-a`, plus 0x27800 without
+/// `-d` (`FUN_00292160`).
+fn add_script_walls(col: &mut Collision, spawns: &[gcl::Spawn]) {
+    for s in spawns.iter().filter(|s| s.kind == SCRIPT_WALL_ACTOR) {
+        let Some(name) = s.args.first().and_then(gcl::Val::int) else { continue };
+        let p: Vec<i32> = (0..8).filter_map(|i| s.opt_int(b'p', i)).collect();
+        let Ok(p) = <[i32; 8]>::try_from(p) else { continue };
+        let mut flags = s.opt_int(b'a', 0).unwrap_or(0) as u32;
+        if s.opt(b'd').is_none() {
+            flags |= 0x27800;
+        }
+        col.add_script_wall(name as u32 & 0x00FF_FFFF, p, flags);
+    }
+}
+
+/// `dsegment.c`'s actor: a wall the script places.
+const SCRIPT_WALL_ACTOR: u32 = 0xF91B9F;
+
 /// Codec requests from a script run: the area's call (on while its trap
 /// reports enter/stay, off on leave), incoming calls, resets.
 fn apply_codec(game: &mut Game, reqs: &[gcl::CodecReq]) {
     use gcl::{CodecReq, trap_event};
     for r in reqs {
-        match *r {
+        match r.clone() {
             CodecReq::Area { event, freq, id } if event == trap_event::LEAVE => {
                 if game.codec_area == Some((freq, id)) {
                     game.codec_area = None;
@@ -1476,6 +1504,11 @@ fn apply_codec(game: &mut Game, reqs: &[gcl::CodecReq]) {
             CodecReq::Then { id, then } => game.codec_calls.push((14112, id, then)),
             CodecReq::Speech { id, then } => game.speech = Some((id, then, SPEECH_SECONDS)),
             CodecReq::Reset => game.codec_area = None,
+            CodecReq::Mesg { target, code, args } => {
+                if let Some(col) = game.collision.as_mut() {
+                    col.script_wall_message(target, code, &args);
+                }
+            }
             CodecReq::OverProcs { over, cont } => {
                 game.over_proc = over;
                 game.continue_proc = cont;

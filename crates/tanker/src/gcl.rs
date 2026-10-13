@@ -241,7 +241,7 @@ const CODEC_LINE: u32 = 0x3B91EB;
 /// `#01e658 <voice id> { lines }`: the lines spoken in one VOX.DAT clip.
 const CODEC_VOICE: u32 = 0x01E658;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub enum CodecReq {
     /// The conversation Snake gets when he calls `freq` in this area
     /// (the trap event decides on/off).
@@ -258,6 +258,8 @@ pub enum CodecReq {
     Reset,
     /// Features switched on and off (`cmd_944e11`, [`flags`]).
     Flags { on: u32, off: u32 },
+    /// A message to an actor (`mesg <actor> <code> args..`).
+    Mesg { target: u32, code: u32, args: Vec<i32> },
     /// The game-over and continue procs (`#80b977 -g -c`).
     OverProcs { over: Option<u32>, cont: Option<u32> },
     /// The voice for the game-over screen (`#5a4652 -v`).
@@ -581,6 +583,14 @@ impl<'a> Vm<'a> {
         } else if is("mesg") && matches!(a.first(), Some(Value::Name(h)) if *h & 0x00FF_FFFF == crate::timer::TIMER_ACTOR) {
             if let Some(Value::Name(m)) = a.get(1) {
                 self.codec.push(CodecReq::Timer(*m & 0x00FF_FFFF));
+            }
+            None
+        } else if is("mesg") && matches!((a.first(), a.get(1)), (Some(Value::Name(_)), Some(Value::Name(_)))) && !matches!(a.first(), Some(Value::Name(h)) if *h & 0x00FF_FFFF == SOUND_RELAY) {
+            // Any other actor message (`mesg <actor> <code> args..`), for the
+            // actors the port keeps (the script walls).
+            if let (Some(Value::Name(t)), Some(Value::Name(c))) = (a.first(), a.get(1)) {
+                let rest = a.iter().skip(2).map(|v| self.value(v, args).int().unwrap_or(0)).collect();
+                self.codec.push(CodecReq::Mesg { target: *t & 0x00FF_FFFF, code: *c & 0x00FF_FFFF, args: rest });
             }
             None
         } else if is("mesg") && matches!(a.first(), Some(Value::Name(h)) if *h & 0x00FF_FFFF == SOUND_RELAY) {

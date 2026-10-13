@@ -234,6 +234,7 @@ pub fn control(
         let mut next = body.pos + f * ROLL_SPEED * dt;
         if let Some(col) = &game.collision {
             next = col.push_out(next, RADIUS, 1000.0, STEP_UP);
+            next = col.push_out_script(next, RADIUS, 1000.0, STEP_UP);
             if col.floor_below(next.x, next.z, next.y + STEP_UP).is_none() {
                 next = body.pos;
             }
@@ -453,6 +454,7 @@ pub fn control(
             let mut next = body.pos + right3 * step * WALL_STEP_SPEED * dt;
             if let Some(col) = &game.collision {
                 next = col.push_out(next, RADIUS, p.height(), STEP_UP.min(p.height() - 1.0));
+                next = col.push_out_script(next, RADIUS, p.height(), STEP_UP.min(p.height() - 1.0));
                 // Stop at the wall's end (nothing at his back) or a drop.
                 let back = next + Vec3::Y * 800.0;
                 let behind = col.ray(back, back - away * (RADIUS + 250.0));
@@ -509,6 +511,7 @@ pub fn control(
     if let Some(col) = &game.collision {
         let wanted = next;
         next = col.push_out(next, RADIUS, p.height(), STEP_UP.min(p.height() - 1.0));
+        next = col.push_out_script(next, RADIUS, p.height(), STEP_UP.min(p.height() - 1.0));
         // Walking into a wall for a moment puts his back to it.
         let push = Vec2::new(next.x - wanted.x, next.z - wanted.z);
         if moving && !p.prone && !p.boxed && !entering && push.length() > speed * dt * 0.5 && dir.dot(-push.normalize_or_zero()) > 0.8 {
