@@ -1923,6 +1923,17 @@ fn draw_collision(game: Res<Game>, mut gizmos: Gizmos) {
             gizmos.line(p(pair[0].position), p(pair[1].position), Color::srgb(0.9, 0.5, 1.0));
         }
     }
+    // The script's walls: orange while on, grey while off.
+    if let Some(col) = &game.collision {
+        for (a, b, h, on) in col.script_wall_lines() {
+            let c = if on { Color::srgb(1.0, 0.6, 0.1) } else { Color::srgb(0.5, 0.5, 0.5) };
+            let up = Vec3::Y * h;
+            gizmos.line(a * SCALE, b * SCALE, c);
+            gizmos.line((a + up) * SCALE, (b + up) * SCALE, c);
+            gizmos.line(a * SCALE, (a + up) * SCALE, c);
+            gizmos.line(b * SCALE, (b + up) * SCALE, c);
+        }
+    }
 }
 
 /// After a game over, Enter continues from the stage start with full life

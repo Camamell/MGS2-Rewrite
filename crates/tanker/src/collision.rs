@@ -111,6 +111,13 @@ impl Collision {
         }
     }
 
+    /// The script's walls as (bottom a, bottom b, height, on) for drawing.
+    pub fn script_wall_lines(&self) -> impl Iterator<Item = (Vec3, Vec3, f32, bool)> + '_ {
+        self.script_walls.iter().map(|(_, w)| {
+            (Vec3::new(w.a.x, w.bottom, w.a.y), Vec3::new(w.b.x, w.bottom, w.b.y), w.top - w.bottom, w.flags & WALL_OFF == 0)
+        })
+    }
+
     /// How many walls the script has placed.
     pub fn script_wall_count(&self) -> usize {
         self.script_walls.len()
