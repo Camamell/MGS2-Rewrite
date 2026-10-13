@@ -1,3 +1,10 @@
+Easiest: double-click play.bat in the project folder. It asks for the .iso
+path once, builds the game (the first build takes a few minutes) and opens
+the start menu: Continue (the autosave), New game (choose the difficulty
+with A/D) and Stage select (Q/E picks the stage).
+
+By hand:
+
 1. Go to the project folder:
 
 cd "D:\Claude Code\mgs2-tanker"
@@ -6,6 +13,10 @@ cd "D:\Claude Code\mgs2-tanker"
 cargo run --release -p tanker -- --iso "D:\PCSX2 2.7.383\ISO\Metal Gear Solid 2 - Sons of Liberty (USA).iso"
 That starts at the beginning: the opening cutscene, then the deck (w00a). Esc skips a cutscene and Space jumps to the next subtitle line.
 
+Add --title to open the start menu first, or --continue to pick up from the autosave.
+
 To start at a specific stage, put its name before --iso. For example, w00b is the Olga fight, w04a–w04c are the holds, and w04c has the photo finale:
 
 cargo run --release -p tanker -- w00b --iso "D:\PCSX2 2.7.383\ISO\Metal Gear Solid 2 - Sons of Liberty (USA).iso"
+
+The controls are listed in README.md (F4 in game shows them too).
