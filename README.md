@@ -186,7 +186,12 @@ What works:
   holds' time limit (`#9b65f0`, 7 minutes from the new-game variables)
   counts down on screen, ticking, and runs the script's proc at zero.
 
-Assumptions (not taken from the game yet): the M9 starts with 15 darts and the USP with 15 rounds (`MGS2_USP=1` starts with it), the USP is heard within 10 m,
+Snake starts with the darts the title script gives a new Tanker game (106 /
+46 / 16 / 16 / 16 by difficulty), carries at most the script's maximums, and
+Olga's USP comes empty (its rounds lie in the later stages; `MGS2_USP=1`
+starts with it and 15 rounds, for tests).
+
+Assumptions (not taken from the game yet): the USP is heard within 10 m,
 the reload pause and where on the body a round or dart lands (hit zones by height). In the holds, the
 camera is always available, a photo goes to the first empty album slot (else
 over the worst one) and the Marines' slung rifles are not shown.

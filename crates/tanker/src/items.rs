@@ -19,10 +19,35 @@ pub const M9_AMMO: (i32, i32) = (1, 1);
 pub const DOG_TAGS: (i32, i32) = (0, 33);
 /// Inventory key of the USP's rounds (weapon 2).
 pub const USP_AMMO: (i32, i32) = (1, 2);
-/// Rounds in the USP Snake takes from Olga (an assumption).
-pub const USP_START: i32 = 15;
-/// Darts Snake starts with (an assumption, not read from the game).
-pub const M9_START: i32 = 15;
+/// Rounds in the USP Snake takes from Olga: none (w00c's script sets
+/// Bs16:0x154[2] = 0 as he arrives from her defeat; USP ammunition lies in
+/// the stages from w01b on).
+pub const USP_START: i32 = 0;
+/// Rounds the `MGS2_USP` test hook starts with.
+const TEST_USP_ROUNDS: i32 = 15;
+
+/// Difficulty (10..50) as an index 0..4.
+fn level(difficulty: i16) -> usize {
+    (difficulty / 10 - 1).clamp(0, 4) as usize
+}
+
+/// Darts Snake starts with: the title script's new Tanker game sets
+/// Bs16:0x154[1] to As16:0x7f0 (106 / 46 / 16 / 16 / 16 by difficulty).
+pub fn m9_start(difficulty: i16) -> i32 {
+    [106, 46, 16, 16, 16][level(difficulty)]
+}
+
+/// The most of each ammunition Snake can carry (the title script's
+/// Bs16:0x19c table by difficulty), if capped.
+pub fn max_count(key: (i32, i32), difficulty: i16) -> Option<i32> {
+    let l = level(difficulty);
+    match key {
+        M9_AMMO => Some([106, 106, 46, 46, 46][l]),
+        USP_AMMO => Some([61, 61, 46, 31, 16][l]),
+        (2, 10) | (2, 11) => Some([50, 40, 20, 10, 6][l]),
+        _ => None,
+    }
+}
 /// Pickup reach (mm, horizontal) and height tolerance.
 const REACH: f32 = 700.0;
 
@@ -87,11 +112,18 @@ pub struct Inventory {
 
 impl Default for Inventory {
     fn default() -> Self {
+        Self::new(30)
+    }
+}
+
+impl Inventory {
+    /// A new game's inventory for the difficulty.
+    pub fn new(difficulty: i16) -> Self {
         // MGS2_USP=1: start with the USP in hand (testing).
         let usp = std::env::var_os("MGS2_USP").is_some();
-        let mut counts = BTreeMap::from([(M9_AMMO, M9_START)]);
+        let mut counts = BTreeMap::from([(M9_AMMO, m9_start(difficulty))]);
         if usp {
-            counts.insert(USP_AMMO, USP_START);
+            counts.insert(USP_AMMO, TEST_USP_ROUNDS);
         }
         Self {
             counts,
@@ -128,7 +160,10 @@ pub fn pickup(
         if d > REACH || (item.pos.y - body.pos.y).abs() > 1000.0 || player.dead() {
             continue;
         }
-        *inv.counts.entry((item.kind, item.id)).or_default() += item.count;
+        let key = (item.kind, item.id);
+        let max = max_count(key, game.banks.b16(crate::gcl::DIFFICULTY));
+        let have = inv.counts.entry(key).or_default();
+        *have = (*have + item.count).min(max.unwrap_or(i32::MAX));
         inv.taken.insert((game.data.name.clone(), item.name));
         inv.message = Some((format!("{} x{}", name(item.kind, item.id), item.count), 2.5));
         commands.entity(e).despawn();

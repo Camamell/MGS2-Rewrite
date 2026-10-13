@@ -835,7 +835,7 @@ fn main() -> Result<()> {
     .insert_resource(bullet::Rng(0x2001_1113))
     .insert_resource(match &saved {
         Some(s) => items::Inventory { counts: s.counts.clone(), usp: s.usp, weapon: s.weapon, ..default() },
-        None => items::Inventory::default(),
+        None => items::Inventory::new(cli.difficulty),
     })
         .init_resource::<guard::Gunshot>()
     .init_resource::<contact::Punches>()
