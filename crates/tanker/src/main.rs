@@ -788,6 +788,12 @@ fn main() -> Result<()> {
         banks = s.banks.clone();
     }
     let walk_in = arrival.is_some() && from.as_deref().is_some_and(|f| f.starts_with('w'));
+    let inventory = match &saved {
+        Some(s) => items::Inventory { counts: s.counts.clone(), usp: s.usp, weapon: s.weapon, ..default() },
+        None => items::Inventory::new(cli.difficulty),
+    };
+    // The stage script reads Snake's ammunition from the variables.
+    inventory.to_banks(&mut banks);
     let mut level = prepare(&mut disc, &cli.stage, banks, walk_in, cli.spawns, cli.vision)?;
     // The cutscene Snake comes from (the opening briefing for w00a).
     let skip_cutscenes = cli.skip_cutscenes || (cli.screenshot.is_some() && !cli.cutscenes);
@@ -833,10 +839,7 @@ fn main() -> Result<()> {
     .insert_resource(level.phase)
     .insert_resource(NewCast(Mutex::new(Some(level.cast))))
     .insert_resource(bullet::Rng(0x2001_1113))
-    .insert_resource(match &saved {
-        Some(s) => items::Inventory { counts: s.counts.clone(), usp: s.usp, weapon: s.weapon, ..default() },
-        None => items::Inventory::new(cli.difficulty),
-    })
+    .insert_resource(inventory)
         .init_resource::<guard::Gunshot>()
     .init_resource::<contact::Punches>()
     .init_resource::<codec::CodecState>()
@@ -1722,8 +1725,9 @@ fn reinforcements(
 /// height is taken as his body's centre: the holds' scripts test it
 /// against the floor level -17000 and the catwalks' -9000), and a game
 /// over the script asked for.
-fn snake_vars(mut game: ResMut<Game>, mut player: Query<(&Body, &mut Player)>) {
+fn snake_vars(mut game: ResMut<Game>, inv: Res<items::Inventory>, mut player: Query<(&Body, &mut Player)>) {
     let Ok((b, mut p)) = player.single_mut() else { return };
+    inv.to_banks(&mut game.banks);
     let centre = b.pos.y + p.height() * 0.5;
     for (i, v) in [b.pos.x, centre, b.pos.z].into_iter().enumerate() {
         let o = 0xE0 + i * 4;

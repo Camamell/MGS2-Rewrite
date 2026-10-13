@@ -26,6 +26,20 @@ pub const USP_START: i32 = 0;
 /// Rounds the `MGS2_USP` test hook starts with.
 const TEST_USP_ROUNDS: i32 = 15;
 
+/// Snake's ammunition as the stage scripts read it: Bs16:0x154[w] per
+/// weapon (1 the M9, 2 the USP; -1 = not carried).
+pub const WEAPON_AMMO: u16 = 0x154;
+
+impl Inventory {
+    /// Mirrors the ammunition into the script variables.
+    pub fn to_banks(&self, banks: &mut crate::gcl::Banks) {
+        let m9 = self.counts.get(&M9_AMMO).copied().unwrap_or(0);
+        let usp = if self.usp { self.counts.get(&USP_AMMO).copied().unwrap_or(0) } else { -1 };
+        banks.set_b16(WEAPON_AMMO + 2, m9 as i16);
+        banks.set_b16(WEAPON_AMMO + 4, usp as i16);
+    }
+}
+
 /// Difficulty (10..50) as an index 0..4.
 fn level(difficulty: i16) -> usize {
     (difficulty / 10 - 1).clamp(0, 4) as usize
