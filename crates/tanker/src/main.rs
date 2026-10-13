@@ -246,6 +246,8 @@ pub struct Game {
     pub crowd_sight: (f32, f32),
     /// Spoken line playing: (id, proc to run after, seconds left).
     pub speech: Option<(u32, Option<u32>, f32)>,
+    /// The spoken line's volume (`#339bd9`, 0-63), with its line id.
+    pub speech_volume: Option<(u32, u8)>,
     /// Sound driver commands from the script, for `music::update`.
     pub sound_cmds: Vec<u32>,
     /// Digital camera targets and the proc run after each photo.
@@ -731,6 +733,7 @@ fn prepare(
         crowd_procs: crowd_procs.0,
         crowd_sight: crowd_procs.1,
         speech: None,
+        speech_volume: None,
         sound_cmds: Vec::new(),
         photos: photos.0,
         photo_done: photos.1,
@@ -1561,6 +1564,11 @@ fn apply_codec(game: &mut Game, reqs: &[gcl::CodecReq]) {
             }
             CodecReq::Then { id, then } => game.codec_calls.push((14112, id, then)),
             CodecReq::Speech { id, then } => game.speech = Some((id, then, SPEECH_SECONDS)),
+            CodecReq::Volume { handle, vol } => {
+                if game.speech_volume != Some((handle, vol)) {
+                    game.speech_volume = Some((handle, vol));
+                }
+            }
             CodecReq::Reset => game.codec_area = None,
             CodecReq::SoundAt { id, at } => crate::sfx::play(id, Some(Vec3::new(at[0] as f32, at[1] as f32, at[2] as f32))),
             CodecReq::Mesg { target, code, args } => {
@@ -1692,6 +1700,7 @@ fn speech(
     mut sources: ResMut<Assets<AudioSource>>,
     mut text: Query<&mut Text, With<SpeechPart>>,
     parts: Query<Entity, With<SpeechPart>>,
+    mut sinks: Query<&mut AudioSink, With<SpeechPart>>,
     mut playing: Local<Option<(u32, Vec<mgs2_formats::demo::Line>, f32)>>,
 ) {
     let current = game.speech.map(|s| s.0);
@@ -1725,6 +1734,16 @@ fn speech(
                     warn!("speech {id:#x}: {e:#}");
                     *playing = Some((id, Vec::new(), SPEECH_SECONDS));
                 }
+            }
+        }
+    }
+    if let Some((h, vol)) = game.speech_volume
+        && Some(h) == current
+    {
+        let want = bevy::audio::Volume::Linear(f32::from(vol) / 63.0);
+        for mut sink in &mut sinks {
+            if sink.volume() != want {
+                sink.set_volume(want);
             }
         }
     }

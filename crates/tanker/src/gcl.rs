@@ -119,6 +119,10 @@ const CODEC_THEN: &[u32] = &[0xDB03A6];
 /// (ids 0x2000xxxx; the holds chain the commandant's speech this way, each
 /// line's proc picking the next). The proc gets 0 when the line is over.
 const SPEECH: u32 = 0x7AA13A;
+/// `#339bd9 <handle> -v <volume 0-63> -p <pan 0-63>`: the volume of a line
+/// started by `#7aa13a` (the holds fade the commandant's speech with
+/// Snake's distance); the pan is not applied.
+const VOLUME: u32 = 0x339BD9;
 /// `#f2eedc -c <command>`: a raw sound driver command (sound effects
 /// when the high byte is 0).
 const SOUND: u32 = 0xF2EEDC;
@@ -261,6 +265,8 @@ pub enum CodecReq {
     Then { id: u32, then: Option<u32> },
     /// Spoken dialogue that runs `then` when it ends.
     Speech { id: u32, then: Option<u32> },
+    /// The volume (0-63) of the spoken line `handle`.
+    Volume { handle: u32, vol: u8 },
     Reset,
     /// Features switched on and off (`cmd_944e11`, [`flags`]).
     Flags { on: u32, off: u32 },
@@ -705,7 +711,7 @@ impl<'a> Vm<'a> {
         };
         let known = CALL_AFTER.contains(&id)
             || CODEC_THEN.contains(&id)
-            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand"), SIN, COS, ABS, DISTANCE, ATAN, SONG].contains(&id);
+            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, VOLUME, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand"), SIN, COS, ABS, DISTANCE, ATAN, SONG].contains(&id);
         known.then_some(id)
     }
 
@@ -796,6 +802,13 @@ impl<'a> Vm<'a> {
             if let Some(sid) = a.get(1).and_then(|v| self.value(v, args).int()) {
                 let then = proc(&opt(self, b'p'));
                 self.codec.push(CodecReq::Speech { id: sid as u32, then });
+                // The handle the game returns; the line's id stands in.
+                self.last = sid;
+            }
+        } else if id == VOLUME {
+            if let Some(h) = a.get(1).and_then(|v| self.value(v, args).int()) {
+                let vol = opt(self, b'v').first().and_then(Val::int).unwrap_or(0x3F);
+                self.codec.push(CodecReq::Volume { handle: h as u32, vol: vol.clamp(0, 0x3F) as u8 });
             }
         } else if CALL_AFTER.contains(&id) && self.eager
             && let Some(p) = proc(&opt(self, b'p'))
