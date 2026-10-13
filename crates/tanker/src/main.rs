@@ -1270,6 +1270,7 @@ fn script_event(
         let mut disc = session.disc.lock().unwrap();
         skip_cutscene(&mut disc, &session.iso, next, &game.data.name, &mut banks)
     };
+    let scene_call = cutscene.as_ref().and_then(|c| c.then_call);
     if let Some(mut c) = cutscene.filter(|_| !session.skip_cutscenes) {
         // The level the cutscene was reached from stays behind its actors.
         let mut disc = session.disc.lock().unwrap();
@@ -1299,6 +1300,9 @@ fn script_event(
         commands.entity(e).try_despawn();
     }
     *game = new.game;
+    if let Some((freq, id)) = scene_call {
+        game.codec_calls.push((freq, id, None));
+    }
     commands.insert_resource(new.phase);
     commands.insert_resource(NewCast(Mutex::new(Some(new.cast))));
 }
@@ -1327,6 +1331,13 @@ fn skip_cutscene(
             let mut out = Vec::new();
             collect_loads(&g.main, &mut out);
             g.procs.iter().for_each(|p| collect_loads(&p.body, &mut out));
+            // The call the scene ends with, when there is just one.
+            let mut calls = Vec::new();
+            collect_scene_calls(&g.main, &mut calls);
+            g.procs.iter().for_each(|p| collect_scene_calls(&p.body, &mut calls));
+            if let (Some(c), [_]) = (cutscene.as_mut(), calls.as_slice()) {
+                c.then_call = Some(calls[0]);
+            }
             out
         }
         _ => Vec::new(),
@@ -1398,6 +1409,27 @@ fn cutscene_scenery(script: &mgs2_formats::gcx::Gcx, data: &StageData, banks: &g
         .filter_map(|s| prop(s, data))
         .map(|p| (p.model, p.transform, p.lt2))
         .collect()
+}
+
+/// A cutscene script's incoming Codec calls of mode 4 (`command #4a243a
+/// -c <freq> <id> 4`: the call that ends the scene before the next stage).
+fn collect_scene_calls(stmts: &[mgs2_formats::gcx::Stmt], out: &mut Vec<(i32, u32)>) {
+    use mgs2_formats::gcx::{Stmt, Value};
+    for s in stmts {
+        if let Stmt::Command { args, options, .. } = s {
+            if matches!(args.first(), Some(Value::Name(h)) if *h & 0x00FF_FFFF == gcl::CODEC_COMMAND)
+                && let Some((_, v)) = options.iter().find(|(l, _)| *l == b'c')
+                && let [Value::Int(_, freq), Value::Int(_, id), Value::Int(_, 4), ..] = v.as_slice()
+            {
+                out.push((*freq, *id as u32));
+            }
+            for v in args.iter().chain(options.iter().flat_map(|(_, v)| v)) {
+                if let Value::Block(b) = v {
+                    collect_scene_calls(b, out);
+                }
+            }
+        }
+    }
 }
 
 fn collect_loads(stmts: &[mgs2_formats::gcx::Stmt], out: &mut Vec<String>) {

@@ -88,6 +88,9 @@ pub fn read(iso: &Path, id: u32) -> anyhow::Result<Vec<u8>> {
 /// A cutscene being shown.
 #[derive(Resource, Default)]
 pub struct Cutscene {
+    /// The Codec call the scene's script ends with (`freq`, record), placed
+    /// in the stage that follows.
+    pub then_call: Option<(i32, u32)>,
     /// Subtitles over the whole cutscene.
     pub lines: Vec<Line>,
     /// Its demos and the frame each starts at.
@@ -202,6 +205,7 @@ pub fn load(iso: &Path, name: &str, script: &Gcx, stage: Option<StageData>) -> C
         audio.iter().map(Vec::len).sum::<usize>() as f32 / 1e6
     );
     Cutscene {
+        then_call: None,
         lines,
         demos,
         audio,
