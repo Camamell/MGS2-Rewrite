@@ -24,6 +24,7 @@ mod gcl;
 mod grenade;
 mod guard;
 mod headmark;
+mod hud;
 mod items;
 mod nav;
 mod olga;
@@ -843,6 +844,7 @@ fn main() -> Result<()> {
     app.add_plugins(radar::plugin);
     app.add_plugins(headmark::plugin);
     app.add_plugins(fpv::plugin);
+    app.add_plugins(hud::plugin);
     app.add_plugins(cbox::plugin);
     app.add_plugins(grenade::plugin);
     app.add_systems(Update, motion_sheet.after(player::control).before(body::skin));
@@ -1835,7 +1837,7 @@ fn hud(
     }
     **t = format!(
         "{}  {}  guards {}  camera: {}\n{}{}\nitems: {}{}\npos {:.0} {:.0} {:.0} mm  motion {}{}\n\
-         WASD move  Shift walk  C crouch  Z prone  Space action  F aim/fire  1/2 M9/USP  V punch  R equip ration  X first person  B box  G grenade  Q/E or RMB camera  F1 collision+routes  F2 vision cones  F3 script cameras",
+         WASD move  Shift walk  C crouch  Z prone  Space action  F aim/fire  1/2 M9/USP  V punch  R equip ration  X first person  B box  G grenade  Q/E or RMB camera  F1 collision+routes  F2 vision cones  F3 script cameras  F4 hide this",
         game.data.name,
         status,
         guards.iter().count(),

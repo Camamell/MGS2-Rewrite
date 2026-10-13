@@ -419,7 +419,7 @@ pub fn stage(
     mut level: Query<&mut Visibility, (With<crate::LevelEntity>, Without<ChildOf>, Without<DemoActor>, Without<Backdrop>)>,
     mut cam: Query<&mut Projection, With<crate::player::FollowCam>>,
     mut normal_fov: Local<Option<f32>>,
-    mut huds: Query<&mut Visibility, (Or<(With<crate::Hud>, With<crate::photo::PhotoHud>)>, Without<crate::LevelEntity>, Without<DemoActor>, Without<Backdrop>)>,
+    mut huds: Query<&mut Visibility, (With<crate::photo::PhotoHud>, Without<crate::LevelEntity>, Without<DemoActor>, Without<Backdrop>)>,
 ) {
     let hud = if c.active() { Visibility::Hidden } else { Visibility::Inherited };
     for mut v in &mut huds {

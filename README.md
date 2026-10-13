@@ -73,6 +73,7 @@ too.
 | F1 | collision, plus patrol routes |
 | F2 | guard vision cones |
 | F3 | stage cameras on/off |
+| F4 | debug text (stage, phase, position, controls) |
 
 Testing hooks: `--auto-walk <seconds>` holds forward (`--walk-from`),
 `--cam-yaw/--cam-dist/--cam-pitch`, `--follow-guard N`, `--trace` (guard
@@ -122,6 +123,9 @@ What works:
   textured radar).
 - Marks over the guards' heads from the game's sprites: "!" on discovery,
   "?" on a noise, a rising "Z" while asleep (tints and timing assumed).
+- A game-style HUD: LIFE gauge (and the boss's) top left, weapon box bottom
+  right, item box bottom left, prompts at the bottom, the holds' timer top
+  centre.
 - Character shadows: Snake's own shadow model (`sna_shadow`), others their
   body, posed with the body and flattened onto the floor (the game draws a
   shadow volume; here straight down, assumed).
