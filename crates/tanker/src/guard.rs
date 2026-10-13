@@ -184,15 +184,18 @@ pub struct Anim {
     pub look: Option<usize>,
     /// Knocked down by a hit and getting up (`None`: no reaction).
     pub knocked: Option<(usize, usize)>,
+    /// Getting up after sleeping (motion, frames): when the sleep runs
+    /// out, and when a comrade wakes him (`None`: straight up).
+    pub get_up: Option<((usize, f32), (usize, f32))>,
 }
 
 impl Anim {
     /// Gurlukovich soldiers, `gbs.mar`.
-    pub const SOLDIER: Anim = Anim { idle: motion::IDLE, walk: motion::WALK, run: motion::RUN, aim: motion::AIM, hands_up: 8, fall: sleep::FALL, lie: sleep::LIE, exclaim: motion::EXCLAIM, look: Some(motion::LOOK), knocked: Some((hurt::FALL, hurt::GET_UP)) };
+    pub const SOLDIER: Anim = Anim { idle: motion::IDLE, walk: motion::WALK, run: motion::RUN, aim: motion::AIM, hands_up: 8, fall: sleep::FALL, lie: sleep::LIE, exclaim: motion::EXCLAIM, look: Some(motion::LOOK), knocked: Some((hurt::FALL, hurt::GET_UP)), get_up: Some(((sleep::GET_UP, 95.0), (sleep::ROUSED, 175.0))) };
     /// US Marines, `ushold.mar`: 39 and 40 cover 1332 and 4057 mm/s, the
     /// soldiers' walk and run; 46 hands up, 151 falls forward, 152 lies.
     /// No rifle-raised motion was found, so they aim from the idle pose.
-    pub const MARINE: Anim = Anim { idle: 0, walk: 39, run: 40, aim: 0, hands_up: 46, fall: 151, lie: 152, exclaim: 0, look: None, knocked: None };
+    pub const MARINE: Anim = Anim { idle: 0, walk: 39, run: 40, aim: 0, hands_up: 46, fall: 151, lie: 152, exclaim: 0, look: None, knocked: None, get_up: None };
 }
 /// A held-up guard turns on Snake after this long without a gun on him.
 const HOLDUP_LOOSE: f32 = 120.0;
@@ -215,6 +218,10 @@ mod sleep {
     /// gbs.mar: falling prone, lying asleep.
     pub const FALL: usize = 113;
     pub const LIE: usize = 114;
+    /// Getting up from lying on his back (0x84) when the sleep runs out,
+    /// or (0x85) when shaken awake (`FUN_0024e870`).
+    pub const GET_UP: usize = 132;
+    pub const ROUSED: usize = 133;
     pub const FALL_FRAMES: f32 = 140.0;
 }
 /// Life without `-l`.
@@ -268,6 +275,8 @@ pub struct Guard {
     pub resist: i32,
     /// Darts in him by zone (+0xf21 head, +0xf22 limbs, +0xf23 body).
     darts: [u8; 3],
+    /// Woken by a comrade (gets up with the other motion).
+    roused: bool,
     /// Has given up his dog tags.
     pub tagged: bool,
     pub anim: Anim,
@@ -337,6 +346,7 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         max_stamina: stamina,
         resist: RESIST,
         darts: [0; 3],
+        roused: false,
         tagged: false,
         anim: Anim::SOLDIER,
     };
@@ -366,6 +376,7 @@ pub fn patrol(route: usize, vision: f32, anim: Anim) -> Guard {
         max_stamina: DEFAULT_STAMINA,
         resist: RESIST,
         darts: [0; 3],
+        roused: false,
         tagged: false,
         anim,
     }
@@ -712,7 +723,14 @@ pub fn think(
                     body.play(g.anim.lie);
                 }
                 g.state = State::Asleep { timer: timer + frames, wake };
+            } else if let Some((motion, length)) = g.anim.get_up.map(|(slept, roused)| if g.roused { roused } else { slept })
+                && timer < wake + length
+            {
+                // Getting up (`FUN_0024e870`).
+                body.play_once(motion);
+                g.state = State::Asleep { timer: timer + frames, wake };
             } else {
+                g.roused = false;
                 g.last_seen = None;
                 g.stamina = g.max_stamina;
                 g.resist = RESIST;
@@ -893,9 +911,12 @@ pub fn think(
     // Kicked awake: up at once.
     for e in woken {
         if let Ok((_, mut g, _)) = guards.get_mut(e)
-            && let State::Asleep { wake, .. } = g.state {
-                g.state = State::Asleep { timer: wake, wake };
-            }
+            && let State::Asleep { timer, wake } = g.state
+            && timer < wake
+        {
+            g.roused = true;
+            g.state = State::Asleep { timer: wake, wake };
+        }
     }
 
     for _ in 0..ticks {
