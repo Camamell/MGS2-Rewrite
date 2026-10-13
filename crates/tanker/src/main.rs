@@ -205,6 +205,11 @@ pub struct Game {
     pub codec_base: Option<(i32, u32)>,
     /// Features the script has switched off (`gcl::flags`).
     pub disabled: u32,
+    /// The stage's game-over proc, continue proc (`#80b977`) and the voice
+    /// the game-over proc picked (`#5a4652`).
+    pub over_proc: Option<u32>,
+    pub continue_proc: Option<u32>,
+    pub death_voice: Option<u32>,
     /// Incoming calls waiting to open, with the proc to run after each.
     pub codec_calls: Vec<(i32, u32, Option<u32>)>,
     /// Procs of finished calls, to run.
@@ -684,6 +689,9 @@ fn prepare(
         codec_area: None,
         codec_base: None,
         disabled: 0,
+        over_proc: None,
+        continue_proc: None,
+        death_voice: None,
         codec_calls: Vec::new(),
         codec_then: Vec::new(),
         on_alert,
@@ -957,6 +965,7 @@ fn main() -> Result<()> {
     app.add_systems(Update, body::hold.after(body::skin).before(player::follow_camera));
     app.add_systems(Update, (body::add_shadows, body::update_shadows.after(body::skin)));
     app.add_systems(Update, boss_defeat.after(olga::think).run_if(codec::idle).run_if(demo::idle));
+    app.add_systems(Update, death_events);
     app.add_systems(Update, olga::think.after(guard::think).before(bullet::fly).run_if(codec::idle).run_if(demo::idle));
     if cli.trace {
         app.insert_resource(guard::Trace::default()).add_systems(Update, guard::trace);
@@ -1089,7 +1098,13 @@ fn spawn_level(
     match cast.snake {
         Some((model, motions, pos, yaw)) => {
             let e = spawn(&mut commands, model, Body::new(pos, yaw, model, motions));
-            commands.entity(e).insert(Player::new(session.difficulty));
+            // Life carries over between stages (Bs16:0xf2).
+            let mut player = Player::new(session.difficulty);
+            let life = i32::from(game.banks.b16(gcl::SNAKE_LIFE));
+            if (1..=player.max_life).contains(&life) {
+                player.life = life;
+            }
+            commands.entity(e).insert(player);
             weapons.extend(model_index(data, "m92").map(|m| (e, m, true, body::pistol_grip(), body::RIGHT_HAND)));
             usp_model = model_index(data, "usp").map(|m| (e, m));
         }
@@ -1378,6 +1393,32 @@ fn collect_loads(stmts: &[mgs2_formats::gcx::Stmt], out: &mut Vec<String>) {
     }
 }
 
+/// Snake down: run the stage's game-over proc (`#80b977 -g`: sound
+/// commands, the save, and the pick of the voice for the game-over
+/// screen), then play that voice (Otacon calling out to him).
+fn death_events(
+    mut commands: Commands,
+    session: Res<Session>,
+    mut game: ResMut<Game>,
+    player: Query<&Player>,
+    level: LevelRoots,
+    bullets: Query<Entity, With<bullet::Bullet>>,
+    mut was_dead: Local<bool>,
+) {
+    let Ok(p) = player.single() else { return };
+    let dead = p.dead();
+    if dead && !*was_dead {
+        if let Some(proc) = game.over_proc {
+            script_event(&mut commands, &session, &mut game, |vm| vm.call_proc(proc, &[]), &level, &bullets);
+        }
+        if let Some(id) = game.death_voice.take() {
+            info!("game over voice {id:#x}");
+            game.speech = Some((id, None, SPEECH_SECONDS));
+        }
+    }
+    *was_dead = dead;
+}
+
 /// Olga beaten: after her fall, run her defeat callback, which ends the
 /// fight the way the stage script does.
 fn boss_defeat(
@@ -1428,6 +1469,11 @@ fn apply_codec(game: &mut Game, reqs: &[gcl::CodecReq]) {
             CodecReq::Then { id, then } => game.codec_calls.push((14112, id, then)),
             CodecReq::Speech { id, then } => game.speech = Some((id, then, SPEECH_SECONDS)),
             CodecReq::Reset => game.codec_area = None,
+            CodecReq::OverProcs { over, cont } => {
+                game.over_proc = over;
+                game.continue_proc = cont;
+            }
+            CodecReq::DeathVoice(id) => game.death_voice = Some(id),
             CodecReq::Flags { on, off } => {
                 game.disabled = (game.disabled | off) & !on;
                 debug!("script features off: {:#x}", game.disabled);
@@ -1728,6 +1774,7 @@ fn reinforcements(
 fn snake_vars(mut game: ResMut<Game>, inv: Res<items::Inventory>, mut player: Query<(&Body, &mut Player)>) {
     let Ok((b, mut p)) = player.single_mut() else { return };
     inv.to_banks(&mut game.banks);
+    game.banks.set_b16(gcl::SNAKE_LIFE, p.life.clamp(0, i32::from(i16::MAX)) as i16);
     let centre = b.pos.y + p.height() * 0.5;
     for (i, v) in [b.pos.x, centre, b.pos.z].into_iter().enumerate() {
         let o = 0xE0 + i * 4;
@@ -1857,6 +1904,19 @@ fn game_over(
         return;
     }
     *p = Player::new(session.difficulty);
+    // Life on continuing: as the stage began, then the stage's continue
+    // proc (`#80b977 -c`: full on Very Easy, at least half on Easy, at
+    // least a third on Normal).
+    let mut banks = game.start_banks.clone();
+    if let (Some(proc), Some(script)) = (game.continue_proc, game.data.script.as_ref()) {
+        let mut vm = gcl::Vm::with_banks(script, banks);
+        vm.call_proc(proc, &[]);
+        banks = vm.finish().3;
+    }
+    let life = i32::from(banks.b16(gcl::SNAKE_LIFE));
+    if (1..=p.max_life).contains(&life) {
+        p.life = life;
+    }
     (body.pos, body.yaw) = game.snake_start;
     let caution_time = phase.caution_time;
     *phase = Phase::default();

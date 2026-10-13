@@ -200,6 +200,13 @@ const TIMER_LEFT: u32 = 0x450C64;
 
 /// The Codec command (`command #4a243a ...`) in stage scripts.
 pub const CODEC_COMMAND: u32 = 0x4A243A;
+/// Snake's life (Bs16:0xf2; the maximum is Bs16:0xf4).
+pub const SNAKE_LIFE: u16 = 0xF2;
+/// `command #80b977 -g proc -c proc`: the stage's game-over proc and the
+/// proc run on continuing.
+pub const OVER_COMMAND: u32 = 0x80B977;
+/// `cmd_5a4652 -v id`: the voice clip for the game-over screen.
+pub const DEATH_VOICE_COMMAND: u32 = 0x5A4652;
 /// `cmd_944e11`: game features off / on (`-m "off" -r "on"` ...).
 pub const FLAGS_COMMAND: u32 = 0x944E11;
 
@@ -241,6 +248,10 @@ pub enum CodecReq {
     Reset,
     /// Features switched on and off (`cmd_944e11`, [`flags`]).
     Flags { on: u32, off: u32 },
+    /// The game-over and continue procs (`#80b977 -g -c`).
+    OverProcs { over: Option<u32>, cont: Option<u32> },
+    /// The voice for the game-over screen (`#5a4652 -v`).
+    DeathVoice(u32),
     /// A raw sound driver command (`#f2eedc -c`).
     Sound(u32),
     /// A message to the holds' timer: 0 pause, 1 run.
@@ -501,6 +512,23 @@ impl<'a> Vm<'a> {
                     _ => None,
                 };
                 self.codec.extend(req);
+            }
+            self.last = 0;
+            None
+        } else if is("command") && matches!(a.first(), Some(Value::Name(h)) if *h & 0x00FF_FFFF == OVER_COMMAND) {
+            let proc = |s: &mut Self, l: u8| {
+                options.iter().find(|(o, _)| *o == l).and_then(|(_, v)| v.first()).and_then(|v| match s.value(v, args) {
+                    Val::Proc(p) => Some(p),
+                    _ => None,
+                })
+            };
+            let (over, cont) = (proc(self, b'g'), proc(self, b'c'));
+            self.codec.push(CodecReq::OverProcs { over, cont });
+            self.last = 0;
+            None
+        } else if is("command") && matches!(a.first(), Some(Value::Name(h)) if *h & 0x00FF_FFFF == DEATH_VOICE_COMMAND) {
+            if let Some(id) = options.iter().find(|(o, _)| *o == b'v').and_then(|(_, v)| v.first()).and_then(|v| self.value(v, args).int()) {
+                self.codec.push(CodecReq::DeathVoice(id as u32));
             }
             self.last = 0;
             None
