@@ -114,6 +114,9 @@ pub struct Player {
     pub wall: Option<Vec2>,
     /// Seconds spent pushing into a wall (presses at [`WALL_PRESS`]).
     pub wall_push: f32,
+    /// Seconds spent moving without getting anywhere (the walkable area's
+    /// edge): he stands instead of running on the spot.
+    pub blocked: f32,
     /// Frames left of a forward roll (motion 117).
     pub roll: f32,
 }
@@ -555,6 +558,9 @@ pub fn control(
         }
     }
 
+    let moved = Vec2::new(next.x - old.x, next.z - old.z).length();
+    p.blocked = if speed > 0.0 && moved < speed * dt * 0.2 { p.blocked + dt } else { 0.0 };
+    let speed = if p.blocked > 0.15 { 0.0 } else { speed };
     body.play(match (p.crouch, speed) {
         _ if p.prone && speed > 0.0 => motion::CRAWL,
         _ if p.prone => motion::PRONE_IDLE,
