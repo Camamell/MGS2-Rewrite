@@ -53,6 +53,9 @@ mod motion {
     /// The "!": action 2 of the action table `FUN_002240f8`, motion
     /// `FUN_0025da40` (0x5c; 0xec / 0x165 under flags 8 / 0x4000).
     pub const EXCLAIM: usize = 92;
+    /// Looking around (action 5 -> motion 16, 440 frames), as the
+    /// investigation's sub-state 10 does.
+    pub const LOOK: usize = 16;
 }
 
 const WALK_SPEED: f32 = 1330.0;
@@ -174,15 +177,18 @@ pub struct Anim {
     pub lie: usize,
     /// The discovery "!" reaction.
     pub exclaim: usize,
+    /// Looking around at the end of an investigation (`None`: idle and
+    /// turning).
+    pub look: Option<usize>,
 }
 
 impl Anim {
     /// Gurlukovich soldiers, `gbs.mar`.
-    pub const SOLDIER: Anim = Anim { idle: motion::IDLE, walk: motion::WALK, run: motion::RUN, aim: motion::AIM, hands_up: 8, fall: sleep::FALL, lie: sleep::LIE, exclaim: motion::EXCLAIM };
+    pub const SOLDIER: Anim = Anim { idle: motion::IDLE, walk: motion::WALK, run: motion::RUN, aim: motion::AIM, hands_up: 8, fall: sleep::FALL, lie: sleep::LIE, exclaim: motion::EXCLAIM, look: Some(motion::LOOK) };
     /// US Marines, `ushold.mar`: 39 and 40 cover 1332 and 4057 mm/s, the
     /// soldiers' walk and run; 46 hands up, 151 falls forward, 152 lies.
     /// No rifle-raised motion was found, so they aim from the idle pose.
-    pub const MARINE: Anim = Anim { idle: 0, walk: 39, run: 40, aim: 0, hands_up: 46, fall: 151, lie: 152, exclaim: 0 };
+    pub const MARINE: Anim = Anim { idle: 0, walk: 39, run: 40, aim: 0, hands_up: 46, fall: 151, lie: 152, exclaim: 0, look: None };
 }
 /// A held-up guard turns on Snake after this long without a gun on him.
 const HOLDUP_LOOSE: f32 = 120.0;
@@ -814,8 +820,12 @@ fn normal_brain(g: &mut Guard, body: &mut Body, snake: Vec3, dt: f32, game: &Gam
                     }
                 }
                 _ => {
-                    body.play(g.anim.idle);
-                    body.yaw += (timer as f32 / 60.0).sin() * dt;
+                    if let Some(look) = g.anim.look {
+                        body.play(look);
+                    } else {
+                        body.play(g.anim.idle);
+                        body.yaw += (timer as f32 / 60.0).sin() * dt;
+                    }
                     // 120 frames after arriving: "?" and line 0x144 (w00a
                     // `FUN_0023c370`, not during Evasion).
                     if timer == 120 {

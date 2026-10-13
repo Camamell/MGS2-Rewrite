@@ -71,7 +71,8 @@ a gbs.mar motion (+0xfe4) and a step function (+0x1334):
 
 `MGS2_MOTION_LENGTHS=1` logs every archive's motion lengths and
 `MGS2_GUARD_SHEET=dir MGS2_SHEET=motion:frame,...` photographs a guard in
-given poses. The port plays motion 92 for the "!".
+given poses. The port plays motion 92 for the "!" and 16 for the
+investigation's look-around (sub-state 10 sets action 5).
 
 ## Alert brain: `FUN_00229D30`
 

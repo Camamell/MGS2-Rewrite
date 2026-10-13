@@ -1922,10 +1922,12 @@ fn guard_sheet(
         return;
     };
     // Beside Snake, across the camera's view.
-    let right = cams.single().map_or(Vec3::X, |c| c.right().as_vec3() * Vec3::new(1.0, 0.0, 1.0)).normalize_or(Vec3::X);
+    let flat = Vec3::new(1.0, 0.0, 1.0);
+    let (right, back) = cams.single().map_or((Vec3::X, Vec3::Z), |c| ((c.right().as_vec3() * flat).normalize_or(Vec3::X), (c.back().as_vec3() * flat).normalize_or(Vec3::Z)));
     let Some(mut b) = guards.iter_mut().min_by(|a, c| a.pos.distance(snake.pos).total_cmp(&c.pos.distance(snake.pos))) else { return };
-    b.pos = snake.pos + right * 1500.0;
-    b.yaw = right.x.atan2(right.z);
+    b.pos = snake.pos + right * 1200.0;
+    // Facing the camera.
+    b.yaw = back.x.atan2(back.z);
     b.motion = motion;
     b.once = true;
     b.frame = frame;
