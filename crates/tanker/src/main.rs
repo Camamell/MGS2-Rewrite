@@ -201,6 +201,8 @@ pub struct Game {
     pub cameras: script_cam::Cameras,
     /// (frequency, CODEC.DAT id) Snake reaches by calling from here.
     pub codec_area: Option<(i32, u32)>,
+    /// The stage's default call (`-b`).
+    pub codec_base: Option<(i32, u32)>,
     /// Incoming calls waiting to open, with the proc to run after each.
     pub codec_calls: Vec<(i32, u32, Option<u32>)>,
     /// Procs of finished calls, to run.
@@ -678,6 +680,7 @@ fn prepare(
         prime_traps: false,
         cameras,
         codec_area: None,
+        codec_base: None,
         codec_calls: Vec::new(),
         codec_then: Vec::new(),
         on_alert,
@@ -1410,6 +1413,7 @@ fn apply_codec(game: &mut Game, reqs: &[gcl::CodecReq]) {
                 }
             }
             CodecReq::Area { freq, id, .. } => game.codec_area = Some((freq, id)),
+            CodecReq::Base { freq, id } => game.codec_base = Some((freq, id)),
             CodecReq::Call { freq, id } => {
                 if !game.codec_calls.iter().any(|c| (c.0, c.1) == (freq, id)) {
                     game.codec_calls.push((freq, id, None));

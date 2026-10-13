@@ -210,6 +210,9 @@ pub enum CodecReq {
     /// The conversation Snake gets when he calls `freq` in this area
     /// (the trap event decides on/off).
     Area { event: u32, freq: i32, id: u32 },
+    /// The stage's default conversation on `freq` (`-b`), for anywhere
+    /// without an area call.
+    Base { freq: i32, id: u32 },
     /// An incoming call.
     Call { freq: i32, id: u32 },
     /// A call that runs `then` when it ends.
@@ -464,13 +467,15 @@ impl<'a> Vm<'a> {
         } else if is("command") && matches!(a.first(), Some(Value::Name(CODEC_COMMAND))) {
             // `command #4a243a -o <event> <freq> <id>` (the call Snake gets on
             // this frequency here), `-c <freq> <id> <mode>` (an incoming
-            // call), `-r` (back to the default).
+            // call), `-b <freq> <id>` (the stage's default call), `-r` (back
+            // to the default).
             let ints = |s: &mut Self, v: &[Value]| v.iter().map(|x| s.value(x, args).int().unwrap_or(0)).collect::<Vec<i32>>();
             for (l, v) in options {
                 let n = ints(self, v);
                 let req = match (l, n.as_slice()) {
                     (b'o', [event, freq, id, ..]) => Some(CodecReq::Area { event: *event as u32, freq: *freq, id: *id as u32 }),
                     (b'c', [freq, id, ..]) => Some(CodecReq::Call { freq: *freq, id: *id as u32 }),
+                    (b'b', [freq, id, ..]) => Some(CodecReq::Base { freq: *freq, id: *id as u32 }),
                     (b'r', _) => Some(CodecReq::Reset),
                     _ => None,
                 };

@@ -217,7 +217,7 @@ pub fn input(
     if let Some((freq, id, then)) = game.codec_calls.pop() {
         state.call = open(&mut game, &data, freq, id, then);
     } else if keys.just_pressed(KeyCode::KeyK) || auto.is_some_and(|mut a| a.0 <= time.elapsed_secs() && { a.0 = f32::MAX; true }) {
-        let call = match game.codec_area {
+        let call = match game.codec_area.or(game.codec_base) {
             Some((freq, id)) => open(&mut game, &data, freq, id, None),
             None => None,
         };
