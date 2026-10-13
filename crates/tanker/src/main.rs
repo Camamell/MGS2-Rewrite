@@ -250,6 +250,8 @@ pub struct Game {
     pub sound_tables: Vec<gcl::SoundTable>,
     /// Materials (bits) whose struck surfaces make an impact sound.
     pub impact_sounds: u16,
+    /// Materials (bits) whose struck surfaces throw sparks.
+    pub impact_sparks: u16,
     /// The spoken line's volume (`#339bd9`, 0-63), with its line id.
     pub speech_volume: Option<(u32, u8)>,
     /// Sound driver commands from the script, for `music::update`.
@@ -756,6 +758,7 @@ fn prepare(
         speech_volume: None,
         sound_tables: Vec::new(),
         impact_sounds: 0,
+        impact_sparks: 0,
         sound_cmds: Vec::new(),
         photos: photos.0,
         photo_done: photos.1,
@@ -1587,6 +1590,7 @@ fn apply_codec(game: &mut Game, reqs: &[gcl::CodecReq]) {
             CodecReq::Then { id, then } => game.codec_calls.push((14112, id, then)),
             CodecReq::Speech { id, then } => game.speech = Some((id, then, SPEECH_SECONDS)),
             CodecReq::ImpactSound(n) => game.impact_sounds |= 1 << n,
+            CodecReq::ImpactSparks(n) => game.impact_sparks |= 1 << n,
             CodecReq::SoundTable(None) => game.sound_tables.clear(),
             CodecReq::SoundTable(Some(t)) => {
                 game.sound_tables.retain(|o| (o.table, o.sound) != (t.table, t.sound));

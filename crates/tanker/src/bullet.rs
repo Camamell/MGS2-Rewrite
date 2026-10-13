@@ -185,7 +185,7 @@ pub fn fly(
         if let Some((_, n, flags)) = surface
             && (!b.dart || b.lethal)
         {
-            crate::scar::add(end, n);
+            crate::scar::add(end, n, game.impact_sparks >> (flags >> 28) & 1 != 0);
             if let Some(id) = game.impact_sound(flags >> 28) {
                 crate::sfx::play(id, Some(end));
             }

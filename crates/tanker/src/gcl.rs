@@ -131,6 +131,9 @@ const SOUND_TABLE: u32 = 0xB44BBB;
 /// sound its variant of motion sound 0x27 (`FUN_003a5cf8`); bullets look
 /// the hook up by the struck element's flags >> 28 (`FUN_0036c630`).
 const IMPACT_SOUND: u32 = 0x41CF4E;
+/// `#0acf09 -n <material>` (`cmd_0acf09`): rounds striking that material
+/// throw sparks (`FUN_002d7498`).
+const IMPACT_SPARKS: u32 = 0x0ACF09;
 /// `#f2eedc -c <command>`: a raw sound driver command (sound effects
 /// when the high byte is 0).
 const SOUND: u32 = 0xF2EEDC;
@@ -278,6 +281,8 @@ pub enum CodecReq {
     SoundTable(Option<SoundTable>),
     /// Rounds striking this material make its impact sound (`#41cf4e`).
     ImpactSound(u8),
+    /// Rounds striking this material throw sparks (`#0acf09`).
+    ImpactSparks(u8),
     /// The volume (0-63) of the spoken line `handle`.
     Volume { handle: u32, vol: u8 },
     Reset,
@@ -734,7 +739,7 @@ impl<'a> Vm<'a> {
         };
         let known = CALL_AFTER.contains(&id)
             || CODEC_THEN.contains(&id)
-            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, VOLUME, SOUND_TABLE, IMPACT_SOUND, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand"), SIN, COS, ABS, DISTANCE, ATAN, SONG].contains(&id);
+            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, VOLUME, SOUND_TABLE, IMPACT_SOUND, IMPACT_SPARKS, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand"), SIN, COS, ABS, DISTANCE, ATAN, SONG].contains(&id);
         known.then_some(id)
     }
 
@@ -844,9 +849,9 @@ impl<'a> Vm<'a> {
                 }
                 self.codec.push(CodecReq::SoundTable(Some(SoundTable { table: table as u8, which: which as u8, sound: sound as u16, ids })));
             }
-        } else if id == IMPACT_SOUND {
+        } else if id == IMPACT_SOUND || id == IMPACT_SPARKS {
             if let Some(n) = opt(self, b'n').first().and_then(Val::int).filter(|n| (0..16).contains(n)) {
-                self.codec.push(CodecReq::ImpactSound(n as u8));
+                self.codec.push(if id == IMPACT_SOUND { CodecReq::ImpactSound(n as u8) } else { CodecReq::ImpactSparks(n as u8) });
             }
         } else if id == VOLUME {
             if let Some(h) = a.get(1).and_then(|v| self.value(v, args).int()) {

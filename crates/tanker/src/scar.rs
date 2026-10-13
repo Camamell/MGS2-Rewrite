@@ -1,7 +1,10 @@
 //! Bullet holes where rounds strike walls and floors. The stages create the
 //! game's scar actor (`chara #64afef <name> -u 32`, `wall_scar.c`), whose
 //! `-u` is taken here as how many marks stay at once; the mark itself (a
-//! small dark disc) is assumed, not the game's texture.
+//! small dark disc) is assumed, not the game's texture. Where the stage
+//! hooks sparks to the material (`#0acf09`) a brief flash shows too (the
+//! game's spark sprite, `FUN_002d7498`, is not ported; the flash's size and
+//! length are assumed).
 
 use std::sync::Mutex;
 
@@ -18,23 +21,42 @@ const MAX_SCARS: usize = 32;
 const RADIUS: f32 = 45.0;
 const LIFT: f32 = 4.0;
 
-static QUEUE: Mutex<Vec<(Vec3, Vec3)>> = Mutex::new(Vec::new());
+/// How long a spark flash lasts (s).
+const SPARK_SECS: f32 = 0.08;
 
-/// A round struck a surface at `at` (mm) with the surface normal `normal`.
-pub fn add(at: Vec3, normal: Vec3) {
+static QUEUE: Mutex<Vec<(Vec3, Vec3, bool)>> = Mutex::new(Vec::new());
+
+/// A round struck a surface at `at` (mm) with the surface normal `normal`,
+/// throwing sparks if `sparks`.
+pub fn add(at: Vec3, normal: Vec3, sparks: bool) {
     if let Ok(mut q) = QUEUE.lock() {
-        q.push((at, normal));
+        q.push((at, normal, sparks));
     }
 }
 
 #[derive(Component)]
 struct Scar;
 
+/// A spark flash and the time it has left.
+#[derive(Component)]
+struct Spark(f32);
+
 #[derive(Resource, Default)]
-struct Assets3(Option<(Handle<Mesh>, Handle<StandardMaterial>)>, Vec<Entity>);
+struct Assets3(Option<(Handle<Mesh>, Handle<StandardMaterial>, Handle<StandardMaterial>)>, Vec<Entity>);
 
 pub fn plugin(app: &mut App) {
-    app.init_resource::<Assets3>().add_systems(Update, spawn);
+    app.init_resource::<Assets3>().add_systems(Update, (spawn, fade));
+}
+
+fn fade(mut commands: Commands, time: Res<Time>, mut sparks: Query<(Entity, &mut Spark, &mut Transform)>) {
+    for (e, mut s, mut t) in &mut sparks {
+        s.0 -= time.delta_secs();
+        if s.0 <= 0.0 {
+            commands.entity(e).despawn();
+        } else {
+            t.scale = Vec3::splat(1.0 + 2.0 * s.0 / SPARK_SECS);
+        }
+    }
 }
 
 fn spawn(
@@ -44,13 +66,13 @@ fn spawn(
     mut materials: ResMut<Assets<StandardMaterial>>,
     alive: Query<(), With<Scar>>,
 ) {
-    let new: Vec<(Vec3, Vec3)> = QUEUE.lock().map(|mut q| std::mem::take(&mut *q)).unwrap_or_default();
+    let new: Vec<(Vec3, Vec3, bool)> = QUEUE.lock().map(|mut q| std::mem::take(&mut *q)).unwrap_or_default();
     // Marks of an earlier stage are gone with its level entities.
     assets.1.retain(|e| alive.contains(*e));
     if new.is_empty() {
         return;
     }
-    let (mesh, mat) = assets
+    let (mesh, mat, flash) = assets
         .0
         .get_or_insert_with(|| {
             (
@@ -61,12 +83,23 @@ fn spawn(
                     unlit: true,
                     ..default()
                 }),
+                materials.add(StandardMaterial {
+                    base_color: Color::srgb(1.0, 0.85, 0.5),
+                    emissive: LinearRgba::rgb(4.0, 3.0, 1.2),
+                    alpha_mode: AlphaMode::Add,
+                    unlit: true,
+                    ..default()
+                }),
             )
         })
         .clone();
-    for (at, n) in new {
+    for (at, n, sparks) in new {
         let n = n.normalize_or(Vec3::Y);
         let place = Transform::from_translation((at + n * LIFT) * SCALE).looking_to(-n, if n.y.abs() > 0.9 { Vec3::Z } else { Vec3::Y });
+        if sparks {
+            let lift = Transform::from_translation((at + n * LIFT * 2.0) * SCALE).with_rotation(place.rotation);
+            commands.spawn((Spark(SPARK_SECS), LevelEntity, Mesh3d(mesh.clone()), MeshMaterial3d(flash.clone()), lift));
+        }
         let e = commands.spawn((Scar, LevelEntity, Mesh3d(mesh.clone()), MeshMaterial3d(mat.clone()), place)).id();
         assets.1.push(e);
         if assets.1.len() > MAX_SCARS {
