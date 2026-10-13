@@ -4,6 +4,10 @@ use bevy::math::{Affine3A, Quat, Vec3};
 use mgs2_formats::kms;
 use mgs2_formats::mar::Motion;
 
+/// Object flag: drawn on its parent's matrix (its offset repeats the
+/// parent's).
+pub const OVERLAY: u32 = 0x4000;
+
 /// Model-space matrix (millimetres) of every object. Joints without a track
 /// keep their bind orientation. The motion's root track supplies the hips
 /// height (horizontal root motion is left to the caller).
@@ -23,9 +27,17 @@ pub fn pose(model: &kms::Model, motion: Option<&Motion>, frame: f32, conjugate: 
             offset += Vec3::from(model.origin);
             offset.y += root_y;
         }
+        let parent = usize::try_from(o.parent).ok().and_then(|p| out.get(p).copied());
+        // Overlay objects (flag 0x4000: Snake's hair layer, the Marines'
+        // sleeves...) repeat their parent's offset and sit exactly on it.
+        if o.flags & OVERLAY != 0
+            && let Some(p) = parent
+        {
+            out.push(p);
+            continue;
+        }
         let local = Affine3A::from_rotation_translation(rot, offset);
-        let parent = usize::try_from(o.parent).ok().and_then(|p| out.get(p).copied()).unwrap_or(Affine3A::IDENTITY);
-        out.push(parent * local);
+        out.push(parent.unwrap_or(Affine3A::IDENTITY) * local);
     }
     out
 }
@@ -41,9 +53,17 @@ pub fn pose_joints(model: &kms::Model, rotations: &[Quat], root: Option<Vec3>) -
         if o.parent < 0 {
             offset = root.unwrap_or(offset + Vec3::from(model.origin));
         }
+        let parent = usize::try_from(o.parent).ok().and_then(|p| out.get(p).copied());
+        // Overlay objects (flag 0x4000: Snake's hair layer, the Marines'
+        // sleeves...) repeat their parent's offset and sit exactly on it.
+        if o.flags & OVERLAY != 0
+            && let Some(p) = parent
+        {
+            out.push(p);
+            continue;
+        }
         let local = Affine3A::from_rotation_translation(rot, offset);
-        let parent = usize::try_from(o.parent).ok().and_then(|p| out.get(p).copied()).unwrap_or(Affine3A::IDENTITY);
-        out.push(parent * local);
+        out.push(parent.unwrap_or(Affine3A::IDENTITY) * local);
     }
     out
 }

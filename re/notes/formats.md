@@ -44,7 +44,13 @@ the letter marks a handler that also runs on unload):
   own bone versus the parent. In bind pose, weight-0 seam vertices land on the
   parent's surface; this was checked numerically on the Gurlukovich soldier
   models.
-- Open: object flags (`0x4801` objects do not fit the seam test), mesh flags
+- Object flag 0x4000 (seen as 0x4801, 74 objects over all Tanker models):
+  an overlay of its parent (Snake's hair layer, sleeves): its offset repeats
+  the parent's, and it is drawn with the parent's matrix (no further
+  offset). Taking the offset again left Snake's hair floating 115 mm above
+  his head. `cargo run -p mgs2-formats --example kms_info -- <file.kms>`
+  lists a model's objects (several files: only unusual flags).
+- Open: other object flags, mesh flags
   (0x48/0x49/0x4C/0x2F8), the second/third texture slots (lightmaps?), and
   header `+0x04/+0x10/+0x14`.
 

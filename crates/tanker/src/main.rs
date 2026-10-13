@@ -28,6 +28,7 @@ mod hud;
 mod items;
 mod nav;
 mod pad;
+mod pause;
 mod olga;
 mod photo;
 mod player;
@@ -888,7 +889,7 @@ fn main() -> Result<()> {
     if cli.screenshot.is_none() && !testing {
         app.add_systems(Update, save::autosave);
     }
-    app.add_plugins(pad::plugin);
+    app.add_plugins((pad::plugin, pause::plugin));
     app.add_plugins(cbox::plugin);
     app.add_plugins(grenade::plugin);
     app.add_systems(Update, motion_sheet.after(player::control).before(body::skin));
@@ -1909,9 +1910,21 @@ fn hud(
     );
 }
 
-fn capture(mut commands: Commands, time: Res<Time>, mut c: ResMut<Capture>, mut exit: MessageWriter<AppExit>) {
+fn capture(
+    mut commands: Commands,
+    time: Res<Time>,
+    real: Res<Time<Real>>,
+    paused: Res<pause::Paused>,
+    mut held: Local<f32>,
+    mut c: ResMut<Capture>,
+    mut exit: MessageWriter<AppExit>,
+) {
     use bevy::render::view::screenshot::{Screenshot, save_to_disk};
-    let t = time.elapsed_secs();
+    // Game time, plus real time spent paused (so a paused test still ends).
+    if paused.0 {
+        *held += real.delta_secs();
+    }
+    let t = time.elapsed_secs() + *held;
     if !c.taken && t > c.at {
         commands.spawn(Screenshot::primary_window()).observe(save_to_disk(c.path.clone()));
         c.taken = true;

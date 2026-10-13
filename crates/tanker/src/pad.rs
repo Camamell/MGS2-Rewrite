@@ -17,7 +17,7 @@
 //! | D-pad left / right | 1 / 2 | M9 / USP |
 //! | D-pad up | B | cardboard box |
 //! | D-pad down | K | Codec |
-//! | Start | Enter, Esc | continue / skip a cutscene, hang up |
+//! | Start | P, Enter, Esc | pause; continue / skip a cutscene, hang up |
 //! | Select | F4 | debug text |
 
 use bevy::input::InputSystems;
@@ -25,7 +25,7 @@ use bevy::prelude::*;
 
 /// Keys the pad is holding down (so physical key presses are left alone).
 #[derive(Resource, Default)]
-struct Held(Vec<KeyCode>);
+pub struct Held(Vec<KeyCode>);
 
 pub fn plugin(app: &mut App) {
     app.init_resource::<Held>().add_systems(PreUpdate, feed.after(InputSystems));
@@ -44,7 +44,7 @@ const BUTTONS: [(GamepadButton, &[KeyCode]); 14] = [
     (GamepadButton::DPadRight, &[KeyCode::Digit2]),
     (GamepadButton::DPadUp, &[KeyCode::KeyB]),
     (GamepadButton::DPadDown, &[KeyCode::KeyK]),
-    (GamepadButton::Start, &[KeyCode::Enter, KeyCode::Escape]),
+    (GamepadButton::Start, &[KeyCode::KeyP, KeyCode::Enter, KeyCode::Escape]),
     (GamepadButton::Select, &[KeyCode::F4]),
 ];
 
@@ -53,7 +53,7 @@ const BUTTONS: [(GamepadButton, &[KeyCode]); 14] = [
 const DEAD: f32 = 0.3;
 const WALK: f32 = 0.7;
 
-fn feed(pads: Query<&Gamepad>, mut keys: ResMut<ButtonInput<KeyCode>>, mut held: ResMut<Held>) {
+pub fn feed(pads: Query<&Gamepad>, mut keys: ResMut<ButtonInput<KeyCode>>, mut held: ResMut<Held>) {
     let mut want: Vec<KeyCode> = Vec::new();
     for pad in &pads {
         for (button, mapped) in BUTTONS {
