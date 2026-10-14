@@ -6,6 +6,11 @@ use mgs2_formats::gcx::{self, Stmt, Value};
 
 fn walk(stmts: &[Stmt], want: u32, at: &str) {
     for s in stmts {
+        if let Stmt::Call { proc, args } = s
+            && *proc & 0xFF_FFFF == want
+        {
+            println!("{at}: call #{want:06x} {args:?}");
+        }
         if let Stmt::Command { name, args, options } = s {
             let hit = *name & 0xFF_FFFF == want || matches!(args.first(), Some(Value::Name(h)) if *h & 0xFF_FFFF == want);
             if hit {

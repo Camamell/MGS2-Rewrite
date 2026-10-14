@@ -26,6 +26,10 @@
 use bevy::input::InputSystems;
 use bevy::prelude::*;
 
+/// Set for automated runs (`--screenshot`, or `MGS2_NO_PAD=1`): the pad is
+/// ignored, so a pad in use elsewhere cannot steer a test.
+pub static DISABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// The left stick (y forward, x right), for analog steering.
 #[derive(Resource, Default)]
 pub struct Stick(pub Vec2);
@@ -82,7 +86,15 @@ const WALK: f32 = 0.7;
 pub fn feed(pads: Query<&Gamepad>, mut keys: ResMut<ButtonInput<KeyCode>>, mut held: ResMut<Held>, mut stick: ResMut<Stick>) {
     let mut want: Vec<KeyCode> = Vec::new();
     stick.0 = Vec2::ZERO;
-    for pad in &pads {
+    let off = DISABLED.load(std::sync::atomic::Ordering::Relaxed) || std::env::var_os("MGS2_NO_PAD").is_some();
+    for pad in pads.iter().filter(|_| !off) {
+        // MGS2_PAD_LOG=1: what the pad reports (checking a pad's resting state).
+        if std::env::var_os("MGS2_PAD_LOG").is_some() {
+            let down: Vec<String> = BUTTONS.iter().filter(|(b, _)| pad.pressed(*b)).map(|(b, _)| format!("{b:?}")).collect();
+            if !down.is_empty() || pad.left_stick().length() > DEAD || pad.right_stick().length() > 0.5 {
+                info!("pad: {down:?} left {:?} right {:?}", pad.left_stick(), pad.right_stick());
+            }
+        }
         for (button, mapped) in BUTTONS {
             if pad.pressed(button) {
                 want.extend_from_slice(mapped);

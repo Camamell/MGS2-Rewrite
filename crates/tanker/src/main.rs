@@ -888,10 +888,15 @@ fn main() -> Result<()> {
         level.game.snake_start = (pos, yaw);
     }
 
+    // Automated runs leave the pad and the keyboard focus to whoever is at
+    // the computer.
+    let automated = cli.screenshot.is_some();
+    pad::DISABLED.store(automated, std::sync::atomic::Ordering::Relaxed);
     let mut app = App::new();
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
         primary_window: Some(Window {
             title: "MGS2 Tanker".into(),
+            focused: !automated,
             mode: if cli.fullscreen {
                 bevy::window::WindowMode::BorderlessFullscreen(bevy::window::MonitorSelection::Current)
             } else {
