@@ -181,12 +181,18 @@ pub fn fly(
             commands.entity(e).despawn();
             continue;
         }
-        // Rounds (not darts) leave a mark where they strike.
-        if let Some((_, n, flags)) = surface
-            && (!b.dart || b.lethal)
-        {
-            crate::scar::add(end, n, game.impact_sparks >> (flags >> 28) & 1 != 0);
-            if let Some((id, noise)) = game.impact_sound(flags >> 28) {
+        // Rounds (not darts) leave a mark where they strike; see below.
+        if let Some((_, n, flags)) = surface {
+            // Snake's shots (bullet flag 2, darts too) run the stage's hook
+            // for the struck material (`FUN_0036c630`): sound, noise, sparks.
+            let material = flags >> 28;
+            let sparks = b.dart && game.impact_sparks >> material & 1 != 0;
+            if !b.dart || b.lethal || sparks {
+                crate::scar::add(end, n, sparks, !b.dart || b.lethal);
+            }
+            if b.dart
+                && let Some((id, noise)) = game.impact_sound(material)
+            {
                 crate::sfx::play(id, Some(end));
                 crate::guard::noise(noise, end);
             }

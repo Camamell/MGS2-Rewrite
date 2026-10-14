@@ -24,13 +24,13 @@ const LIFT: f32 = 4.0;
 /// How long a spark flash lasts (s).
 const SPARK_SECS: f32 = 0.08;
 
-static QUEUE: Mutex<Vec<(Vec3, Vec3, bool)>> = Mutex::new(Vec::new());
+static QUEUE: Mutex<Vec<(Vec3, Vec3, bool, bool)>> = Mutex::new(Vec::new());
 
-/// A round struck a surface at `at` (mm) with the surface normal `normal`,
-/// throwing sparks if `sparks`.
-pub fn add(at: Vec3, normal: Vec3, sparks: bool) {
+/// A shot struck a surface at `at` (mm) with the surface normal `normal`,
+/// throwing sparks if `sparks` and leaving a mark if `mark`.
+pub fn add(at: Vec3, normal: Vec3, sparks: bool, mark: bool) {
     if let Ok(mut q) = QUEUE.lock() {
-        q.push((at, normal, sparks));
+        q.push((at, normal, sparks, mark));
     }
 }
 
@@ -66,7 +66,7 @@ fn spawn(
     mut materials: ResMut<Assets<StandardMaterial>>,
     alive: Query<(), With<Scar>>,
 ) {
-    let new: Vec<(Vec3, Vec3, bool)> = QUEUE.lock().map(|mut q| std::mem::take(&mut *q)).unwrap_or_default();
+    let new: Vec<(Vec3, Vec3, bool, bool)> = QUEUE.lock().map(|mut q| std::mem::take(&mut *q)).unwrap_or_default();
     // Marks of an earlier stage are gone with its level entities.
     assets.1.retain(|e| alive.contains(*e));
     if new.is_empty() {
@@ -93,12 +93,15 @@ fn spawn(
             )
         })
         .clone();
-    for (at, n, sparks) in new {
+    for (at, n, sparks, mark) in new {
         let n = n.normalize_or(Vec3::Y);
         let place = Transform::from_translation((at + n * LIFT) * SCALE).looking_to(-n, if n.y.abs() > 0.9 { Vec3::Z } else { Vec3::Y });
         if sparks {
             let lift = Transform::from_translation((at + n * LIFT * 2.0) * SCALE).with_rotation(place.rotation);
             commands.spawn((Spark(SPARK_SECS), LevelEntity, Mesh3d(mesh.clone()), MeshMaterial3d(flash.clone()), lift));
+        }
+        if !mark {
+            continue;
         }
         let e = commands.spawn((Scar, LevelEntity, Mesh3d(mesh.clone()), MeshMaterial3d(mat.clone()), place)).id();
         assets.1.push(e);
