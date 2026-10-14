@@ -127,6 +127,8 @@ const VOLUME: u32 = 0x339BD9;
 /// (`cmd_b44bbb`): the eight variants of a motion sound by floor material
 /// for one character table; `-c` clears them.
 const SOUND_TABLE: u32 = 0xB44BBB;
+/// `#3822c7 <actor> <code> args..`: a message to an actor.
+const SEND_MESSAGE: u32 = 0x3822C7;
 /// `#41cf4e -n <material>` (`cmd_41cf4e`): rounds striking that material
 /// sound its variant of motion sound 0x27 (`FUN_003a5cf8`); bullets look
 /// the hook up by the struck element's flags >> 28 (`FUN_0036c630`).
@@ -643,6 +645,21 @@ impl<'a> Vm<'a> {
                 eprintln!("gcl: unmodelled command {:?} -{opts}", a.first());
             }
             self.last = 0;
+            None
+        } else if name & 0x00FF_FFFF == SEND_MESSAGE {
+            // `#3822c7 <actor> <code> args..` (`FUN_0010a8a8` -> the message
+            // send `FUN_00142a08`): the same message as `mesg`, e.g. a script
+            // wall switched on or off.
+            let target = a.first().map(|v| self.value(v, args));
+            let code = a.get(1).map(|v| self.value(v, args));
+            if let (Some(Val::Name(t)), Some(c)) = (target, code) {
+                let code = match c {
+                    Val::Name(c) => c,
+                    v => v.int().unwrap_or(0) as u32,
+                };
+                let rest = a.iter().skip(2).map(|v| self.value(v, args).int().unwrap_or(0)).collect();
+                self.codec.push(CodecReq::Mesg { target: t & 0x00FF_FFFF, code: code & 0x00FF_FFFF, args: rest });
+            }
             None
         } else if is("mesg") && matches!(a.first(), Some(Value::Name(h)) if *h & 0x00FF_FFFF == crate::timer::TIMER_ACTOR) {
             if let Some(Value::Name(m)) = a.get(1) {
