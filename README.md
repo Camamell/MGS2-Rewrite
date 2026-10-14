@@ -73,7 +73,7 @@ too.
 | X (hold) | first-person view: A/D turn, W/S look up / down |
 | (walk into a wall) | back to the wall: sidestep along it (keep going at its end to peek round the corner), Space knocks (draws guards within 4 m), step away to leave |
 | G | throw a stun grenade (or chaff when out of stuns): stuns guards within 5 m of the blast; chaff jams the radar for 8 s |
-| B | put on / take off the cardboard box (once Snake has one): guards ignore it while it keeps still |
+| B | put on / take off the cardboard box (once Snake has one): guards ignore it while it keeps still, unless one walks right into it |
 | K | call the Codec (141.12); Space next line, Esc hang up |
 | L | call 140.96: Otacon saves the game when the call ends (`--continue` starts the stage over with the story and items as saved) |
 | C (holds, w04c) | digital camera: first-person view; A/D W/S aim, Q/E zoom, F take a photo |

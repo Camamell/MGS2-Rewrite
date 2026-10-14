@@ -2,8 +2,9 @@
 //! takes it off. The game draws the worn box with the item's own model
 //! (`box2_ibox`, `FUN_002ef740`); here that model is stretched over a
 //! crouching Snake. Guards ignore a box that keeps still and only grow
-//! suspicious ("?") of one that moves (an approximation of their box checks,
-//! not ported). Only in stages that carry the model (w00a-c, w01a-b).
+//! suspicious ("?") of one that moves; one who walks into it (within 1.2 m,
+//! dead ahead, or 0.8 m) looks it over and lifts it on Snake (`guard.rs`,
+//! stimulus 0x20000; the inspection's own actions are not ported). Only in stages that carry the model (w00a-c, w01a-b).
 //! `MGS2_BOX_TEST=1` wears it from the start.
 
 use bevy::prelude::*;

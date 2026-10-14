@@ -63,6 +63,9 @@ const RUN_SPEED: f32 = 4050.0;
 const TURN_RATE: f32 = TAU;
 /// Eye height above the feet (head joint position, approximate).
 const EYE: f32 = 1600.0;
+/// Frames a soldier looks a box over before lifting it (assumed).
+const BOX_CHECK_FRAMES: u32 = 90;
+
 /// 4096 units per turn.
 const ANGLE: f32 = TAU / 4096.0;
 /// A footprint is looked at this far above the floor (as a target this
@@ -174,6 +177,9 @@ pub enum State {
     /// without a gun on him; `shake` counts frames with Snake aiming from
     /// the front (dog tags at [`TAG_FRAMES`]).
     HeldUp { loose: f32, shake: f32 },
+    /// Normal 11: walked into Snake's box and looks it over
+    /// (`FUN_00242448`), frames so far.
+    BoxCheck { timer: u32 },
 }
 
 /// The motions a guard plays (indices into his motion archive).
@@ -972,6 +978,24 @@ pub fn think(
         if player.boxed {
             g.level = if player.speed < 1.0 { 0 } else { g.level.min(1) };
         }
+        // Stimulus 0x20000 (`FUN_002311f0`): the box within 1200 x 1500 x
+        // 1200 mm, in the clear, and dead ahead (200/4096) or within 800 mm.
+        if player.boxed
+            && !snake_dead
+            && phase.kind != PhaseKind::Alert
+            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Investigate { .. } | State::Search { .. })
+        {
+            let d = snake_pos - body.pos;
+            let inside = |r: f32| d.x.abs() <= r && d.z.abs() <= r && d.y.abs() <= 1500.0;
+            let ahead = (d.x.atan2(d.z) - body.yaw).rem_euclid(TAU);
+            let ahead = ahead.min(TAU - ahead) < 200.0 * ANGLE;
+            let clear = !game.collision.as_ref().is_some_and(|c| c.line_blocked(body.pos + Vec3::Y * 500.0, snake_pos + Vec3::Y * 500.0));
+            if inside(1200.0) && clear && (ahead || inside(800.0)) {
+                info!("guard {} checks the box", g.route);
+                g.path.clear();
+                g.state = State::BoxCheck { timer: 0 };
+            }
+        }
         if g.level == 3 {
             g.last_seen = Some(snake_pos);
             phase.last_seen = Some(snake_pos);
@@ -1090,12 +1114,12 @@ pub fn think(
                     g.state = State::Discovery { timer: 0 };
                 }
                 if matches!(g.state, State::Discovery { .. }) {
-                    normal_brain(&mut g, &mut body, snake_pos, dt, ticks, &game);
+                    normal_brain(&mut g, &mut body, snake_pos, player.boxed, dt, ticks, &game);
                 } else {
                     evasion_brain(&mut g, &mut body, &phase, dt, ticks, &game);
                 }
             }
-            _ => normal_brain(&mut g, &mut body, snake_pos, dt, ticks, &game),
+            _ => normal_brain(&mut g, &mut body, snake_pos, player.boxed, dt, ticks, &game),
         }
         highest = highest.max(i32::from(g.meter));
     }
@@ -1126,7 +1150,7 @@ pub fn think(
 
 /// `FUN_00227BC8` + transitions `FUN_00227520` (states the game can
 /// currently produce).
-fn normal_brain(g: &mut Guard, body: &mut Body, snake: Vec3, dt: f32, ticks: u32, game: &Game) {
+fn normal_brain(g: &mut Guard, body: &mut Body, snake: Vec3, boxed: bool, dt: f32, ticks: u32, game: &Game) {
     // Transitions out of patrol/wait/return, in the game's priority order
     // (later checks override earlier ones).
     if matches!(g.state, State::Patrol | State::Wait(_) | State::Return) {
@@ -1242,6 +1266,29 @@ fn normal_brain(g: &mut Guard, body: &mut Body, snake: Vec3, dt: f32, ticks: u32
                         State::Investigate { target, sub, timer }
                     }
                 }
+            };
+        }
+        State::BoxCheck { timer } => {
+            // The inspection's actions (`FUN_002413d0`) are not ported: he
+            // stops, faces the box, "?", and lifts it on Snake if he is still
+            // inside (assumed timing), else goes back to his route.
+            body.play(g.anim.idle);
+            face(body, snake, dt);
+            let before = timer;
+            let timer = timer + ticks;
+            if before < 30 && timer >= 30 {
+                say(0x144, g, body.pos);
+            }
+            g.state = if timer < BOX_CHECK_FRAMES {
+                State::BoxCheck { timer }
+            } else if boxed && body.pos.distance(snake) < 1500.0 {
+                g.last_seen = Some(snake);
+                State::Discovery { timer: 0 }
+            } else {
+                if let Some(wp) = waypoint(game, g.route, g.node) {
+                    plan(g, body.pos, Vec3::from(wp.position), game);
+                }
+                State::Return
             };
         }
         State::Discovery { timer } => {
