@@ -23,7 +23,8 @@
 //!
 //! Simplified for now: one "!" duration for every guard (the action
 //! animation length is not read yet), the reload time,
-//! close-quarters sub-states, radio reports, noise/body/footprint stimuli, and the evasion search
+//! close-quarters sub-states, radio reports, body/footprint stimuli (noises
+//! are heard: `noise`), and the evasion search
 //! pattern (guards visit nav nodes around the last known position).
 
 use std::f32::consts::TAU;
@@ -65,8 +66,12 @@ const TURN_RATE: f32 = TAU;
 const EYE: f32 = 1600.0;
 /// 4096 units per turn.
 const ANGLE: f32 = TAU / 4096.0;
-/// Frames the "!" reaction lasts (stand-in for the action's animation).
+/// Frames the "!" reaction lasts when its motion cannot be read; otherwise
+/// it lasts the motion (action 2 plays motion 92 once, `FUN_0025e9b8`, and
+/// the discovery state waits for it to finish, `FUN_00237128`).
 const EXCLAIM_FRAMES: u32 = 45;
+/// A discovery whose "!" is already over.
+const EXCLAIM_DONE: u32 = 1 << 20;
 pub const METER_MAX: i16 = 0x400;
 
 /// Global phase, `Bs16:0x112`, as run by the enemy manager.
@@ -793,7 +798,7 @@ pub fn think(
             g.state = if t >= hurt::FALL_FRAMES + hurt::GET_UP_FRAMES {
                 g.last_seen = Some(snake_pos);
                 g.meter = METER_MAX;
-                State::Discovery { timer: EXCLAIM_FRAMES }
+                State::Discovery { timer: EXCLAIM_DONE }
             } else {
                 State::Hurt { timer: t }
             };
@@ -1092,16 +1097,21 @@ fn normal_brain(g: &mut Guard, body: &mut Body, snake: Vec3, dt: f32, ticks: u32
             // to 0x400, which raises the alert through the manager.
             body.play_once(g.anim.exclaim);
             face(body, snake, dt);
+            let length = body
+                .motions
+                .and_then(|m| game.data.motions.get(m))
+                .and_then(|(_, mar)| mar.motions.get(g.anim.exclaim))
+                .map_or(EXCLAIM_FRAMES, |m| m.length.max(1));
             let before = timer;
-            let mut timer = timer + ticks;
+            let mut timer = timer.saturating_add(ticks);
             // Snake within a metre cuts it short after 7 frames
             // (`FUN_00237128`).
-            if timer >= 7 && timer < EXCLAIM_FRAMES && body.pos.distance(snake) < 1000.0 {
-                timer = EXCLAIM_FRAMES;
+            if timer >= 7 && timer < length && body.pos.distance(snake) < 1000.0 {
+                timer = length;
             }
-            if timer >= EXCLAIM_FRAMES {
+            if timer >= length {
                 // As it ends the guard calls out (line 300 + voice).
-                if before < EXCLAIM_FRAMES {
+                if before < length {
                     crate::sfx::play(0x12C + g.voice(), Some(body.pos));
                 }
                 g.meter = METER_MAX;

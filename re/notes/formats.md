@@ -451,7 +451,7 @@ The `.sar` named like a `.mar` lists, per motion (same index), sounds keyed
 to motion time (`frame x step`): a table `u32 n, n x {u16 sound, u8 mode,
 u8 joint, u32 ?}` and a stream `{u16 time, u8 length, u8 table index}` up
 to time 0xffff (`FUN_003b3568`, `FUN_003b33b0`; `mgs2_formats::sar`).
-Snake's run (motion 18, 53 frames) steps at 5 and 135 with sounds 2 / 3 on
+The soldiers' run (gbs `#01a8b3` motion 18, 53 frames) steps at 5 and 135 with sounds 2 / 3 on
 joints 20 / 16 (the feet). The characters' handler (`FUN_003b3768`) maps the
 sound through the tables `#b44bbb -i <table> -t <which> -s <sound> -d (id,
 byte) x 8` registers (`cmd_b44bbb`, 256 slots at 0x1ccd60, keyed by table
