@@ -200,7 +200,9 @@ What works:
   the chapter's last cutscene (d12t) and an end screen. The Marines stand
   in formation where the script places them (`re/notes/formats.md`), and
   the Marines on watch in the holds use the guard AI with their own motions.
-  A Marine in formation who sees Snake starts the script's own "caught"
+  A Marine in formation who sees Snake (within 6 m and 22.5 degrees of his
+  facing), a shot or explosion, or Snake walking up to the formation's
+  front (the script's approach points) starts the script's own "caught"
   sequence, which ends the game. The commandant's speech and other spoken
   lines play with their voices and subtitles (VOX.DAT / MOVIE.DAT), and the
   holds' time limit (`#9b65f0`, 7 minutes from the new-game variables)

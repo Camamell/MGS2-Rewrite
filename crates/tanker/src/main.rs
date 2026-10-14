@@ -248,10 +248,8 @@ pub struct Game {
     pub start_banks: gcl::Banks,
     /// The crowd's "saw Snake" event has fired.
     pub crowd_alarm: bool,
-    /// The crowd actor's `-e` procs (events of the Marines in formation)
-    /// and its sight `-t near far` (mm).
+    /// The crowd actor's `-e` procs (events of the Marines in formation).
     pub crowd_procs: Vec<Option<u32>>,
-    pub crowd_sight: (f32, f32),
     /// The crowd's `-p` points (`crowd::points`).
     pub crowd_points: Vec<(Vec3, f32, f32)>,
     /// Events 0-2 that have run (bit per event), until a restart.
@@ -590,7 +588,7 @@ fn prepare(
     let mut fog_spec = None;
     let mut radar_turn = None;
     let mut thunder_spec = None;
-    let mut crowd_procs = (Vec::new(), (2500.0, 7000.0));
+    let mut crowd_procs = Vec::new();
     let mut crowd_points = Vec::new();
     let mut cameras = script_cam::Cameras::default();
     let mut codec_reqs = Vec::new();
@@ -794,8 +792,7 @@ fn prepare(
         game_over: false,
         start_banks: gcl::Banks::default(),
         crowd_alarm: false,
-        crowd_procs: crowd_procs.0,
-        crowd_sight: crowd_procs.1,
+        crowd_procs,
         crowd_points,
         crowd_fired: 0,
         speech: None,
@@ -2075,6 +2072,11 @@ fn snake_vars(mut game: ResMut<Game>, inv: Res<items::Inventory>, mut player: Qu
 /// near`, or inside `far` while Snake stands, within ±0x200 of his
 /// facing, with a clear line) raises the crowd's "saw Snake" event with
 /// his position, once (the game clears the proc after calling it).
+/// The crowd's sight box (mm, each axis) and half angle (`FUN_0022a5d8`
+/// sets 6000 and 0x100).
+const SIGHT_BOX: f32 = 6000.0;
+const SIGHT_ANGLE: f32 = 0x100 as f32 / 4096.0 * std::f32::consts::TAU;
+
 fn crowd_watch(
     mut commands: Commands,
     session: Res<Session>,
@@ -2092,18 +2094,20 @@ fn crowd_watch(
     if p.dead() {
         return;
     }
-    let (near, far) = game.crowd_sight;
-    let target = snake.pos + Vec3::Y * (p.height() * 0.6);
+    // `FUN_00228c30`: Snake within 6 m on both axes, within 2 m of height,
+    // within 0x100 (22.5 degrees) of a member's facing, in the clear. (A
+    // Snake state, `DAT_001ecd40 & 0x4000000000`, cuts the 6 m to a
+    // quarter; which state is not known.)
     let seen = marines.iter().find(|m| {
         let to = snake.pos - m.pos;
-        let dist = to.length();
-        if dist > far || (dist > near && (p.crouch || p.prone)) {
+        if to.x.abs() > SIGHT_BOX || to.z.abs() > SIGHT_BOX || to.y.abs() > 2000.0 {
             return false;
         }
         let ang = (to.x.atan2(to.z) - m.yaw).rem_euclid(std::f32::consts::TAU);
         let ang = ang.min(std::f32::consts::TAU - ang);
         let eye = m.pos + Vec3::Y * 1600.0;
-        ang <= std::f32::consts::FRAC_PI_4 && !game.collision.as_ref().is_some_and(|c| c.line_blocked(eye, target))
+        let target = snake.pos + Vec3::Y * (p.height() * 0.6);
+        ang <= SIGHT_ANGLE && !game.collision.as_ref().is_some_and(|c| c.line_blocked(eye, target))
     });
     let Some(m) = seen else { return };
     let at = [m.pos.x as i32, m.pos.y as i32, m.pos.z as i32];

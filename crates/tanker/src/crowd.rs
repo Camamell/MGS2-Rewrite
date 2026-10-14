@@ -126,11 +126,11 @@ pub fn walkers(s: &Spawn) -> Vec<usize> {
         .collect()
 }
 
-/// The `-e` procs (by event: 0 a button, 1 and 2 Snake near the `-p`
-/// points, 3 a Marine heard something, 4 a Marine saw Snake, ...) and the
-/// sight `-t near far`.
-pub fn events(s: &Spawn) -> (Vec<Option<u32>>, (f32, f32)) {
-    let procs = s
+/// The `-e` procs (by event: 0 a shot or explosion heard, 1 and 2 Snake
+/// near the `-p` points, 3 a Marine heard something, 4 a Marine saw
+/// Snake, ...). (`-t` is two level-of-detail distances, `FUN_00227fc8`.)
+pub fn events(s: &Spawn) -> Vec<Option<u32>> {
+    s
         .opt(b'e')
         .unwrap_or(&[])
         .iter()
@@ -138,9 +138,7 @@ pub fn events(s: &Spawn) -> (Vec<Option<u32>>, (f32, f32)) {
             Val::Proc(p) => Some(*p),
             _ => None,
         })
-        .collect();
-    let t = |i| s.opt_int(b't', i).map(|v| v as f32);
-    (procs, (t(0).unwrap_or(2500.0), t(1).unwrap_or(7000.0)))
+        .collect()
 }
 
 /// The `-p` points (up to two: x y z, rotation x y z, one more value):
