@@ -45,6 +45,10 @@ pub fn apply(
         return;
     }
     *shown = Some(key);
+    // MGS2_FOG_LOG=1: each fog change (checking the cutscenes' fog keys).
+    if std::env::var_os("MGS2_FOG_LOG").is_some() {
+        info!("fog {:?} (cutscene {:?})", want.map(|f| (f.color, f.near, f.far)), cutscene.position());
+    }
     match want {
         Some(f) => {
             let [r, g, b] = f.color;
