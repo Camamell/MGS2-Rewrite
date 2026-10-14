@@ -69,9 +69,12 @@ const HANG_DROP: f32 = 1950.0;
 const SHIMMY_SPEED: f32 = 500.0;
 /// Grip gauge length at the starting grip level (an assumption).
 const GRIP_SECONDS: f32 = 25.0;
-/// Falls longer than this hurt (mm), and how much (life per 100 mm more).
-const SAFE_FALL: f32 = 2500.0;
-const FALL_DAMAGE: f32 = 2.0;
+/// Landing (`FUN_002898d0` picks it by the drop): under 3200 mm a soft
+/// landing; up to 6400 mm a hard one (`FUN_00288d58`) that costs
+/// drop / 100 - 20 life (never below 1), thuds (effect 0x47) and makes noise
+/// 6; from 6400 mm the fall kills (`FUN_00288e70`, noise 10).
+const HARD_LANDING: f32 = 3200.0;
+const FATAL_FALL: f32 = 6400.0;
 
 /// `--hang-at`: press Space at this time (seconds), for tests.
 #[derive(Resource)]
@@ -559,8 +562,16 @@ pub fn control(
                     p.fall_speed = 0.0;
                     if let Some(from) = p.fall_from.take() {
                         let drop = from - floor;
-                        if drop > SAFE_FALL {
-                            p.damage(((drop - SAFE_FALL) / 100.0 * FALL_DAMAGE) as i32);
+                        if drop >= FATAL_FALL {
+                            let all = p.life.max(1);
+                            p.damage(all);
+                            crate::guard::noise(10, next);
+                        } else if drop >= HARD_LANDING {
+                            let life = p.life;
+                            p.damage((drop / 100.0) as i32 - 20);
+                            p.life = p.life.max(1).min(life);
+                            crate::sfx::play(0x47, Some(next));
+                            crate::guard::noise(6, next);
                         }
                     }
                 }
