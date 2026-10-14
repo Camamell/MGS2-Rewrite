@@ -954,7 +954,20 @@ pub fn think(
         // Sensing (FUN_00222978): perception, then the meter.
         // In first person the soldiers see Snake at three quarters of their
         // ranges (`FUN_002559C0`, camera mode 6).
-        g.level = perceive(&g, &body, snake_pos, snake_height, &game, if first_person.active { 0.75 } else { 1.0 });
+        let sight = if first_person.active { 0.75 } else { 1.0 };
+        g.level = perceive(&g, &body, snake_pos, snake_height, &game, sight);
+        // Part of him showing past cover (stimulus 0x4000, `FUN_00230dd8`
+        // tests his joints): head or feet in clear view within the near
+        // range draws a look (state 6 says 0x140).
+        if g.level == 1
+            && !snake_dead
+            && !player.boxed
+            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return)
+            && body.pos.distance(snake_pos) <= g.vision.distance * sight
+            && [snake_height * 1.5, snake_height * 0.15].iter().any(|h| perceive(&g, &body, snake_pos, *h, &game, sight) == 3)
+        {
+            g.state = State::Investigate { target: snake_pos, sub: 0, timer: 0 };
+        }
         // In the box: unseen while still, only suspicious while moving.
         if player.boxed {
             g.level = if player.speed < 1.0 { 0 } else { g.level.min(1) };
