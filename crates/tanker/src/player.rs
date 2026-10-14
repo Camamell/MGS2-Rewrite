@@ -114,6 +114,9 @@ pub struct Player {
     pub wall: Option<Vec2>,
     /// Seconds spent pushing into a wall (presses at [`WALL_PRESS`]).
     pub wall_push: f32,
+    /// Dripping blood (life under a third after a hit), until life is back
+    /// to a third or more.
+    pub bleeding: bool,
     /// Seconds spent moving without getting anywhere (the walkable area's
     /// edge): he stands instead of running on the spot.
     pub blocked: f32,
@@ -168,6 +171,11 @@ impl Player {
     /// restores full life on Very Easy, half otherwise.
     pub fn damage(&mut self, amount: i32) {
         self.life -= amount;
+        // A hit that leaves him under a third of his life starts him
+        // bleeding (`FUN_002713e8` sets 0x1000000; `blood_dp.c`).
+        if amount > 0 && self.life > 0 && self.life < self.max_life / 3 {
+            self.bleeding = true;
+        }
         self.hurt = 0.25;
         crate::sfx::play(crate::sfx::HURT, None);
         if self.life <= 0 && self.rations > 0 {

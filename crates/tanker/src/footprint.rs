@@ -58,7 +58,96 @@ struct Wet {
 struct Print;
 
 pub fn plugin(app: &mut App) {
-    app.init_resource::<Wet>().add_systems(Update, update);
+    app.init_resource::<Wet>().init_resource::<Blood>().add_systems(Update, (update, bleed));
+}
+
+/// Frames between drops while Snake bleeds (`FUN_002898d0`: a drop when
+/// the count at +0xf76 passes 0x13).
+const DROP_FRAMES: f32 = 20.0;
+/// Drops kept at once and a drop's radius (mm) (assumed).
+const MAX_DROPS: usize = 64;
+const DROP_RADIUS: f32 = 70.0;
+
+#[derive(Resource, Default)]
+struct Blood {
+    count: f32,
+    drops: Vec<Entity>,
+    assets: Option<(Handle<Mesh>, Handle<StandardMaterial>)>,
+}
+
+/// Snake drips blood while bleeding (`blood_dp.c` falls to a `blood_sp.c`
+/// splat, the same kind of marker soldiers follow as footprints). The first
+/// drop falls at once; the splat's look is assumed.
+fn bleed(
+    mut commands: Commands,
+    time: Res<Time>,
+    game: Res<crate::Game>,
+    mut player: Query<(&crate::body::Body, &mut crate::player::Player)>,
+    alive: Query<(), With<Print>>,
+    mut blood: ResMut<Blood>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    blood.drops.retain(|e| alive.contains(*e));
+    let Ok((body, mut p)) = player.single_mut() else { return };
+    // MGS2_LIFE=n: start with that much life, bleeding below a third
+    // (testing).
+    if let Some(l) = std::env::var("MGS2_LIFE").ok().and_then(|v| v.parse::<i32>().ok())
+        && time.elapsed_secs() < 0.5
+    {
+        p.life = l.clamp(1, p.max_life);
+        p.bleeding = p.life < p.max_life / 3;
+    }
+    if p.bleeding && (p.life >= p.max_life / 3 || p.dead()) {
+        p.bleeding = false;
+    }
+    if !p.bleeding {
+        blood.count = DROP_FRAMES;
+        return;
+    }
+    blood.count += time.delta_secs() * 60.0;
+    if blood.count < DROP_FRAMES {
+        return;
+    }
+    blood.count = 0.0;
+    let (mesh, mat) = blood
+        .assets
+        .get_or_insert_with(|| {
+            let mut m = sole();
+            if let Some(bevy::mesh::VertexAttributeValues::Float32x3(pos)) = m.attribute_mut(Mesh::ATTRIBUTE_POSITION) {
+                for v in pos.iter_mut() {
+                    let (x, z) = (v[0] / (HALF_WIDTH * SCALE), v[2] / (HALF_LENGTH * SCALE));
+                    v[0] = x * DROP_RADIUS * SCALE;
+                    v[2] = z * DROP_RADIUS * SCALE;
+                }
+            }
+            (
+                meshes.add(m),
+                materials.add(StandardMaterial {
+                    base_color: Color::srgba(0.25, 0.01, 0.01, 0.85),
+                    alpha_mode: AlphaMode::Blend,
+                    unlit: true,
+                    cull_mode: None,
+                    ..default()
+                }),
+            )
+        })
+        .clone();
+    let at = body.pos;
+    let floor = game.collision.as_ref().and_then(|c| c.floor_below(at.x, at.z, at.y + 300.0)).unwrap_or(at.y);
+    let place = Transform::from_translation(Vec3::new(at.x, floor + LIFT, at.z) * SCALE).with_rotation(Quat::from_rotation_y(body.yaw));
+    let e = commands.spawn((Print, LevelEntity, Mesh3d(mesh), MeshMaterial3d(mat), place)).id();
+    blood.drops.push(e);
+    if let Ok(mut t) = TRAIL.lock() {
+        t.push((Vec3::new(at.x, floor, at.z), false));
+        if t.len() > MAX_PRINTS + MAX_DROPS {
+            t.remove(0);
+        }
+    }
+    if blood.drops.len() > MAX_DROPS {
+        let old = blood.drops.remove(0);
+        commands.entity(old).try_despawn();
+    }
 }
 
 fn update(
@@ -134,7 +223,7 @@ fn update(
         wet.prints.push(e);
         if let Ok(mut t) = TRAIL.lock() {
             t.push((Vec3::new(at.x, floor, at.z), false));
-            if t.len() > MAX_PRINTS {
+            if t.len() > MAX_PRINTS + MAX_DROPS {
                 t.remove(0);
             }
         }

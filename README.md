@@ -154,7 +154,9 @@ What works:
   centre.
 - Wet footprints for 50 s after Snake steps out of the stages' wet areas
   (`foot_print.c`; the doorways in from the rain in w01a, w01b, w01e; the
-  prints' look is assumed); a soldier who sees them follows the trail.
+  prints' look is assumed), and blood drops while Snake is under a third of
+  his life after a hit (`blood_dp.c`); a soldier who sees either follows the
+  trail.
 - Character shadows: Snake's own shadow model (`sna_shadow`), others their
   body, posed with the body and flattened onto the floor (the game draws a
   shadow volume; here straight down, assumed).

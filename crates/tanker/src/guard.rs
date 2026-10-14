@@ -22,8 +22,8 @@
 //!   bullets in `bullet.rs`.
 //!
 //! Simplified for now: the reload time,
-//! close-quarters sub-states, radio reports, body/footprint stimuli (noises
-//! are heard: `noise`), and the evasion search
+//! close-quarters sub-states, radio reports, body stimuli (noises are
+//! heard: `noise`; footprints and blood are followed), and the evasion search
 //! pattern (guards visit nav nodes around the last known position).
 
 use std::f32::consts::TAU;
