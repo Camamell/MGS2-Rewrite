@@ -2101,16 +2101,31 @@ fn crowd_watch(
 
 /// The crowd hears (`FUN_002286f0`): a noise of level 6 sets "heard
 /// something" on the nearest member within 10 m (+0x570 bit 1), whose
-/// update runs the crowd's event 3 with his place (`FUN_00224a58`).
+/// update runs the crowd's event 3 with his place (`FUN_00224a58`); 10 or
+/// 11 (a shot, an explosion) turns them all to face Snake.
 fn crowd_hear(
     mut commands: Commands,
     session: Res<Session>,
     mut game: ResMut<Game>,
-    marines: Query<&Body, With<crowd::Marine>>,
+    mut marines: Query<&mut Body, (With<crowd::Marine>, Without<Player>)>,
+    player: Query<&Body, With<Player>>,
     level: LevelRoots,
     bullets: Query<Entity, With<bullet::Bullet>>,
 ) {
-    let Some((6, at)) = guard::HEARD.lock().ok().and_then(|mut h| h.take()) else { return };
+    let Some((noise, at)) = guard::HEARD.lock().ok().and_then(|mut h| h.take()) else { return };
+    // A shot or an explosion: every member turns to face Snake (0x10).
+    if matches!(noise, 10 | 11) {
+        if let Ok(snake) = player.single() {
+            for mut m in &mut marines {
+                let to = snake.pos - m.pos;
+                m.yaw = to.x.atan2(to.z);
+            }
+        }
+        return;
+    }
+    if noise != 6 {
+        return;
+    }
     let Some(Some(proc)) = game.crowd_procs.get(crowd::HEARD_SOMETHING).copied() else { return };
     let Some(m) = marines.iter().filter(|m| m.pos.distance(at) < 10000.0).min_by(|a, b| a.pos.distance(at).total_cmp(&b.pos.distance(at))) else {
         return;
