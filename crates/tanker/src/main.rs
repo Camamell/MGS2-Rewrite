@@ -364,6 +364,10 @@ struct Prop {
 #[derive(Component)]
 struct PropName(u32);
 
+/// A sliding door's actor name, for the script's messages.
+#[derive(Component)]
+struct DoorName(u32);
+
 const PROP_ACTORS: &[u32] = &[0x7A8EC1, 0xD1279A, 0xCBA568];
 const SLIDING_DOOR: u32 = 0x55B942;
 
@@ -397,6 +401,9 @@ pub struct SlidingDoor {
     slide: Vec3,
     /// 0 closed .. 1 open.
     open: f32,
+    /// Locks the script put on it (`door.c`: message 1 adds one, 2 takes
+    /// one off; locked while above 0, `FUN_00291878`).
+    locks: i32,
 }
 
 fn sliding_door(s: &gcl::Spawn, data: &StageData) -> Option<(Prop, SlidingDoor)> {
@@ -410,7 +417,8 @@ fn sliding_door(s: &gcl::Spawn, data: &StageData) -> Option<(Prop, SlidingDoor)>
         scale: Vec3::ONE,
     };
     let width = s.opt_int(b's', 0).filter(|w| *w > 0).unwrap_or(1000) as f32 * SCALE;
-    Some((Prop { model, transform, no_fog: false, lt2: None, name: 0 }, SlidingDoor { closed: transform, slide: transform.rotation * Vec3::X * width, open: 0.0 }))
+    let name = s.args.first().and_then(|v| v.int()).map_or(0, |n| n as u32 & 0x00FF_FFFF);
+    Some((Prop { model, transform, no_fog: false, lt2: None, name }, SlidingDoor { closed: transform, slide: transform.rotation * Vec3::X * width, open: 0.0, locks: 0 }))
 }
 
 /// Sliding doors open for anyone within 2 m and close again after.
@@ -422,7 +430,7 @@ fn slide_doors(
     let dt = time.delta_secs();
     for (mut d, mut t) in &mut doors {
         let at = d.closed.translation / SCALE;
-        let near = bodies.iter().any(|b| Vec2::new(b.pos.x - at.x, b.pos.z - at.z).length() < 2000.0 && (b.pos.y - at.y).abs() < 1500.0);
+        let near = d.locks <= 0 && bodies.iter().any(|b| Vec2::new(b.pos.x - at.x, b.pos.z - at.z).length() < 2000.0 && (b.pos.y - at.y).abs() < 1500.0);
         let step = if near { dt * 2.5 } else { -dt * 2.5 };
         d.open = (d.open + step).clamp(0.0, 1.0);
         t.translation = d.closed.translation + d.slide * d.open;
@@ -1163,7 +1171,7 @@ fn spawn_level(
     for (p, door) in cast.sliding {
         let model = &data.models[p.model].1;
         let e = scene::spawn_model_lit(&mut commands, model, data, &mut cache, &mut meshes, &mut images, &mut materials, unlit, LevelEntity, p.transform, p.lt2);
-        commands.entity(e).insert((p.transform, door));
+        commands.entity(e).insert((p.transform, door, DoorName(p.name)));
     }
     for (item, model) in cast.items {
         if inventory.taken.contains(&(data.name.clone(), item.name)) {
@@ -1853,11 +1861,28 @@ fn guard_drops(mut commands: Commands, session: Res<Session>, mut game: ResMut<G
 }
 
 /// Applies the script's messages to the props (`FUN_0022e798`).
-fn prop_messages(mut commands: Commands, mut game: ResMut<Game>, mut props: Query<(Entity, &PropName, &mut Transform, &mut Visibility)>) {
+fn prop_messages(
+    mut commands: Commands,
+    mut game: ResMut<Game>,
+    mut props: Query<(Entity, &PropName, &mut Transform, &mut Visibility), Without<DoorName>>,
+    mut doors: Query<(&DoorName, &mut SlidingDoor, &mut Visibility)>,
+) {
     if game.prop_messages.is_empty() {
         return;
     }
     for (target, code, args) in std::mem::take(&mut game.prop_messages) {
+        // Sliding doors (`FUN_00291878`): 1 lock, 2 unlock, 3 show, 4 hide,
+        // 7 opened.
+        for (_, mut d, mut vis) in doors.iter_mut().filter(|d| d.0.0 == target) {
+            match code {
+                1 => d.locks += 1,
+                2 => d.locks -= 1,
+                3 => *vis = Visibility::Inherited,
+                4 => *vis = Visibility::Hidden,
+                7 => d.locks = d.locks.min(0),
+                _ => {}
+            }
+        }
         for (e, _, mut t, mut vis) in props.iter_mut().filter(|p| p.1.0 == target) {
             let v = |i: usize| args.get(i).copied().unwrap_or(0) as f32;
             match code {
