@@ -129,6 +129,9 @@ const VOLUME: u32 = 0x339BD9;
 const SOUND_TABLE: u32 = 0xB44BBB;
 /// `#3822c7 <actor> <code> args..`: a message to an actor.
 const SEND_MESSAGE: u32 = 0x3822C7;
+/// `#c1eb06 <actor> x y z` (`cmd_c1eb06`): writes the actor's position to
+/// the three variables; 1, or -1 if it is not found.
+const ACTOR_POS: u32 = 0xC1EB06;
 /// `#41cf4e -n <material>` (`cmd_41cf4e`): rounds striking that material
 /// sound its variant of motion sound 0x27 (`FUN_003a5cf8`); bullets look
 /// the hook up by the struck element's flags >> 28 (`FUN_0036c630`).
@@ -183,6 +186,9 @@ pub struct Vm<'a> {
     bank_a: Vec<u8>,
     bank_b: Vec<u8>,
     pub spawns: Vec<Spawn>,
+    /// Where actors the port does not run stand (mm), for `#c1eb06`: the
+    /// holds' speakers from the crowd's `-c`.
+    pub places: HashMap<u32, [i32; 3]>,
     pub traps: Vec<Trap>,
     /// Stage named by the first `load` reached.
     pub load: Option<String>,
@@ -353,6 +359,7 @@ impl<'a> Vm<'a> {
             bank_a: banks.a,
             bank_b: banks.b,
             spawns: Vec::new(),
+            places: HashMap::new(),
             traps: Vec::new(),
             load: None,
             eager: false,
@@ -510,6 +517,16 @@ impl<'a> Vm<'a> {
                 && let Some(t) = spawn.opt_int(b't', 0)
             {
                 self.timer = t;
+            }
+            if spawn.kind == crate::crowd::CROWD_ACTOR
+                && let Some(c) = spawn.opt(b'c')
+            {
+                for g in c.chunks_exact(6) {
+                    if let Some(name) = g[5].int() {
+                        let v = |i: usize| g[i].int().unwrap_or(0);
+                        self.places.insert(name as u32 & 0x00FF_FFFF, [v(0), v(1), v(2)]);
+                    }
+                }
             }
             self.spawns.push(spawn);
             if let Some(Val::Proc(p)) = on_create {
@@ -761,7 +778,7 @@ impl<'a> Vm<'a> {
         };
         let known = CALL_AFTER.contains(&id)
             || CODEC_THEN.contains(&id)
-            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, VOLUME, SOUND_TABLE, IMPACT_SOUND, IMPACT_SPARKS, REPEAT, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand"), SIN, COS, ABS, DISTANCE, ATAN, SONG].contains(&id);
+            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, VOLUME, SOUND_TABLE, ACTOR_POS, IMPACT_SOUND, IMPACT_SPARKS, REPEAT, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand"), SIN, COS, ABS, DISTANCE, ATAN, SONG].contains(&id);
         known.then_some(id)
     }
 
@@ -874,6 +891,21 @@ impl<'a> Vm<'a> {
                     }
                 }
                 self.codec.push(CodecReq::SoundTable(Some(SoundTable { table: table as u8, which: which as u8, sound: sound as u16, ids, noise })));
+            }
+        } else if id == ACTOR_POS {
+            let name = match a.get(1).map(|v| self.value(v, args)) {
+                Some(Val::Name(h)) => Some(h & 0x00FF_FFFF),
+                Some(v) => v.int().map(|i| i as u32 & 0x00FF_FFFF),
+                None => None,
+            };
+            self.last = -1;
+            if let Some(at) = name.and_then(|n| self.places.get(&n).copied()) {
+                for (k, c) in at.iter().enumerate() {
+                    if let Some(Value::Var(var)) = a.get(2 + k) {
+                        self.write(var, args, *c);
+                    }
+                }
+                self.last = 1;
             }
         } else if id == REPEAT {
             let n = opt(self, b'a').first().and_then(Val::int).unwrap_or(0).max(0) as usize;

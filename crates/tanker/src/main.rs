@@ -214,6 +214,8 @@ pub struct Game {
     pub over_proc: Option<u32>,
     /// The song the scripts last requested (kept between script runs).
     pub song: i32,
+    /// Places of actors the port does not run, for the script (`#c1eb06`).
+    pub places: HashMap<u32, [i32; 3]>,
     pub continue_proc: Option<u32>,
     pub death_voice: Option<u32>,
     /// Incoming calls waiting to open, with the proc to run after each.
@@ -557,6 +559,7 @@ fn prepare(
     let mut rain_spec = None;
     let mut holds_timer = None;
     let mut song = 0;
+    let mut places = HashMap::new();
     let mut fog_spec = None;
     let mut radar_turn = None;
     let mut thunder_spec = None;
@@ -576,6 +579,7 @@ fn prepare(
         let mut vm = gcl::Vm::with_banks(script, banks);
         vm.run(&script.main);
         song = vm.song;
+        places = vm.places.clone();
         if let Some(col) = collision.as_mut() {
             add_script_walls(col, &vm.spawns);
             if col.script_wall_count() > 0 {
@@ -744,6 +748,7 @@ fn prepare(
         disabled: 0,
         over_proc: None,
         song,
+        places,
         continue_proc: None,
         death_voice: None,
         codec_calls: Vec::new(),
@@ -1284,8 +1289,10 @@ fn script_event(
     vm.eager = true;
     vm.timer = game.timer.as_ref().map_or(0, timer::Timer::frames);
     vm.song = game.song;
+    vm.places = game.places.clone();
     run(&mut vm);
     game.song = vm.song;
+    game.places = std::mem::take(&mut vm.places);
     let (load, spawns, codec, banks) = vm.finish();
     if let Some(t) = spawns.iter().filter(|s| s.kind == timer::TIMER_ACTOR).find_map(timer::Timer::from_spawn) {
         game.timer = Some(t);

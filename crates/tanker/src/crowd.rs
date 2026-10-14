@@ -60,20 +60,41 @@ pub fn accessories(flags: i32) -> Vec<&'static str> {
 
 pub fn members(s: &Spawn) -> Vec<Member> {
     let Some(list) = s.opt(b'a') else { return Vec::new() };
+    let placed = placed(s);
     list.chunks_exact(RECORD)
         .filter_map(|r| {
             let v = |i: usize| r[i].int().unwrap_or(0);
             if !matches!(r[0], Val::Name(_) | Val::Int(_)) {
                 return None;
             }
-            let pos = Vec3::new(v(1) as f32, v(2) as f32, v(3) as f32);
+            let mut pos = Vec3::new(v(1) as f32, v(2) as f32, v(3) as f32);
+            let mut yaw = v(5);
+            // A member the `-c` actor stands somewhere (the commandant).
+            if let Some((at, dir)) = placed.iter().find(|p| p.0 == v(0)).map(|p| (p.1, p.2)) {
+                (pos, yaw) = (at, dir);
+            }
             (pos.y != 0.0).then(|| Member {
                 pos,
-                yaw: v(5) as f32 / 4096.0 * std::f32::consts::TAU,
+                yaw: yaw as f32 / 4096.0 * std::f32::consts::TAU,
                 variant: v(7).rem_euclid(22),
                 idle: v(9).rem_euclid(6),
                 flags: v(10),
             })
+        })
+        .collect()
+}
+
+/// `-c x y z dir member actor` (repeated): members a speaker actor
+/// (`FUN_00230938`, named `actor`) stands at `x y z` facing `dir` (w04c:
+/// the commandant and an officer, placed at the origin in `-a`). Their
+/// movement during the speech is not ported. Returns (member name, place,
+/// facing).
+fn placed(s: &Spawn) -> Vec<(i32, Vec3, i32)> {
+    let Some(list) = s.opt(b'c') else { return Vec::new() };
+    list.chunks_exact(6)
+        .map(|c| {
+            let v = |i: usize| c[i].int().unwrap_or(0);
+            (v(4), Vec3::new(v(0) as f32, v(1) as f32, v(2) as f32), v(3))
         })
         .collect()
 }
@@ -84,10 +105,12 @@ pub fn members(s: &Spawn) -> Vec<Member> {
 /// the origin in w04c) is left out: he is not a patrol.
 pub fn walkers(s: &Spawn) -> Vec<usize> {
     let Some(list) = s.opt(b'a') else { return Vec::new() };
+    let placed = placed(s);
     list.chunks_exact(RECORD)
         .filter_map(|r| {
             let v = |i: usize| r[i].int().unwrap_or(0);
-            (v(1) == 0 && v(2) == 0 && v(3) >= 0 && v(7).rem_euclid(22) != 19).then_some(v(3) as usize)
+            let speaker = placed.iter().any(|p| p.0 == v(0));
+            (v(1) == 0 && v(2) == 0 && v(3) >= 0 && v(7).rem_euclid(22) != 19 && !speaker).then_some(v(3) as usize)
         })
         .collect()
 }
