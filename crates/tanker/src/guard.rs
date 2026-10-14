@@ -244,6 +244,10 @@ const RESIST: i32 = 3000;
 /// w00a passes 4000, later stages As16:0x1c2.
 const HEARING: f32 = 12000.0;
 
+/// The holds' Marines are not soldiers (their crowd actor has its own
+/// "heard something" event, not ported); their range is assumed.
+const MARINE_HEARING: f32 = 3000.0;
+
 /// The loudest noise this frame (level, place), as `FUN_0011b630` keeps it
 /// for the soldiers (`FUN_00220078` reads it next frame).
 static NOISE: std::sync::Mutex<Option<(u8, Vec3)>> = std::sync::Mutex::new(None);
@@ -404,7 +408,7 @@ pub fn patrol(route: usize, vision: f32, anim: Anim) -> Guard {
         path: Vec::new(),
         repath: 0,
         attack: Attack::default(),
-        hearing: HEARING,
+        hearing: MARINE_HEARING,
         life: DEFAULT_LIFE,
         max_life: DEFAULT_LIFE,
         wounds: 0,
