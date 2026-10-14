@@ -116,7 +116,14 @@ pub fn motion_sounds(
             if player.is_some() {
                 crate::footprint::step(at, body.yaw);
             }
-            if let Some((id, noise)) = game.motion_sound(table, ev.sound, material) {
+            // Snake's wall-keyed variants play only at a wall (+0xb64 is -1
+            // otherwise; its material is not tracked, 0 assumed); soldiers
+            // pass 0 (`FUN_00257bc0`).
+            let wall = match player {
+                Some(p) => p.wall.map(|_| 0),
+                None => Some(0),
+            };
+            if let Some((id, noise)) = game.motion_sound(table, ev.sound, material, wall) {
                 play(id, Some(at));
                 crate::guard::noise(noise, at);
             }

@@ -272,15 +272,16 @@ pub struct Game {
 }
 
 impl Game {
-    /// Motion sound `sound` of character table `table` on floor `material`,
-    /// through the `#b44bbb` tables (`FUN_0011cc10`), with the noise level
-    /// it makes: the raw sound (silent to soldiers) when no table has it,
-    /// `None` when the variant is empty.
-    pub fn motion_sound(&self, table: u8, sound: u16, material: u32) -> Option<(u32, u8)> {
+    /// Motion sound `sound` of character table `table` on floor `material`
+    /// (and against a wall of `wall`'s material, for the variants keyed by
+    /// it), through the `#b44bbb` tables (`FUN_0011cc10`), with the noise
+    /// level it makes: the raw sound (silent to soldiers) when no table has
+    /// it, `None` when the variant is empty or needs a wall he is not at.
+    pub fn motion_sound(&self, table: u8, sound: u16, material: u32, wall: Option<u32>) -> Option<(u32, u8)> {
         let (id, noise) = match self.sound_tables.iter().find(|t| t.table == table && t.sound == sound) {
             Some(t) => {
-                let i = if t.which == 0 { (material & 7) as usize } else { 0 };
-                (t.ids[i], t.noise[i])
+                let i = if t.which == 0 { material } else { wall? };
+                (t.ids[(i & 7) as usize], t.noise[(i & 7) as usize])
             }
             None => (sound & 0xFFF, 0),
         };
@@ -290,7 +291,7 @@ impl Game {
     /// The sound of a round striking `material` and its noise level, if
     /// the stage hooks one.
     pub fn impact_sound(&self, material: u32) -> Option<(u32, u8)> {
-        (self.impact_sounds >> material & 1 != 0).then(|| self.motion_sound(0, 0x27, material)).flatten()
+        (self.impact_sounds >> material & 1 != 0).then(|| self.motion_sound(0, 0x27, material, Some(material))).flatten()
     }
 
     /// Marks Snake's entrance as over (bank A 0x7e8 bit 5).
