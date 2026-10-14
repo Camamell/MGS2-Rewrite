@@ -655,10 +655,11 @@ fn to_units(rad: f32) -> i32 {
 
 /// `FUN_002559C0` for the target Snake. Returns the perception level.
 /// `height`: how tall the target stands (mm); the sight line goes to 60%.
-fn perceive(g: &Guard, body: &Body, snake: Vec3, height: f32, game: &Game) -> u8 {
+/// `scale` shrinks both ranges (Snake in first person: three quarters).
+fn perceive(g: &Guard, body: &Body, snake: Vec3, height: f32, game: &Game, scale: f32) -> u8 {
     let to = snake - body.pos;
     let dist = to.length();
-    let (near, far) = (g.vision.distance, g.vision.distance * 1.5);
+    let (near, far) = (g.vision.distance * scale, g.vision.distance * 1.5 * scale);
     if far < dist {
         return 0;
     }
@@ -767,6 +768,7 @@ pub fn think(
     mut rng: ResMut<Rng>,
     mut inv: ResMut<crate::items::Inventory>,
     mut gunshot: ResMut<Gunshot>,
+    first_person: Res<crate::fpv::FirstPerson>,
     snake: Query<(&Body, &Player), Without<Guard>>,
     mut guards: Query<(Entity, &mut Guard, &mut Body)>,
     mut clock: Local<f32>,
@@ -950,7 +952,9 @@ pub fn think(
         }
 
         // Sensing (FUN_00222978): perception, then the meter.
-        g.level = perceive(&g, &body, snake_pos, snake_height, &game);
+        // In first person the soldiers see Snake at three quarters of their
+        // ranges (`FUN_002559C0`, camera mode 6).
+        g.level = perceive(&g, &body, snake_pos, snake_height, &game, if first_person.active { 0.75 } else { 1.0 });
         // In the box: unseen while still, only suspicious while moving.
         if player.boxed {
             g.level = if player.speed < 1.0 { 0 } else { g.level.min(1) };
@@ -969,7 +973,7 @@ pub fn think(
             && g.level < 3
             && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Investigate { .. })
         {
-            let seen = sleepers.iter().find(|(e, p)| *e != me && perceive(&g, &body, *p, 400.0, &game) == 3);
+            let seen = sleepers.iter().find(|(e, p)| *e != me && perceive(&g, &body, *p, 400.0, &game, 1.0) == 3);
             if let Some(&(sleeper, at)) = seen {
                 plan(&mut g, body.pos, at, &game);
                 g.state = State::Rouse { sleeper, at };
@@ -1010,7 +1014,7 @@ pub fn think(
         if g.level < 2
             && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Investigate { .. } | State::Search { .. })
             && let Ok(mut trail) = crate::footprint::TRAIL.lock()
-            && let Some(i) = trail.iter().rposition(|(at, used)| !used && perceive(&g, &body, *at, PRINT_SIGHT, &game) == 3)
+            && let Some(i) = trail.iter().rposition(|(at, used)| !used && perceive(&g, &body, *at, PRINT_SIGHT, &game, 1.0) == 3)
         {
             let at = trail[i].0;
             for p in trail.iter_mut().take(i + 1) {
