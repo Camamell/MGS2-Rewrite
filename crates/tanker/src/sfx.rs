@@ -74,14 +74,16 @@ pub fn drain(listener: Vec3, right: Vec3) -> Vec<u32> {
 /// floors). (Placed at the feet, not the event's joint.)
 pub fn motion_sounds(
     game: Res<crate::Game>,
-    bodies: Query<(Entity, &crate::body::Body, Option<&crate::player::Player>, Option<&crate::guard::Guard>)>,
+    bodies: Query<(Entity, &crate::body::Body, Option<&crate::player::Player>, Option<&crate::guard::Guard>, Has<crate::olga::Olga>)>,
     mut last: Local<std::collections::HashMap<Entity, (usize, f32)>>,
 ) {
     last.retain(|e, _| bodies.contains(*e));
-    for (e, body, player, guard) in &bodies {
-        let table = match (player, guard) {
-            (Some(_), _) => 0u8,
-            (_, Some(g)) => 1 + g.voice() as u8,
+    for (e, body, player, guard, olga) in &bodies {
+        // Olga sets no table: her sounds play as they are.
+        let table = match (player, guard, olga) {
+            (Some(_), _, _) => 0u8,
+            (_, Some(g), _) => 1 + g.voice() as u8,
+            (_, _, true) => 0xFF,
             _ => continue,
         };
         let Some(m) = body.motions else { continue };
