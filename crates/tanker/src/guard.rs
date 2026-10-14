@@ -926,7 +926,7 @@ pub fn think(
         // newest he sees and leaves the older ones (`FUN_00230948`,
         // `FUN_00240858`); the next ones then lead him on.
         if g.level < 2
-            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Investigate { .. })
+            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Investigate { .. } | State::Search { .. })
             && let Ok(mut trail) = crate::footprint::TRAIL.lock()
             && let Some(i) = trail.iter().rposition(|(at, used)| !used && perceive(&g, &body, *at, PRINT_SIGHT, &game) == 3)
         {
@@ -935,16 +935,16 @@ pub fn think(
                 p.1 = true;
             }
             info!("guard {} follows footprints to {at:?}", g.route);
-            g.state = State::Investigate { target: at, sub: 0, timer: 0 };
+            stimulus(&mut g, &body, at, &game);
         }
         // A noise he is the nearest to (footsteps on a noisy floor, rounds
         // striking).
         if let Some((_, at)) = heard.filter(|(e, _)| *e == me)
             && g.level < 2
-            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return)
+            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Search { .. })
         {
             info!("guard {} heard a noise at {at:?}", g.route);
-            g.state = State::Investigate { target: at, sub: 0, timer: 0 };
+            stimulus(&mut g, &body, at, &game);
         }
 
         // Brain switches with the phase (inits FUN_00227E00/229F98/22C978).
@@ -1257,6 +1257,18 @@ fn alert_brain(
         body.play(g.anim.run);
     }
     false
+}
+
+/// A noise or a footprint: a soldier at peace goes to look
+/// (`FUN_00227520`); one searching in Evasion takes his search there
+/// (`FUN_0022c168` handles the same stimuli).
+fn stimulus(g: &mut Guard, body: &Body, at: Vec3, game: &Game) {
+    if let State::Search { facing, .. } = g.state {
+        plan(g, body.pos, at, game);
+        g.state = State::Search { wait: 0, facing };
+    } else {
+        g.state = State::Investigate { target: at, sub: 0, timer: 0 };
+    }
 }
 
 /// `FUN_0022C670` stand-in: walk to the last known position, then visit
