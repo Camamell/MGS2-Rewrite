@@ -134,6 +134,9 @@ const IMPACT_SOUND: u32 = 0x41CF4E;
 /// `#0acf09 -n <material>` (`cmd_0acf09`): rounds striking that material
 /// throw sparks (`FUN_002d7498`).
 const IMPACT_SPARKS: u32 = 0x0ACF09;
+/// `#542b2d -a <n> -r <times> -d <values..> -e {block}` (`cmd_542b2d`):
+/// runs the block `times` times, each with the next `n` values as `$1..`.
+const REPEAT: u32 = 0x542B2D;
 /// `#f2eedc -c <command>`: a raw sound driver command (sound effects
 /// when the high byte is 0).
 const SOUND: u32 = 0xF2EEDC;
@@ -741,7 +744,7 @@ impl<'a> Vm<'a> {
         };
         let known = CALL_AFTER.contains(&id)
             || CODEC_THEN.contains(&id)
-            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, VOLUME, SOUND_TABLE, IMPACT_SOUND, IMPACT_SPARKS, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand"), SIN, COS, ABS, DISTANCE, ATAN, SONG].contains(&id);
+            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, VOLUME, SOUND_TABLE, IMPACT_SOUND, IMPACT_SPARKS, REPEAT, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand"), SIN, COS, ABS, DISTANCE, ATAN, SONG].contains(&id);
         known.then_some(id)
     }
 
@@ -854,6 +857,19 @@ impl<'a> Vm<'a> {
                     }
                 }
                 self.codec.push(CodecReq::SoundTable(Some(SoundTable { table: table as u8, which: which as u8, sound: sound as u16, ids, noise })));
+            }
+        } else if id == REPEAT {
+            let n = opt(self, b'a').first().and_then(Val::int).unwrap_or(0).max(0) as usize;
+            let times = opt(self, b'r').first().and_then(Val::int).unwrap_or(0).max(0) as usize;
+            let values: Vec<i32> = opt(self, b'd').iter().map(|v| v.int().unwrap_or(0)).collect();
+            if let Some((_, v)) = options.iter().find(|(l, _)| *l == b'e')
+                && let Some(Value::Block(b)) = v.first()
+            {
+                for i in 0..times.min(256) {
+                    let call: Vec<i32> = (0..n).map(|k| values.get(i * n + k).copied().unwrap_or(0)).collect();
+                    // Each pass runs like a call (a `return` ends only it).
+                    self.block(b, &call);
+                }
             }
         } else if id == IMPACT_SOUND || id == IMPACT_SPARKS {
             if let Some(n) = opt(self, b'n').first().and_then(Val::int).filter(|n| (0..16).contains(n)) {
