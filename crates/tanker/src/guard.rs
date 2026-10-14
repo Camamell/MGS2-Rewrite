@@ -1004,9 +1004,17 @@ pub fn think(
         if let Some((at, range)) = shot
             && g.level < 2
             && body.pos.distance(at) < range
-            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return)
+            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Investigate { .. })
         {
-            g.state = State::Investigate { target: at, sub: 0, timer: 0 };
+            // An unsuppressed shot (noise 10) is heard as an attack: stimulus
+            // 0x800, straight to discovery (`FUN_00227520` ->
+            // `FUN_00238f68`); a knock draws a look.
+            if range >= GUNSHOT_RANGE {
+                g.last_seen = Some(at);
+                g.state = State::Discovery { timer: 0 };
+            } else {
+                g.state = State::Investigate { target: at, sub: 0, timer: 0 };
+            }
         }
         // Footprints in clear view within his near range: he goes to the
         // newest he sees and leaves the older ones (`FUN_00230948`,

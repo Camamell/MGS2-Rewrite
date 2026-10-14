@@ -279,7 +279,7 @@ normal-phase transition picks a state per bit (C+0x32c):
 |---|---|---|
 | 0x1 | heard level 5 / 6 / 8 / 9 (`FUN_00230830` via `FUN_0021e7a8`) | 3, `FUN_002345b0` |
 | 0x200 | heard level 3 (`FUN_002307f0`) | 5 |
-| 0x800 / 0x1000 | heard level 10 / 11 | (later branch) |
+| 0x800 / 0x1000 | heard level 10 / 11 (unsuppressed shot, explosion) | 8: discovery, `FUN_00238f68` |
 | 0x8000 | a book (`bul_book.c`, the default marker group `DAT_001cccc8`) in view (`FUN_002308b0`) | 9 |
 | 0x10000 | a footprint (`foot_print.c`, type 0x12) or blood (`blood_sp.c`, type 10) marker group in view (`FUN_00230948`) | 10 |
 | 0x4000000 | Snake within the 250 x 1500 x 250 bump box (`FUN_00230c20`) | |
