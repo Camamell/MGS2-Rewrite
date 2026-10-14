@@ -1006,7 +1006,7 @@ pub fn think(
         // striking).
         if let Some((_, at)) = heard.filter(|(e, _)| *e == me)
             && g.level < 2
-            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Search { .. })
+            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Investigate { .. } | State::Search { .. })
         {
             info!("guard {} heard a noise at {at:?}", g.route);
             stimulus(&mut g, &body, at, &game);
