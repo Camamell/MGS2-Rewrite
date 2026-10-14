@@ -5,8 +5,8 @@
 //! inside a type 0 area he leaves none (`FUN_0032cf48`). While wet, each
 //! step stamps a print. The areas are trap boxes of the stage's `.hzx`
 //! (w01a, w01b and w01e have them). The prints' look (a dark wet sole that
-//! fades with the wetness) and how many stay are assumed; soldiers do not
-//! follow them yet (they would see the marker group, stimulus 0x10000).
+//! fades with the wetness) and how many stay are assumed. Soldiers follow
+//! them (`guard.rs`, stimulus 0x10000).
 
 use std::sync::Mutex;
 
@@ -39,6 +39,11 @@ pub fn step(at: Vec3, yaw: f32) {
     }
 }
 
+/// The prints on the ground, oldest first: (place mm, already followed).
+/// A soldier who sees one goes to it and marks it and every older one
+/// (`FUN_00240858`).
+pub static TRAIL: Mutex<Vec<(Vec3, bool)>> = Mutex::new(Vec::new());
+
 #[derive(Resource, Default)]
 struct Wet {
     /// Frames of wetness left.
@@ -67,7 +72,14 @@ fn update(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let steps: Vec<(Vec3, f32)> = STEPS.lock().map(|mut q| std::mem::take(&mut *q)).unwrap_or_default();
+    let before = wet.prints.len();
     wet.prints.retain(|e| alive.contains(*e));
+    // A new stage: its prints (and their trail) are gone.
+    if wet.prints.len() < before && wet.prints.is_empty()
+        && let Ok(mut t) = TRAIL.lock()
+    {
+        t.clear();
+    }
     let Ok(body) = player.single() else { return };
     let pos = body.pos + Vec3::Y * 10.0;
     let class = game.data.collision.as_ref().and_then(|h| {
@@ -87,6 +99,10 @@ fn update(
     }
     if class == Some(0) {
         wet.frames = 0.0;
+    }
+    // MGS2_WET=1: start wet (testing).
+    if std::env::var_os("MGS2_WET").is_some() && time.elapsed_secs() < 0.5 {
+        wet.frames = WET_FRAMES;
     }
     wet.frames = (wet.frames - time.delta_secs() * 60.0).max(0.0);
     if wet.frames <= 0.0 || steps.is_empty() {
@@ -116,6 +132,12 @@ fn update(
         let place = Transform::from_translation(Vec3::new(at.x, floor + LIFT, at.z) * SCALE).with_rotation(Quat::from_rotation_y(yaw));
         let e = commands.spawn((Print, LevelEntity, Mesh3d(mesh.clone()), MeshMaterial3d(shades[shade].clone()), place)).id();
         wet.prints.push(e);
+        if let Ok(mut t) = TRAIL.lock() {
+            t.push((Vec3::new(at.x, floor, at.z), false));
+            if t.len() > MAX_PRINTS {
+                t.remove(0);
+            }
+        }
         if wet.prints.len() > MAX_PRINTS {
             let old = wet.prints.remove(0);
             commands.entity(old).try_despawn();

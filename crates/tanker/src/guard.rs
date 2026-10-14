@@ -65,6 +65,9 @@ const TURN_RATE: f32 = TAU;
 const EYE: f32 = 1600.0;
 /// 4096 units per turn.
 const ANGLE: f32 = TAU / 4096.0;
+/// A footprint is looked at this far above the floor (as a target this
+/// tall; the sight line goes to 60%), so the floor itself does not hide it.
+const PRINT_SIGHT: f32 = 100.0;
 /// Frames the "!" reaction lasts when its motion cannot be read; otherwise
 /// it lasts the motion (action 2 plays motion 92 once, `FUN_0025e9b8`, and
 /// the discovery state waits for it to finish, `FUN_00237128`).
@@ -900,6 +903,21 @@ pub fn think(
             && body.pos.distance(at) < range
             && matches!(g.state, State::Patrol | State::Wait(_) | State::Return)
         {
+            g.state = State::Investigate { target: at, sub: 0, timer: 0 };
+        }
+        // Footprints in clear view within his near range: he goes to the
+        // newest he sees and leaves the older ones (`FUN_00230948`,
+        // `FUN_00240858`); the next ones then lead him on.
+        if g.level < 2
+            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Investigate { .. })
+            && let Ok(mut trail) = crate::footprint::TRAIL.lock()
+            && let Some(i) = trail.iter().rposition(|(at, used)| !used && perceive(&g, &body, *at, PRINT_SIGHT, &game) == 3)
+        {
+            let at = trail[i].0;
+            for p in trail.iter_mut().take(i + 1) {
+                p.1 = true;
+            }
+            info!("guard {} follows footprints to {at:?}", g.route);
             g.state = State::Investigate { target: at, sub: 0, timer: 0 };
         }
         // A noise he is the nearest to (footsteps on a noisy floor, rounds
