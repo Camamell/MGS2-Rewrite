@@ -246,3 +246,15 @@ of his facing; clear line); the members' own state machine is not ported.
   16-byte table (positions?) and `FUN_0025FCC0` moves toward one.
   `FUN_00267DE0` picks the next sequence through a condition function from
   0x1F8198 (indexed by +0xF70 & 3), avoiding the last 8 picks (+0xF88).
+
+## Noise (`FUN_0011b630`, `FUN_00220078`, `FUN_0021f958`)
+
+Emitters latch the loudest (level, place) of a frame; soldiers read it the
+next frame. Levels 5, 6 and 9 send the nearest soldier within his hearing
+range (doubled for 9, within 3000 mm of the noise's height, same area) to
+investigate; 11 runs `FUN_0021ff20`; 2, 3, 4, 8, 10 are ignored. Motion
+sounds and impacts take their level from the `#b44bbb` byte: Tanker
+footsteps are level 0 (silent) except material 4 in w04a (6), rounds
+striking are 5 (9 on material 3 in w01b / w01c), sound 55 is 6. The port
+dropped its "running is heard" rule for this; the hearing range (3000 mm)
+is still assumed.

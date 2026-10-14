@@ -232,8 +232,24 @@ const DEFAULT_LIFE: i32 = 3000;
 const DEFAULT_STAMINA: i32 = 9;
 /// Dart resistance (`FUN_0025ad08` passes 6000; `FUN_00247d20` halves it).
 const RESIST: i32 = 3000;
-/// Hearing range for Snake's running (assumed).
+/// Hearing range for noises (assumed; the game keeps one per soldier).
 const HEARING: f32 = 3000.0;
+
+/// The loudest noise this frame (level, place), as `FUN_0011b630` keeps it
+/// for the soldiers (`FUN_00220078` reads it next frame).
+static NOISE: std::sync::Mutex<Option<(u8, Vec3)>> = std::sync::Mutex::new(None);
+
+/// A noise of `level` at `at` (mm); the loudest of a frame is heard.
+pub fn noise(level: u8, at: Vec3) {
+    if level == 0 {
+        return;
+    }
+    if let Ok(mut n) = NOISE.lock()
+        && n.is_none_or(|(l, _)| level > l)
+    {
+        *n = Some((level, at));
+    }
+}
 /// How long a tranquilized guard sleeps: the enemy manager's `-z`
 /// (`FUN_00221970`, default 18000 frames = 5 minutes; every Tanker stage
 /// passes 18000), counted down at body +0xf1a.
@@ -259,7 +275,7 @@ pub struct Guard {
     path: Vec<Vec3>,
     repath: u32,
     attack: Attack,
-    /// Distance (mm) at which the guard hears Snake running (assumed).
+    /// Distance (mm) at which the guard hears a noise (assumed).
     pub hearing: f32,
     /// Life (body +0xf0c): `-l`, As16:0x1c4 by difficulty (3000 / 3000 /
     /// 3000 / 4000 / 6000), default 3000 (`FUN_0025ad08` via
@@ -696,7 +712,17 @@ pub fn think(
     let snake_pos = snake_body.pos;
     let snake_dead = player.dead();
     let snake_height = player.height();
-    let snake_running = player.speed >= crate::player::RUN_SPEED;
+    // The frame's loudest noise: levels 5, 6 and 9 send the nearest soldier
+    // in earshot (twice as far for 9) to look, if he is within 3 m of its
+    // height (`FUN_0021f958`).
+    let heard = NOISE.lock().ok().and_then(|mut n| n.take()).filter(|(l, _)| matches!(l, 5 | 6 | 9)).and_then(|(level, at)| {
+        let reach = |g: &Guard| if level == 9 { g.hearing * 2.0 } else { g.hearing };
+        guards
+            .iter()
+            .filter(|(_, g, b)| !g.asleep() && (b.pos.y - at.y).abs() <= 3000.0 && b.pos.distance(at) < reach(g))
+            .min_by(|a, b| a.2.pos.distance(at).total_cmp(&b.2.pos.distance(at)))
+            .map(|(e, _, _)| (e, at))
+    });
     let changed = std::mem::take(&mut phase.changed);
     let mut highest = 0i32;
 
@@ -869,13 +895,13 @@ pub fn think(
         {
             g.state = State::Investigate { target: at, sub: 0, timer: 0 };
         }
-        // Footsteps: running within earshot draws a look.
-        if snake_running
+        // A noise he is the nearest to (footsteps on a noisy floor, rounds
+        // striking).
+        if let Some((_, at)) = heard.filter(|(e, _)| *e == me)
             && g.level < 2
-            && body.pos.distance(snake_pos) < g.hearing
             && matches!(g.state, State::Patrol | State::Wait(_) | State::Return)
         {
-            g.state = State::Investigate { target: snake_pos, sub: 0, timer: 0 };
+            g.state = State::Investigate { target: at, sub: 0, timer: 0 };
         }
 
         // Brain switches with the phase (inits FUN_00227E00/229F98/22C978).

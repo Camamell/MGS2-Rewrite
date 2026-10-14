@@ -70,7 +70,8 @@ pub fn drain(listener: Vec3, right: Vec3) -> Vec<u32> {
 /// `#b44bbb` tables for the character (Snake 0, soldiers 1 + voice, as
 /// `FUN_002898d0` / `FUN_00257bc0` set it) by the floor's material, as the
 /// characters' event handler (`FUN_003b3768`) does. These are the game's
-/// footsteps. (Placed at the feet, not the event's joint.)
+/// footsteps; the table also gives the noise soldiers hear (silent on most
+/// floors). (Placed at the feet, not the event's joint.)
 pub fn motion_sounds(
     game: Res<crate::Game>,
     bodies: Query<(Entity, &crate::body::Body, Option<&crate::player::Player>, Option<&crate::guard::Guard>)>,
@@ -100,8 +101,9 @@ pub fn motion_sounds(
         let passed = |t: f32| if now >= prev { t > prev && t <= now } else { t > prev || t <= now };
         for ev in events.iter().filter(|ev| passed(f32::from(ev.time))) {
             let material = game.collision.as_ref().and_then(|c| c.floor_material(body.pos.x, body.pos.z, body.pos.y + 100.0)).unwrap_or(0);
-            if let Some(id) = game.motion_sound(table, ev.sound, material) {
+            if let Some((id, noise)) = game.motion_sound(table, ev.sound, material) {
                 play(id, Some(body.pos));
+                crate::guard::noise(noise, body.pos);
             }
         }
     }

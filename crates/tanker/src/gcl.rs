@@ -303,13 +303,15 @@ pub enum CodecReq {
 }
 
 /// One `#b44bbb` entry: motion sound `sound` of character table `table`
-/// becomes `ids[material]` (`which` 0: the floor under the character).
+/// becomes `ids[material]` (`which` 0: the floor under the character),
+/// heard by soldiers as noise level `noise[material]` (`FUN_0011b630`).
 #[derive(Clone, Copy, Debug)]
 pub struct SoundTable {
     pub table: u8,
     pub which: u8,
     pub sound: u16,
     pub ids: [u16; 8],
+    pub noise: [u8; 8],
 }
 
 impl Banks {
@@ -842,12 +844,16 @@ impl<'a> Vm<'a> {
                 let which = int(self, b't').unwrap_or(0);
                 let d: Vec<i32> = opt(self, b'd').iter().filter_map(Val::int).collect();
                 let mut ids = [0xFFFFu16; 8];
-                for (i, id) in ids.iter_mut().enumerate() {
+                let mut noise = [0u8; 8];
+                for i in 0..8 {
                     if let Some(v) = d.get(i * 2) {
-                        *id = *v as u16;
+                        ids[i] = *v as u16;
+                    }
+                    if let Some(v) = d.get(i * 2 + 1) {
+                        noise[i] = *v as u8;
                     }
                 }
-                self.codec.push(CodecReq::SoundTable(Some(SoundTable { table: table as u8, which: which as u8, sound: sound as u16, ids })));
+                self.codec.push(CodecReq::SoundTable(Some(SoundTable { table: table as u8, which: which as u8, sound: sound as u16, ids, noise })));
             }
         } else if id == IMPACT_SOUND || id == IMPACT_SPARKS {
             if let Some(n) = opt(self, b'n').first().and_then(Val::int).filter(|n| (0..16).contains(n)) {
