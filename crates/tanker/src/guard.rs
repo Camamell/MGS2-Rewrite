@@ -301,6 +301,10 @@ const MARINE_HEARING: f32 = 3000.0;
 /// for the soldiers (`FUN_00220078` reads it next frame).
 static NOISE: std::sync::Mutex<Option<(u8, Vec3)>> = std::sync::Mutex::new(None);
 
+/// The noise the soldiers heard this frame, for other listeners (the
+/// holds' crowd, `FUN_002286f0`).
+pub static HEARD: std::sync::Mutex<Option<(u8, Vec3)>> = std::sync::Mutex::new(None);
+
 /// A noise of `level` at `at` (mm); the loudest of a frame is heard.
 pub fn noise(level: u8, at: Vec3) {
     if level == 0 {
@@ -793,6 +797,9 @@ pub fn think(
     // in earshot (twice as far for 9) to look, if he is within 3 m of its
     // height (`FUN_0021f958`).
     let noise_now = NOISE.lock().ok().and_then(|mut n| n.take());
+    if let Ok(mut h) = HEARD.lock() {
+        *h = noise_now;
+    }
     // An explosion (level 11): the manager raises the meter 60 frames later
     // if any soldier can still act (`FUN_0021ff20`).
     if noise_now.is_some_and(|(l, _)| l == 11) && phase.blast == 0 {

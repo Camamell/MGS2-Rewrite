@@ -132,6 +132,9 @@ pub fn events(s: &Spawn) -> (Vec<Option<u32>>, (f32, f32)) {
     (procs, (t(0).unwrap_or(2500.0), t(1).unwrap_or(7000.0)))
 }
 
+/// Event index for "a Marine heard something" (`FUN_00224a58`).
+pub const HEARD_SOMETHING: usize = 3;
+
 /// Event index for "a Marine saw Snake" (`FUN_00224b80`, state bit 0x80).
 pub const SAW_SNAKE: usize = 4;
 

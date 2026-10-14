@@ -1055,7 +1055,7 @@ fn main() -> Result<()> {
         .add_systems(Startup, photo::setup_hud)
         .add_systems(
             Update,
-            (photo::control.before(player::control), photo::view.after(player::follow_camera), codec_followup.after(codec::input), speech, holds_timer, guard_drops.after(guard::think), new_items.after(guard_drops), prop_messages, reinforcements.after(guard::think), snake_vars, crowd_watch.after(snake_vars))
+            (photo::control.before(player::control), photo::view.after(player::follow_camera), codec_followup.after(codec::input), speech, holds_timer, guard_drops.after(guard::think), new_items.after(guard_drops), prop_messages, reinforcements.after(guard::think), snake_vars, crowd_watch.after(snake_vars), crowd_hear.after(guard::think))
                 .run_if(codec::idle)
                 .run_if(demo::idle),
         )
@@ -2097,6 +2097,27 @@ fn crowd_watch(
     game.crowd_alarm = true;
     info!("a Marine saw Snake at {}: running {proc:#x}", snake.pos);
     script_event(&mut commands, &session, &mut game, |vm| vm.call_proc(proc, &at), &level, &bullets);
+}
+
+/// The crowd hears (`FUN_002286f0`): a noise of level 6 sets "heard
+/// something" on the nearest member within 10 m (+0x570 bit 1), whose
+/// update runs the crowd's event 3 with his place (`FUN_00224a58`).
+fn crowd_hear(
+    mut commands: Commands,
+    session: Res<Session>,
+    mut game: ResMut<Game>,
+    marines: Query<&Body, With<crowd::Marine>>,
+    level: LevelRoots,
+    bullets: Query<Entity, With<bullet::Bullet>>,
+) {
+    let Some((6, at)) = guard::HEARD.lock().ok().and_then(|mut h| h.take()) else { return };
+    let Some(Some(proc)) = game.crowd_procs.get(crowd::HEARD_SOMETHING).copied() else { return };
+    let Some(m) = marines.iter().filter(|m| m.pos.distance(at) < 10000.0).min_by(|a, b| a.pos.distance(at).total_cmp(&b.pos.distance(at))) else {
+        return;
+    };
+    let place = [m.pos.x as i32, m.pos.y as i32, m.pos.z as i32];
+    info!("a Marine heard a noise at {at}: running {proc:#x}");
+    script_event(&mut commands, &session, &mut game, |vm| vm.call_proc(proc, &place), &level, &bullets);
 }
 
 /// `--press-at`: action button presses at these times (seconds).

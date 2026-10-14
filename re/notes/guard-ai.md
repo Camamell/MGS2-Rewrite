@@ -264,9 +264,11 @@ soldier's `-h` (`FUN_00222f60` -> `FUN_00259618`, guard+0x271c = controller
 Crowd event 3 ("a Marine heard something", `FUN_00224a58`, the member's
 position as `$1..$3`) runs from the member update (w04c 0x225xxx) while its
 state +0x570 has bit 1; in w04a the proc cuts to a camera on the member and
-plays a line. The setter of bit 1 is not found yet (the soldiers' noise
-reader `FUN_00220078` is absent from the holds' resident), so the port does
-not raise it.
+plays a line. Bit 1 is set by the crowd's noise reader `FUN_002286f0`
+(w04c): level 6 marks the nearest member within 10 m (bit 1); level 3 with
+Snake within 2.5 m in first person marks one facing him (0x80000); levels
+10 and 11 mark every member (0x10) and set DAT_0017f48c bit 1. The port
+does the level-6 case (footsteps on w04a's noisy floor, a hard landing).
 
 ## Stimuli (`FUN_00227520`, C+0x268)
 
