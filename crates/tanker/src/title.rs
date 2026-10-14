@@ -45,10 +45,17 @@ pub fn run(pass: Vec<String>, difficulty: i16, fullscreen: bool) -> Option<Vec<S
     let difficulty = DIFFICULTIES.iter().position(|d| d.0 == difficulty).unwrap_or(2);
     let chosen = std::sync::Arc::new(std::sync::Mutex::new(None));
     let out = chosen.clone();
+    // A title screenshot run is automated: second monitor, no pad.
+    let automated = std::env::var_os("MGS2_TITLE_SHOT").is_some();
+    if automated {
+        crate::pad::DISABLED.store(true, std::sync::atomic::Ordering::Relaxed);
+        crate::TEST_MONITOR.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "MGS2 Tanker".into(),
+                focused: !automated,
                 mode: if fullscreen {
                     bevy::window::WindowMode::BorderlessFullscreen(bevy::window::MonitorSelection::Current)
                 } else {
@@ -63,6 +70,7 @@ pub fn run(pass: Vec<String>, difficulty: i16, fullscreen: bool) -> Option<Vec<S
         .insert_resource(Menu { items, at: 0, difficulty, stage: 0, pass, chosen: None })
         .add_systems(Startup, setup)
         .add_systems(Update, (input, draw, shot, crate::pause::fullscreen, crate::pause::ui_scale).chain())
+        .add_systems(Update, crate::test_monitor)
         .add_systems(Last, move |menu: Res<Menu>, mut exit: MessageWriter<AppExit>| {
             if let Some(args) = &menu.chosen {
                 *out.lock().unwrap() = Some(args.clone());

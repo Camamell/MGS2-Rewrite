@@ -2288,12 +2288,12 @@ fn motion_sheet(
 }
 /// Set for automated runs: the window moves to a monitor other than the
 /// primary one (`MGS2_MONITOR=n` picks the n-th listed monitor instead).
-static TEST_MONITOR: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static TEST_MONITOR: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Moves an automated run's window onto the second monitor once the
 /// monitors are known (the window's own monitor selection is not honoured
 /// at creation).
-fn test_monitor(
+pub fn test_monitor(
     monitors: Query<(&bevy::window::Monitor, Has<bevy::window::PrimaryMonitor>)>,
     mut windows: Query<&mut Window, With<bevy::window::PrimaryWindow>>,
     mut done: Local<bool>,
