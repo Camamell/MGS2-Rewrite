@@ -468,3 +468,9 @@ picks a hook the stage set per material (`FUN_0036c630` -> `FUN_003a5c40`):
 table 0 (`FUN_003a5cf8`; w00a 446..453), `#0acf09 -n` registers
 `0x2d7498` (sparks, not ported), and a few stages hook other actors on
 5..7.
+
+Snake's `snake.sar` (r_tnk0) keys his wall knocks to sound 55 on joint 6
+(motion 67 at time 50, the crouched and other knocks 68-78, 91-94,
+148-151) and the wall sidesteps (57 / 58) to sounds 18 / 19. Sound 55 is a
+wall-keyed (`-t 1`) table: the knock for the wall's material, noise 6. Soldiers
+hear knocks this way; there is no separate knock code.
