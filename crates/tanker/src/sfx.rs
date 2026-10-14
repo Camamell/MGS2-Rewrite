@@ -71,7 +71,7 @@ pub fn drain(listener: Vec3, right: Vec3) -> Vec<u32> {
 /// `FUN_002898d0` / `FUN_00257bc0` set it) by the floor's material, as the
 /// characters' event handler (`FUN_003b3768`) does. These are the game's
 /// footsteps; the table also gives the noise soldiers hear (silent on most
-/// floors). (Placed at the feet, not the event's joint.)
+/// floors).
 pub fn motion_sounds(
     game: Res<crate::Game>,
     bodies: Query<(Entity, &crate::body::Body, Option<&crate::player::Player>, Option<&crate::guard::Guard>, Has<crate::olga::Olga>)>,
@@ -103,9 +103,19 @@ pub fn motion_sounds(
         let passed = |t: f32| if now >= prev { t > prev && t <= now } else { t > prev || t <= now };
         for ev in events.iter().filter(|ev| passed(f32::from(ev.time))) {
             let material = game.collision.as_ref().and_then(|c| c.floor_material(body.pos.x, body.pos.z, body.pos.y + 100.0)).unwrap_or(0);
+            // At the event's joint (the stepping foot), as the handler
+            // places it (the joint's matrix, `FUN_003b3768`).
+            let model = &game.data.models[body.model].1;
+            let at = mgs2_bevy::anim::pose(model, Some(motion), body.frame, false)
+                .get(usize::from(ev.joint))
+                .map_or(body.pos, |m| {
+                    // Across the floor only (the pose carries no root height).
+                    let d = Quat::from_rotation_y(body.yaw) * Vec3::from(m.translation);
+                    body.pos + Vec3::new(d.x, 0.0, d.z)
+                });
             if let Some((id, noise)) = game.motion_sound(table, ev.sound, material) {
-                play(id, Some(body.pos));
-                crate::guard::noise(noise, body.pos);
+                play(id, Some(at));
+                crate::guard::noise(noise, at);
             }
         }
     }
