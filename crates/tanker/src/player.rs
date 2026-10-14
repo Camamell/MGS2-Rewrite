@@ -241,6 +241,15 @@ pub fn control(
         body.play_once(motion::DEATH);
         return;
     }
+    // MGS2_DROP=mm: two seconds in, lift him that high to fall (testing).
+    if let Some(d) = std::env::var("MGS2_DROP").ok().and_then(|v| v.parse::<f32>().ok())
+        && (2.0..2.5).contains(&time.elapsed_secs())
+        && p.fall_from.is_none()
+    {
+        body.pos.y += d;
+        p.fall_from = Some(body.pos.y);
+        p.fall_speed = 1.0;
+    }
     // Rolling: carried forward by the motion's travel, then crouched.
     if p.roll > 0.0 {
         p.roll -= dt * 60.0;
@@ -553,6 +562,10 @@ pub fn control(
         match col.floor_below(next.x, next.z, next.y + STEP_UP) {
             Some(floor) => {
                 if next.y - floor > 30.0 {
+                    // Off a ledge: the fall counts from here.
+                    if p.fall_from.is_none() && p.fall_speed == 0.0 {
+                        p.fall_from = Some(old.y);
+                    }
                     p.fall_speed += GRAVITY * dt;
                     next.y = (next.y - p.fall_speed * dt).max(floor);
                 } else {
