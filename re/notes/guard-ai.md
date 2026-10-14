@@ -270,6 +270,14 @@ Snake within 2.5 m in first person marks one facing him (0x80000); levels
 10 and 11 mark every member (0x10) and set DAT_0017f48c bit 1. The port
 does the level-6 case (footsteps on w04a's noisy floor, a hard landing).
 
+Approach points (`-p`, w04a one, w04b two: x y z, rotation x y z, one
+more value): Snake within 3 m of a point and inside a horizontal cone along
+its facing (forward vector (0, 0, 4000) at w04c 0x1f38e0 / 0x1f38f0; half
+angle 20 / 25 degrees within 1 m, else 15) runs event 1 / 2 once (the proc
+pointer is cleared). Messages 0x42 / 0x43 arm and 0x44 / 0x45 disarm the
+points. Skipped while `DAT_001ecd40 & 0x4030`. In w04a the event is a game
+over (walking up in front of the formation).
+
 ## Stimuli (`FUN_00227520`, C+0x268)
 
 Checks at 0x2307f0..0x2316b0 set the stimulus bits each frame; the

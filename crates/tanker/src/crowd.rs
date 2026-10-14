@@ -143,6 +143,38 @@ pub fn events(s: &Spawn) -> (Vec<Option<u32>>, (f32, f32)) {
     (procs, (t(0).unwrap_or(2500.0), t(1).unwrap_or(7000.0)))
 }
 
+/// The `-p` points (up to two: x y z, rotation x y z, one more value):
+/// Snake within 3 m of one, inside a cone along the point's facing, runs
+/// event 1 or 2 once (`FUN_002286f0`). Returns (place mm, yaw, cos of the
+/// cone's half angle within 1 m) for each.
+pub fn points(s: &Spawn) -> Vec<(Vec3, f32, f32)> {
+    let v = s.opt(b'p').unwrap_or(&[]);
+    // The near cones (20 and 25 degrees, from the code); beyond 1 m both
+    // are 15.
+    let near = [0.939_692_6, 0.906_307_8];
+    v.chunks_exact(7)
+        .take(2)
+        .zip(near)
+        .map(|(r, c)| {
+            let i = |k: usize| r[k].int().unwrap_or(0) as f32;
+            (Vec3::new(i(0), i(1), i(2)), i(4) / 4096.0 * std::f32::consts::TAU, c)
+        })
+        .collect()
+}
+
+/// Whether Snake at `snake` sets off a `points` entry: within 3 m and
+/// within the cone (horizontal) along its facing.
+pub fn near_point(p: (Vec3, f32, f32), snake: Vec3) -> bool {
+    let (at, yaw, near_cos) = p;
+    let to = Vec2::new(snake.x - at.x, snake.z - at.z);
+    let dist = snake.distance(at);
+    if dist >= 3000.0 || to.length() < 1.0 {
+        return false;
+    }
+    let cos = to.normalize().dot(Vec2::new(yaw.sin(), yaw.cos()));
+    cos > if dist > 999.0 { 0.965_925_8 } else { near_cos }
+}
+
 /// Event index for "a Marine heard something" (`FUN_00224a58`).
 pub const HEARD_SOMETHING: usize = 3;
 

@@ -252,6 +252,10 @@ pub struct Game {
     /// and its sight `-t near far` (mm).
     pub crowd_procs: Vec<Option<u32>>,
     pub crowd_sight: (f32, f32),
+    /// The crowd's `-p` points (`crowd::points`).
+    pub crowd_points: Vec<(Vec3, f32, f32)>,
+    /// Point events that have run (bit per event), until a restart.
+    pub crowd_fired: u8,
     /// Spoken line playing: (id, proc to run after, seconds left).
     pub speech: Option<(u32, Option<u32>, f32)>,
     /// Motion sound variants by floor material (`#b44bbb`).
@@ -587,6 +591,7 @@ fn prepare(
     let mut radar_turn = None;
     let mut thunder_spec = None;
     let mut crowd_procs = (Vec::new(), (2500.0, 7000.0));
+    let mut crowd_points = Vec::new();
     let mut cameras = script_cam::Cameras::default();
     let mut codec_reqs = Vec::new();
     let mut photos = (Vec::new(), None);
@@ -691,6 +696,7 @@ fn prepare(
         }
         if let Some(s) = vm.spawns.iter().find(|s| s.kind == crowd::CROWD_ACTOR) {
             crowd_procs = crowd::events(s);
+            crowd_points = crowd::points(s);
         }
         let members: Vec<crowd::Member> = vm.spawns.iter().filter(|s| s.kind == crowd::CROWD_ACTOR).flat_map(crowd::members).collect();
         // Each Marine variant once, built from the part library.
@@ -790,6 +796,8 @@ fn prepare(
         crowd_alarm: false,
         crowd_procs: crowd_procs.0,
         crowd_sight: crowd_procs.1,
+        crowd_points,
+        crowd_fired: 0,
         speech: None,
         speech_volume: None,
         sound_tables: Vec::new(),
@@ -1056,7 +1064,7 @@ fn main() -> Result<()> {
         .add_systems(Startup, photo::setup_hud)
         .add_systems(
             Update,
-            (photo::control.before(player::control), photo::view.after(player::follow_camera), codec_followup.after(codec::input), speech, holds_timer, guard_drops.after(guard::think), new_items.after(guard_drops), prop_messages, reinforcements.after(guard::think), snake_vars, crowd_watch.after(snake_vars), crowd_hear.after(guard::think))
+            (photo::control.before(player::control), photo::view.after(player::follow_camera), codec_followup.after(codec::input), speech, holds_timer, guard_drops.after(guard::think), new_items.after(guard_drops), prop_messages, reinforcements.after(guard::think), snake_vars, crowd_watch.after(snake_vars), crowd_points.after(snake_vars), crowd_hear.after(guard::think))
                 .run_if(codec::idle)
                 .run_if(demo::idle),
         )
@@ -2104,6 +2112,33 @@ fn crowd_watch(
     script_event(&mut commands, &session, &mut game, |vm| vm.call_proc(proc, &at), &level, &bullets);
 }
 
+/// Snake walks up to one of the crowd's `-p` points: its event (1 or 2)
+/// runs once (`FUN_002286f0`; the proc is cleared after). The code also
+/// sets bit 4 on every member while it fires and skips the check in some
+/// Snake states (`DAT_001ecd40 & 0x4030`); neither is ported.
+fn crowd_points(
+    mut commands: Commands,
+    session: Res<Session>,
+    mut game: ResMut<Game>,
+    player: Query<(&Body, &Player)>,
+    level: LevelRoots,
+    bullets: Query<Entity, With<bullet::Bullet>>,
+) {
+    let Ok((snake, p)) = player.single() else { return };
+    if p.dead() {
+        return;
+    }
+    let Some(i) = game.crowd_points.iter().position(|pt| crowd::near_point(*pt, snake.pos)) else { return };
+    let event = i + 1;
+    if game.crowd_fired & 1 << event != 0 {
+        return;
+    }
+    let Some(Some(proc)) = game.crowd_procs.get(event).copied() else { return };
+    game.crowd_fired |= 1 << event;
+    info!("Snake neared crowd point {event}: running {proc:#x}");
+    script_event(&mut commands, &session, &mut game, |vm| vm.call_proc(proc, &[]), &level, &bullets);
+}
+
 /// The crowd hears (`FUN_002286f0`): a noise of level 6 sets "heard
 /// something" on the nearest member within 10 m (+0x570 bit 1), whose
 /// update runs the crowd's event 3 with his place (`FUN_00224a58`); 10 or
@@ -2255,6 +2290,7 @@ fn game_over(
     game.arrivals.clear();
     game.banks = game.start_banks.clone();
     game.crowd_alarm = false;
+    game.crowd_fired = 0;
 }
 
 fn hud(
