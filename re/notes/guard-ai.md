@@ -278,10 +278,19 @@ normal-phase transition picks a state per bit (C+0x32c):
 | 0x1 | heard level 5 / 6 / 8 / 9 (`FUN_00230830` via `FUN_0021e7a8`) | 3, `FUN_002345b0` |
 | 0x200 | heard level 3 (`FUN_002307f0`) | 5 |
 | 0x800 / 0x1000 | heard level 10 / 11 | (later branch) |
-| 0x8000 | a marker in list `DAT_001cccc8` in view (`FUN_002308b0`) | 9 |
+| 0x8000 | a book (`bul_book.c`, the default marker group `DAT_001cccc8`) in view (`FUN_002308b0`) | 9 |
 | 0x10000 | a footprint (`foot_print.c`, type 0x12) or blood (`blood_sp.c`, type 10) marker group in view (`FUN_00230948`) | 10 |
-| 0x40 / 0x2000000, 0x2000, 0x4000, 0x20000, 0x40000, 0x200000 / 0x4000000, 0x400000 | 0x230a48, 0x230b40, 0x230dd8, 0x2311f0, 0x2316b0, 0x230c20, 0x231418 | various |
+| 0x4000000 | Snake within the 250 x 1500 x 250 bump box (`FUN_00230c20`) | |
+| 0x40 / 0x2000000, 0x2000, 0x4000, 0x20000, 0x40000, 0x200000, 0x400000 | 0x230a48, 0x230b40, 0x230dd8, 0x2311f0, 0x2316b0, 0x230c20, 0x231418 | various |
 
 Level 8 is the soldier's own "!" call (`FUN_00237128`), so nearby soldiers
 hear a discovery. Marker groups register through `FUN_00117798`. Which bit
 is a downed body is not identified yet.
+
+Footprints (`foot_print.c`): leaving a type 0 / 2 named area (`0x839ecc` /
+`0x97cb18`; w01a, w01b, w01e have `0x839ecc` at the doors in from the
+rain) leaves Snake wet for 3000 frames. Blood (`blood_dp.c` -> `blood_sp.c`):
+a hit that leaves him under a third of his life sets 0x1000000 and a drop
+falls every 20 frames until life is a third again or a ration is used. A
+soldier who sees either marker group goes to the newest marker in view and
+marks the older ones (`FUN_00240858`); the port follows that way.
