@@ -317,3 +317,17 @@ Explosions: `blast.c` makes noise 11, which `FUN_00220078` hands to
 60 frames later (`FUN_00220008`), writes 0x400 to the manager's input
 (+0x34), which `FUN_00220430` takes as the meter: Alert. More than six
 blasts also set manager flag 1. The port does this for stun grenades.
+
+DAT_0017f48c bit 1 holds the phases still: with it set the manager
+(`FUN_00220818`) does not let Evasion run out into Caution or Caution into
+Infiltration. The holds' crowd sets it (with every member's 0x10, which
+turns them to face Snake) when it hears noise 10 or 11.
+
+Other stimuli: 0x2000 (`FUN_00230b40`) Snake aiming at the soldier from
+within 3x his near range (the hold-up path); 0x4000 (`FUN_00230dd8`) part of
+Snake's skeleton visible (joint mask DAT_001eccb8) while the sight line is
+blocked; 0x20000 (`FUN_002311f0`) Snake in the box within 1200 x 1500 x 1200
+mm and in front (within 200/4096): state 11, the box inspection
+(`FUN_00242448`, actions `FUN_002413d0`). Sight ranges (`FUN_002559C0`):
+near +0x248, far 1.5x; in first person (camera mode 6) both x 3/4; in the
+box at Alert max(near / 4, 2000).
