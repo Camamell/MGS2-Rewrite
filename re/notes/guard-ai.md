@@ -256,8 +256,10 @@ investigate; 11 runs `FUN_0021ff20`; 2, 3, 4, 8, 10 are ignored. Motion
 sounds and impacts take their level from the `#b44bbb` byte: Tanker
 footsteps are level 0 (silent) except material 4 in w04a (6), rounds
 striking are 5 (9 on material 3 in w01b / w01c), sound 55 is 6. The port
-dropped its "running is heard" rule for this; the hearing range (3000 mm)
-is still assumed.
+dropped its "running is heard" rule for this. The hearing range is the
+soldier's `-h` (`FUN_00222f60` -> `FUN_00259618`, guard+0x271c = controller
++0x24c; default 12000, 1000 with controller flag 0x40): w00a 4000, w01b
+6000, w02a 4500 (As16:0x1c2 minus A:0xb3a).
 
 Crowd event 3 ("a Marine heard something", `FUN_00224a58`, the member's
 position as `$1..$3`) runs from the member update (w04c 0x225xxx) while its

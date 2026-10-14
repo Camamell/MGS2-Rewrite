@@ -236,8 +236,10 @@ const DEFAULT_LIFE: i32 = 3000;
 const DEFAULT_STAMINA: i32 = 9;
 /// Dart resistance (`FUN_0025ad08` passes 6000; `FUN_00247d20` halves it).
 const RESIST: i32 = 3000;
-/// Hearing range for noises (assumed; the game keeps one per soldier).
-const HEARING: f32 = 3000.0;
+/// Hearing range for noises: the soldier's `-h` (`FUN_00222f60` keeps it
+/// at controller +0x24c, which `FUN_0021f958` compares), default 12000 mm.
+/// w00a passes 4000, later stages As16:0x1c2.
+const HEARING: f32 = 12000.0;
 
 /// The loudest noise this frame (level, place), as `FUN_0011b630` keeps it
 /// for the soldiers (`FUN_00220078` reads it next frame).
@@ -279,7 +281,7 @@ pub struct Guard {
     path: Vec<Vec3>,
     repath: u32,
     attack: Attack,
-    /// Distance (mm) at which the guard hears a noise (assumed).
+    /// Distance (mm) at which the guard hears a noise (`-h`).
     pub hearing: f32,
     /// Life (body +0xf0c): `-l`, As16:0x1c4 by difficulty (3000 / 3000 /
     /// 3000 / 4000 / 6000), default 3000 (`FUN_0025ad08` via
@@ -354,6 +356,7 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
     let distance = s.opt_int(b'i', 0).filter(|d| *d > 0).map_or(default_vision, |d| d as f32);
     let life = s.opt_int(b'l', 0).filter(|d| *d > 0).unwrap_or(DEFAULT_LIFE);
     let stamina = s.opt_int(b'f', 0).filter(|d| *d > 0).unwrap_or(DEFAULT_STAMINA);
+    let hearing = s.opt_int(b'h', 0).filter(|d| *d > 0).map_or(HEARING, |d| d as f32);
     let guard = Guard {
         route,
         node,
@@ -366,7 +369,7 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         path: Vec::new(),
         repath: 0,
         attack: Attack::default(),
-        hearing: HEARING,
+        hearing,
         life,
         max_life: life,
         wounds: 0,
@@ -1324,7 +1327,7 @@ pub fn trace(
         for (g, _) in &guards {
             if let Some(r) = game.data.collision.as_ref().and_then(|c| c.routes.get(g.route)) {
                 let pts: Vec<String> = r.points.iter().map(|w| format!("({:.0},{:.0},{:.0} w{})", w.position[0], w.position[1], w.position[2], w.wait)).collect();
-                eprintln!("route {}: {}", g.route, pts.join(" "));
+                eprintln!("route {} (hearing {}): {}", g.route, g.hearing, pts.join(" "));
             }
         }
     }
