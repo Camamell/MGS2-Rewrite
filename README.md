@@ -113,7 +113,9 @@ What works:
 
 - Level geometry plus the script's scenery, plants and glass; item boxes
   you can pick up (inventory kept across stages).
-- Guards see, hear running, investigate, raise the alert, chase along the
+- Guards see, hear the game's noises (the M9 nearby, darts and rounds
+  striking surfaces, footsteps only on the floors the stage marks noisy;
+  the nearest soldier in earshot comes to look), investigate, raise the alert, chase along the
   navigation graph and shoot (aim, bursts, reloads as in the game's code).
   Damage follows the game's numbers: guards have life by difficulty and hit
   zones (a head shot kills, three body hits, limb wounds), darts drain their
@@ -200,6 +202,7 @@ Olga's USP comes empty (its rounds lie in the later stages; `MGS2_USP=1`
 starts with it and 15 rounds, for tests).
 
 Assumptions (not taken from the game yet): the USP is heard within 10 m,
+a soldier's hearing range (3 m),
 the reload pause and where on the body a round or dart lands (hit zones by height). In the holds, the
 camera is always available, a photo goes to the first empty album slot (else
 over the worst one) and the Marines' slung rifles are not shown.
