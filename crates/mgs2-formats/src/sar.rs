@@ -71,3 +71,47 @@ pub fn parse(d: &[u8]) -> Result<Sar> {
     }
     Ok(Sar { motions })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A two-motion archive: motion 0 without events, motion 1 with a
+    /// two-sound table and two events.
+    fn sample() -> Vec<u8> {
+        let mut d = vec![0u8; 0x20 + 2 * 16];
+        d[4..8].copy_from_slice(&2u32.to_le_bytes());
+        // Motion 1: data offset 0, size 0x28, stream at 0x14.
+        let e = 0x20 + 16;
+        d[e + 4..e + 8].copy_from_slice(&0u32.to_le_bytes());
+        d[e + 8..e + 12].copy_from_slice(&0x28u32.to_le_bytes());
+        d[e + 12..e + 16].copy_from_slice(&0x14u32.to_le_bytes());
+        let mut block = vec![0u8; 0x28];
+        block[0..4].copy_from_slice(&2u32.to_le_bytes());
+        // Entry 0: sound 3, mode 0, joint 16; entry 1: sound 2, joint 20.
+        block[4..8].copy_from_slice(&[3, 0, 0, 16]);
+        block[12..16].copy_from_slice(&[2, 0, 0, 20]);
+        // Events: time 5 -> entry 1, time 135 -> entry 0, end.
+        block[0x14..0x18].copy_from_slice(&[5, 0, 4, 1]);
+        block[0x18..0x1C].copy_from_slice(&[135, 0, 4, 0]);
+        block[0x1C..0x20].copy_from_slice(&[0xFF, 0xFF, 0, 0]);
+        d.extend(block);
+        d
+    }
+
+    #[test]
+    fn events_by_motion() {
+        let s = parse(&sample()).unwrap();
+        assert_eq!(s.motions.len(), 2);
+        assert!(s.motions[0].is_empty());
+        let ev = &s.motions[1];
+        assert_eq!(ev.len(), 2);
+        assert_eq!((ev[0].time, ev[0].sound, ev[0].joint), (5, 2, 20));
+        assert_eq!((ev[1].time, ev[1].sound, ev[1].joint), (135, 3, 16));
+    }
+
+    #[test]
+    fn rejects_garbage() {
+        assert!(parse(&[0xFF; 8]).is_err());
+    }
+}
