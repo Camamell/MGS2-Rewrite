@@ -461,8 +461,9 @@ table is 0 for Snake (`FUN_002898d0`) and 1 + voice for soldiers
 (`FUN_00257bc0`). Without a table the raw sound plays. w00a: Snake's steps
 2 / 3 become 422..437, the soldiers' 358..421.
 
-Rounds use the same tables: the struck element's flags >> 28 picks a hook
-the stage set per material (`FUN_0036c630` -> `FUN_003a5c40`):
+Snake's shots (bullet flag 2: the M9's darts and the USP; soldiers' rounds
+pass 1 and skip this) use the same tables: the struck element's flags >> 28
+picks a hook the stage set per material (`FUN_0036c630` -> `FUN_003a5c40`):
 `#41cf4e -n <material>` plays that material's variant of sound 0x27 from
 table 0 (`FUN_003a5cf8`; w00a 446..453), `#0acf09 -n` registers
 `0x2d7498` (sparks, not ported), and a few stages hook other actors on
