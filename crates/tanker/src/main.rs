@@ -941,6 +941,9 @@ fn main() -> Result<()> {
         primary_window: Some(Window {
             title: "MGS2 Tanker".into(),
             focused: !automated,
+            // Test windows sit unfocused on another monitor, where waiting
+            // for its vsync stalled frames for 250-500 ms.
+            present_mode: if automated { bevy::window::PresentMode::AutoNoVsync } else { bevy::window::PresentMode::AutoVsync },
             mode: if cli.fullscreen {
                 bevy::window::WindowMode::BorderlessFullscreen(bevy::window::MonitorSelection::Current)
             } else {
