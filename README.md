@@ -161,6 +161,7 @@ What works:
   prints' look is assumed), and blood drops while Snake is under a third of
   his life after a hit (`blood_dp.c`); a soldier who sees either follows the
   trail.
+- The USP's light: a pool of light where Snake aims it (look assumed).
 - Character shadows: Snake's own shadow model (`sna_shadow`), others their
   body, posed with the body and flattened onto the floor (the game draws a
   shadow volume; here straight down, assumed).
