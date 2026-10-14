@@ -11,7 +11,7 @@
 //! moved by the actor later (the commandant's walk) and are left out here.
 //!
 //! Drawn standing with the first `ushold` motion, with their variants'
-//! parts and head accessories; slung rifles and the crowd's reactions are
+//! parts, head accessories and slung rifles; the crowd's reactions are
 //! not done yet.
 
 use bevy::prelude::*;
@@ -32,6 +32,17 @@ pub struct Member {
     pub variant: i32,
     pub idle: i32,
     pub flags: i32,
+}
+
+/// The slung rifle (`m4a_nm`) of members with flag 0x10, 0x20 or 0x40:
+/// `FUN_002517f8` hangs it on joint 2 at (-200, -250, -50) mm in that
+/// joint's space, turned 2024/4096 about x (w04c tables 0x1f3880 /
+/// 0x1f38b0).
+pub const RIFLE_FLAGS: i32 = 0x70;
+pub const RIFLE_JOINT: usize = 2;
+pub const RIFLE_OFFSET: Vec3 = Vec3::new(-200.0, -250.0, -50.0);
+pub fn rifle_turn() -> Quat {
+    Quat::from_rotation_x(2024.0 / 4096.0 * std::f32::consts::TAU)
 }
 
 /// The head joint accessories hang on.

@@ -342,7 +342,7 @@ struct Cast {
     bosses: Vec<(usize, Option<usize>, Vec3, f32, Option<u32>)>,
     /// Marines in formation: (model, motions, position, facing, idle, head
     /// accessory models).
-    crowd: Vec<(usize, Option<usize>, Vec3, f32, i32, Vec<usize>)>,
+    crowd: Vec<(usize, Option<usize>, Vec3, f32, i32, Vec<usize>, i32)>,
 }
 
 /// A static model placed by the script: `chara 0x7a8ec1` (scenery such as
@@ -711,7 +711,7 @@ fn prepare(
             .filter_map(|m| {
                 let model = variants.get(&m.variant).copied().or_else(|| model_index(&data, crowd::model_name(m.variant)))?;
                 let extras = crowd::accessories(m.flags).into_iter().filter_map(|n| model_index(&data, n)).collect();
-                Some((model, ushold, m.pos, m.yaw, m.idle, extras))
+                Some((model, ushold, m.pos, m.yaw, m.idle, extras, m.flags))
             })
             .collect();
         items = vm
@@ -1209,7 +1209,7 @@ fn spawn_level(
                 player.life = life;
             }
             commands.entity(e).insert(player);
-            weapons.extend(model_index(data, "m92").map(|m| (e, m, true, body::pistol_grip(), body::RIGHT_HAND)));
+            weapons.extend(model_index(data, "m92").map(|m| (e, m, true, body::pistol_grip(), body::RIGHT_HAND, Vec3::ZERO)));
             usp_model = model_index(data, "usp").map(|m| (e, m));
         }
         None => error!("Snake's model (sna_def) not found"),
@@ -1217,29 +1217,33 @@ fn spawn_level(
     for (g, model, motions, pos, gun) in cast.guards {
         let e = spawn(&mut commands, model, Body::new(pos, 0.0, model, motions));
         commands.entity(e).insert(g);
-        weapons.extend(gun.map(|m| (e, m, false, body::rifle_grip(), body::RIGHT_HAND)));
+        weapons.extend(gun.map(|m| (e, m, false, body::rifle_grip(), body::RIGHT_HAND, Vec3::ZERO)));
     }
     for (model, motions, pos, yaw, on_down) in cast.bosses {
         let e = spawn(&mut commands, model, Body::new(pos, yaw, model, motions));
         commands.entity(e).insert(olga::Olga::new(on_down));
     }
-    for (model, motions, pos, yaw, idle, extras) in cast.crowd {
+    let rifle = model_index(data, "m4a_nm");
+    for (model, motions, pos, yaw, idle, extras, flags) in cast.crowd {
         let mut b = Body::new(pos, yaw, model, motions);
         b.frame = idle as f32 * 7.0;
         let e = spawn(&mut commands, model, b);
         commands.entity(e).insert(crowd::Marine);
-        weapons.extend(extras.into_iter().map(|m| (e, m, false, Quat::IDENTITY, crowd::HEAD)));
+        weapons.extend(extras.into_iter().map(|m| (e, m, false, Quat::IDENTITY, crowd::HEAD, Vec3::ZERO)));
+        if let Some(m) = rifle.filter(|_| flags & crowd::RIFLE_FLAGS != 0) {
+            weapons.push((e, m, false, crowd::rifle_turn(), crowd::RIFLE_JOINT, crowd::RIFLE_OFFSET));
+        }
     }
-    for (owner, model, when_aiming, grip, object) in weapons {
+    for (owner, model, when_aiming, grip, object, offset) in weapons {
         let m = &data.models[model].1;
         let e = scene::spawn_model(&mut commands, m, data, &mut cache, &mut meshes, &mut images, &mut materials, unlit, LevelEntity);
         // Snake's M9 shows only with the M9 in hand.
         let weapon = when_aiming.then_some(0);
-        commands.entity(e).insert(body::Held { owner, object, when_aiming, grip, weapon });
+        commands.entity(e).insert(body::Held { owner, object, when_aiming, grip, offset, weapon });
     }
     if let Some((owner, m)) = usp_model {
         let e = scene::spawn_model(&mut commands, &data.models[m].1, data, &mut cache, &mut meshes, &mut images, &mut materials, unlit, LevelEntity);
-        commands.entity(e).insert(body::Held { owner, object: body::RIGHT_HAND, when_aiming: true, grip: body::pistol_grip(), weapon: Some(1) });
+        commands.entity(e).insert(body::Held { owner, object: body::RIGHT_HAND, when_aiming: true, grip: body::pistol_grip(), offset: Vec3::ZERO, weapon: Some(1) });
     }
 }
 
@@ -2036,7 +2040,7 @@ fn reinforcements(
         commands.entity(e).insert((g, Trooper { entry: pos }));
         if let Some(m) = gun {
             let w = scene::spawn_model(&mut commands, &data.models[m].1, data, &mut cache, &mut meshes, &mut images, &mut materials, true, LevelEntity);
-            commands.entity(w).insert(body::Held { owner: e, object: body::RIGHT_HAND, when_aiming: false, grip: body::rifle_grip(), weapon: None });
+            commands.entity(w).insert(body::Held { owner: e, object: body::RIGHT_HAND, when_aiming: false, grip: body::rifle_grip(), offset: Vec3::ZERO, weapon: None });
         }
     }
 }

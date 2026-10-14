@@ -214,7 +214,7 @@ starts with it and 15 rounds, for tests).
 Assumptions (not taken from the game yet): the USP is heard within 10 m,
 the reload pause and where on the body a round or dart lands (hit zones by height). In the holds, the
 camera is always available, a photo goes to the first empty album slot (else
-over the worst one) and the Marines' slung rifles are not shown.
+over the worst one).
 
 ## Known issues
 
