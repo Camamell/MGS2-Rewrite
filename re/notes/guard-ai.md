@@ -267,7 +267,8 @@ state +0x570 has bit 1; in w04a the proc cuts to a camera on the member and
 plays a line. Bit 1 is set by the crowd's noise reader `FUN_002286f0`
 (w04c): level 6 marks the nearest member within 10 m (bit 1); level 3 with
 Snake within 2.5 m in first person marks one facing him (0x80000); levels
-10 and 11 mark every member (0x10) and set DAT_0017f48c bit 1. The port
+10 and 11 mark every member (0x10) and set DAT_0017f48c bit 1, after
+which the update runs event 0 once (w04a: a game over). The port
 does the level-6 case (footsteps on w04a's noisy floor, a hard landing).
 
 Approach points (`-p`, w04a one, w04b two: x y z, rotation x y z, one

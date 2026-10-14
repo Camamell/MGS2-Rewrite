@@ -254,7 +254,7 @@ pub struct Game {
     pub crowd_sight: (f32, f32),
     /// The crowd's `-p` points (`crowd::points`).
     pub crowd_points: Vec<(Vec3, f32, f32)>,
-    /// Point events that have run (bit per event), until a restart.
+    /// Events 0-2 that have run (bit per event), until a restart.
     pub crowd_fired: u8,
     /// Spoken line playing: (id, proc to run after, seconds left).
     pub speech: Option<(u32, Option<u32>, f32)>,
@@ -2154,12 +2154,21 @@ fn crowd_hear(
 ) {
     let Some((noise, at)) = guard::HEARD.lock().ok().and_then(|mut h| h.take()) else { return };
     // A shot or an explosion: every member turns to face Snake (0x10).
+    // It also sets `DAT_0017f48c` bit 1, after which the crowd's update
+    // runs event 0 once.
     if matches!(noise, 10 | 11) {
         if let Ok(snake) = player.single() {
             for mut m in &mut marines {
                 let to = snake.pos - m.pos;
                 m.yaw = to.x.atan2(to.z);
             }
+        }
+        if game.crowd_fired & 1 == 0
+            && let Some(Some(proc)) = game.crowd_procs.first().copied()
+        {
+            game.crowd_fired |= 1;
+            info!("the crowd heard a shot: running {proc:#x}");
+            script_event(&mut commands, &session, &mut game, |vm| vm.call_proc(proc, &[]), &level, &bullets);
         }
         return;
     }
