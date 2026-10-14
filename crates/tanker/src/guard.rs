@@ -99,6 +99,9 @@ pub struct Phase {
     pub caution_time: i32,
     pub last_seen: Option<Vec3>,
     changed: bool,
+    /// Frames until an explosion (noise 11) raises the meter
+    /// (`FUN_0021ff20`: 60 frames, then `FUN_00220008` feeds 0x400).
+    blast: u32,
 }
 
 impl Default for Phase {
@@ -111,6 +114,7 @@ impl Default for Phase {
             caution_time: 0xE10,
             last_seen: None,
             changed: false,
+            blast: 0,
         }
     }
 }
@@ -788,7 +792,13 @@ pub fn think(
     // The frame's loudest noise: levels 5, 6 and 9 send the nearest soldier
     // in earshot (twice as far for 9) to look, if he is within 3 m of its
     // height (`FUN_0021f958`).
-    let heard = NOISE.lock().ok().and_then(|mut n| n.take()).filter(|(l, _)| matches!(l, 5 | 6 | 9)).and_then(|(level, at)| {
+    let noise_now = NOISE.lock().ok().and_then(|mut n| n.take());
+    // An explosion (level 11): the manager raises the meter 60 frames later
+    // if any soldier can still act (`FUN_0021ff20`).
+    if noise_now.is_some_and(|(l, _)| l == 11) && phase.blast == 0 {
+        phase.blast = 60;
+    }
+    let heard = noise_now.filter(|(l, _)| matches!(l, 5 | 6 | 9)).and_then(|(level, at)| {
         let reach = |g: &Guard| if level == 9 { g.hearing * 2.0 } else { g.hearing };
         guards
             .iter()
@@ -1069,7 +1079,15 @@ pub fn think(
         }
     }
 
+    let able = guards.iter().any(|(_, g, _)| !g.asleep());
     for _ in 0..ticks {
+        let mut highest = highest;
+        if phase.blast > 0 {
+            phase.blast -= 1;
+            if phase.blast == 0 && able {
+                highest = highest.max(i32::from(METER_MAX));
+            }
+        }
         manager(&mut phase, highest);
     }
 }

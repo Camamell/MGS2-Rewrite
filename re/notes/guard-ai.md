@@ -309,3 +309,9 @@ of action 13) once his tags are gone, else `-j` (+0x12f0: proc plus a tag
 name per difficulty) gives the tags. The w02a procs pick an item box by
 difficulty (Bs16:0x8) and the soldier's name (e.g. `#26539fc`), guarded by
 whether Snake can still take that item.
+
+Explosions: `blast.c` makes noise 11, which `FUN_00220078` hands to
+`FUN_0021ff20`: if any soldier can still act it records the place and,
+60 frames later (`FUN_00220008`), writes 0x400 to the manager's input
+(+0x34), which `FUN_00220430` takes as the meter: Alert. More than six
+blasts also set manager flag 1. The port does this for stun grenades.

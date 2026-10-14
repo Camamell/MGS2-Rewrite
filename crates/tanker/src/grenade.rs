@@ -116,6 +116,8 @@ fn fly(
         commands.entity(e).try_despawn();
         if g.stun {
             crate::sfx::play(0x41, Some(g.pos));
+            // `blast.c` makes noise 11: soldiers go to Alert a second later.
+            crate::guard::noise(11, g.pos);
             for (b, mut guard) in &mut guards {
                 let head = b.pos + Vec3::Y * 1500.0;
                 let clear = game.collision.as_ref().and_then(|c| c.ray(g.pos, head)).is_none_or(|t| t > 0.97);
