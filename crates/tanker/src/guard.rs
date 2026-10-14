@@ -377,8 +377,8 @@ pub struct Guard {
     pub anim: Anim,
 }
 
-/// A noise Snake made for the guards to hear: where, and how far it carries
-/// (mm): the USP, knocking on a wall.
+/// A shot Snake made for the guards to hear: where, and how far it carries
+/// (mm): the USP.
 #[derive(Resource, Default)]
 pub struct Gunshot(pub Option<(Vec3, f32)>);
 
@@ -1021,7 +1021,7 @@ pub fn think(
         {
             // An unsuppressed shot (noise 10) is heard as an attack: stimulus
             // 0x800, straight to discovery (`FUN_00227520` ->
-            // `FUN_00238f68`); a knock draws a look.
+            // `FUN_00238f68`).
             if range >= GUNSHOT_RANGE {
                 g.last_seen = Some(at);
                 g.state = State::Discovery { timer: 0 };

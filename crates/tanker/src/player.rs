@@ -133,8 +133,6 @@ const ROLL_SPEED: f32 = 624.6 / 52.0 * 60.0;
 const WALL_PRESS: f32 = 0.25;
 /// Sidestep along a wall: motions 57 / 58 travel 453 mm in 48 frames.
 const WALL_STEP_SPEED: f32 = 453.0 / 48.0 * 60.0;
-/// How far a knock on a wall is heard (assumed).
-const KNOCK_RANGE: f32 = 4000.0;
 
 /// Maximum life by difficulty, from `n_title`'s difficulty select
 /// (Very Easy 200, Easy 150, Normal 100, Hard 75, Extreme 50).
@@ -475,11 +473,15 @@ pub fn control(
             p.wall = None;
         } else {
             body.yaw = n.x.atan2(n.y);
-            if keys.just_pressed(KeyCode::Space) {
+            // MGS2_KNOCK_AT=seconds: knock then (testing).
+            static KNOCKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+            let knock_test = std::env::var("MGS2_KNOCK_AT").ok().and_then(|v| v.parse::<f32>().ok()).is_some_and(|t| time.elapsed_secs() >= t)
+                && !KNOCKED.swap(true, std::sync::atomic::Ordering::Relaxed);
+            if keys.just_pressed(KeyCode::Space) || knock_test {
                 body.play_once(if p.crouch { motion::WALL_CROUCH_KNOCK } else { motion::WALL_KNOCK });
-                // Knock sound assumed (0x2b, a sharp knock-like impact).
-                crate::sfx::play(0x2B, Some(body.pos));
-                gunshot.0 = Some((body.pos, KNOCK_RANGE));
+                // The knock's sound and noise come from the motion's sound
+                // event (snake.sar motion 67: sound 55 on the hand, which the
+                // stage's tables make the wall's knock with noise 6).
                 p.busy = 0.8;
                 p.speed = 0.0;
                 return;

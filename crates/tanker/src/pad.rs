@@ -83,9 +83,37 @@ const BUTTONS: [(GamepadButton, &[KeyCode]); 14] = [
 const DEAD: f32 = 0.3;
 const WALK: f32 = 0.7;
 
-pub fn feed(pads: Query<&Gamepad>, mut keys: ResMut<ButtonInput<KeyCode>>, mut held: ResMut<Held>, mut stick: ResMut<Stick>) {
+pub fn feed(
+    pads: Query<&Gamepad>,
+    time: Res<Time<Real>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut held: ResMut<Held>,
+    mut stick: ResMut<Stick>,
+    mut fuzz: Local<(u32, Vec<KeyCode>)>,
+) {
     let mut want: Vec<KeyCode> = Vec::new();
     stick.0 = Vec2::ZERO;
+    // MGS2_FUZZ=seed: random controls, changed every half second (looking
+    // for crashes). Esc and P are left out so runs do not stall.
+    if let Some(seed) = std::env::var("MGS2_FUZZ").ok().and_then(|v| v.parse::<u32>().ok()) {
+        let tick = (time.elapsed_secs() * 2.0) as u32;
+        if tick != fuzz.0 || fuzz.1.is_empty() {
+            fuzz.0 = tick;
+            let mut x = seed.wrapping_mul(0x9E37_79B9) ^ tick.wrapping_mul(0x85EB_CA6B) | 1;
+            let mut next = || {
+                x ^= x << 13;
+                x ^= x >> 17;
+                x ^= x << 5;
+                x
+            };
+            const POOL: [KeyCode; 17] = [
+                KeyCode::KeyW, KeyCode::KeyA, KeyCode::KeyS, KeyCode::KeyD, KeyCode::ShiftLeft, KeyCode::KeyC, KeyCode::Space, KeyCode::KeyF,
+                KeyCode::KeyV, KeyCode::KeyX, KeyCode::KeyZ, KeyCode::KeyG, KeyCode::KeyR, KeyCode::Digit1, KeyCode::Digit2, KeyCode::KeyB, KeyCode::KeyK,
+            ];
+            fuzz.1 = (0..1 + next() % 3).map(|_| POOL[(next() % POOL.len() as u32) as usize]).collect();
+        }
+        want.extend(fuzz.1.iter().copied());
+    }
     let off = DISABLED.load(std::sync::atomic::Ordering::Relaxed) || std::env::var_os("MGS2_NO_PAD").is_some();
     for pad in pads.iter().filter(|_| !off) {
         // MGS2_PAD_LOG=1: what the pad reports (checking a pad's resting state).
