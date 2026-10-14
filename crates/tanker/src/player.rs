@@ -372,10 +372,11 @@ pub fn control(
             } else {
                 crate::bullet::fire_dart(&mut commands, muzzle, f);
                 crate::sfx::play(crate::sfx::M9, Some(body.pos));
-                // The gun code makes noise 5 for a suppressed shot (10
-                // otherwise; the gun's fire routine at 0x33ce..); the M9
-                // is taken to be the suppressed case: the nearest soldier
-                // in earshot comes to look.
+                // A suppressed shot makes noise 5 (an open one 10): the M9 is
+                // made suppressed (w00b `FUN_002c6790` passes 1 to the gun
+                // constructor `FUN_002c6638`, kept at +0x250; the USP's
+                // `FUN_002c68b0` passes 0). The nearest soldier in earshot
+                // comes to look.
                 crate::guard::noise(5, body.pos);
             }
         } else {
