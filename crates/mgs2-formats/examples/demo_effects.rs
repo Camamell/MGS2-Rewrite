@@ -41,6 +41,12 @@ fn main() {
                     if t & 0x7FFF_FFFF == 6
                         && let Some(id) = u32_at(chunk, p + 0x10)
                     {
+                        // DEMO_EFFECT=<id hex>: print that effect's parameters.
+                        if std::env::var("DEMO_EFFECT").ok().and_then(|v| u32::from_str_radix(&v, 16).ok()) == Some(id) && sector < 30000 {
+                            let frame = u32_at(chunk, 8).unwrap_or(0);
+                            let params: Vec<i32> = (0..12).map(|i| u32_at(chunk, p + 0x20 + i * 4).unwrap_or(0) as i32).collect();
+                            println!("sector {sector} frame {frame} once {:?} {params:?}", u32_at(chunk, p + 0x14));
+                        }
                         let e = counts.entry(id).or_default();
                         e.0 += 1;
                         if !e.1.contains(&sector) && e.1.len() < 4 {

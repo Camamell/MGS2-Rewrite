@@ -206,6 +206,8 @@ impl Anim {
 }
 /// A held-up guard turns on Snake after this long without a gun on him.
 const HOLDUP_LOOSE: f32 = 120.0;
+/// Marks a soldier's dog tags (with his route) in `Inventory::taken`.
+const DOG_TAG_KEY: u32 = 0x8000_0000;
 /// Aiming at a held-up guard from the front this long gets his dog tags.
 const TAG_FRAMES: f32 = 120.0;
 /// Hold-ups work within this range (mm).
@@ -845,8 +847,13 @@ pub fn think(
                 let shake = if in_front { shake + frames } else { 0.0 };
                 if shake >= TAG_FRAMES && !g.tagged {
                     g.tagged = true;
-                    *inv.counts.entry(crate::items::DOG_TAGS).or_default() += 1;
-                    inv.message = Some(("Dog Tags".into(), 2.5));
+                    // Each soldier's tags once (the game keeps which tags
+                    // are taken; `-j`'s proc skips a tag already had).
+                    let key = (game.data.name.clone(), DOG_TAG_KEY | g.route as u32);
+                    if inv.taken.insert(key) {
+                        *inv.counts.entry(crate::items::DOG_TAGS).or_default() += 1;
+                        inv.message = Some(("Dog Tags".into(), 2.5));
+                    }
                 }
                 State::HeldUp { loose: 0.0, shake }
             } else if loose + frames > HOLDUP_LOOSE {
