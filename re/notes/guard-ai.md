@@ -258,3 +258,10 @@ footsteps are level 0 (silent) except material 4 in w04a (6), rounds
 striking are 5 (9 on material 3 in w01b / w01c), sound 55 is 6. The port
 dropped its "running is heard" rule for this; the hearing range (3000 mm)
 is still assumed.
+
+Crowd event 3 ("a Marine heard something", `FUN_00224a58`, the member's
+position as `$1..$3`) runs from the member update (w04c 0x225xxx) while its
+state +0x570 has bit 1; in w04a the proc cuts to a camera on the member and
+plays a line. The setter of bit 1 is not found yet (the soldiers' noise
+reader `FUN_00220078` is absent from the holds' resident), so the port does
+not raise it.
