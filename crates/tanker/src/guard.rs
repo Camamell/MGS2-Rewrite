@@ -21,8 +21,7 @@
 //!   4 frames with a 1-in-3 chance to end the burst, reload after 31 shots;
 //!   bullets in `bullet.rs`.
 //!
-//! Simplified for now: one "!" duration for every guard (the action
-//! animation length is not read yet), the reload time,
+//! Simplified for now: the reload time,
 //! close-quarters sub-states, radio reports, body/footprint stimuli (noises
 //! are heard: `noise`), and the evasion search
 //! pattern (guards visit nav nodes around the last known position).
