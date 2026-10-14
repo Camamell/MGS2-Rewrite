@@ -294,3 +294,18 @@ a hit that leaves him under a third of his life sets 0x1000000 and a drop
 falls every 20 frames until life is a third again or a ration is used. A
 soldier who sees either marker group goes to the newest marker in view and
 marks the older ones (`FUN_00240858`); the port follows that way.
+
+## Drops and dog tags (`FUN_00245e08`, `FUN_00245e98`)
+
+The soldier's `-q` and `-a` each list up to four `proc chance` pairs (kept
+at body +0x12b0 / +0x12d0 with a next-index at +0x14 and a count at +0x16).
+`FUN_00245e98(scale, list, pos, flags)` tries the next entry: if
+`rand % 100 < chance * scale` it calls the proc with (map, x, y, z,
+flags & 8, ?, ?, the list's +0x18: the soldier's actor name) and moves on.
+`-q` is tried when he goes down (`FUN_0024ae78` / `FUN_0024b578` hit
+reactions with 0xf, the sleep and knock-out steps `FUN_00261a40` /
+`FUN_00262048`); `-a` when shaken during a hold-up (`FUN_0023acd8`, frame 30
+of action 13) once his tags are gone, else `-j` (+0x12f0: proc plus a tag
+name per difficulty) gives the tags. The w02a procs pick an item box by
+difficulty (Bs16:0x8) and the soldier's name (e.g. `#26539fc`), guarded by
+whether Snake can still take that item.
