@@ -897,6 +897,9 @@ fn main() -> Result<()> {
     // the computer.
     let automated = cli.screenshot.is_some();
     pad::DISABLED.store(automated, std::sync::atomic::Ordering::Relaxed);
+    if automated {
+        TEST_MONITOR.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     let mut app = App::new();
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
         primary_window: Some(Window {
@@ -986,6 +989,7 @@ fn main() -> Result<()> {
     if cli.screenshot.is_none() && !testing {
         app.add_systems(Update, (save::autosave, save::codec_save));
     }
+    app.add_systems(Update, test_monitor);
     app.add_plugins((pad::plugin, pause::plugin, scar::plugin)).add_systems(Update, pad::rumble);
     app.add_plugins(cbox::plugin);
     app.add_plugins(grenade::plugin);
@@ -2281,4 +2285,33 @@ fn motion_sheet(
         *last = Some(n);
         commands.spawn(Screenshot::primary_window()).observe(save_to_disk(std::path::Path::new(&dir).join(format!("{n:03}.png"))));
     }
+}
+/// Set for automated runs: the window moves to a monitor other than the
+/// primary one (`MGS2_MONITOR=n` picks the n-th listed monitor instead).
+static TEST_MONITOR: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Moves an automated run's window onto the second monitor once the
+/// monitors are known (the window's own monitor selection is not honoured
+/// at creation).
+fn test_monitor(
+    monitors: Query<(&bevy::window::Monitor, Has<bevy::window::PrimaryMonitor>)>,
+    mut windows: Query<&mut Window, With<bevy::window::PrimaryWindow>>,
+    mut done: Local<bool>,
+) {
+    if *done || !TEST_MONITOR.load(std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    let list: Vec<_> = monitors.iter().collect();
+    if list.is_empty() {
+        return;
+    }
+    *done = true;
+    let pick = match std::env::var("MGS2_MONITOR").ok().and_then(|v| v.parse::<usize>().ok()) {
+        Some(n) => list.get(n).map(|m| m.0),
+        None => list.iter().find(|m| !m.1).map(|m| m.0),
+    };
+    let (Some(m), Ok(mut w)) = (pick, windows.single_mut()) else { return };
+    let size = IVec2::new(w.resolution.physical_width() as i32, w.resolution.physical_height() as i32);
+    let area = IVec2::new(m.physical_width as i32, m.physical_height as i32);
+    w.position = bevy::window::WindowPosition::At(m.physical_position + ((area - size) / 2).max(IVec2::ZERO));
 }

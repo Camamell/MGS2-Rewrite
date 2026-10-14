@@ -901,6 +901,7 @@ pub fn think(
             && g.level < 2
             && matches!(g.state, State::Patrol | State::Wait(_) | State::Return)
         {
+            info!("guard {} heard a noise at {at:?}", g.route);
             g.state = State::Investigate { target: at, sub: 0, timer: 0 };
         }
 
