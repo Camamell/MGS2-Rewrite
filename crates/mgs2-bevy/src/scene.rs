@@ -24,6 +24,13 @@ pub struct MaterialCache {
 }
 
 pub fn alpha_mode(t: &Texture) -> AlphaMode {
+    use mgs2_formats::tri::Blend;
+    match t.blend {
+        Blend::Add => return AlphaMode::Add,
+        Blend::Subtract => return AlphaMode::Blend,
+        Blend::None => return AlphaMode::Blend,
+        Blend::Normal => {}
+    }
     let (mut cut, mut partial) = (false, false);
     for a in t.rgba.as_chunks::<4>().0.iter().map(|p| p[3]) {
         match a {
@@ -42,10 +49,27 @@ pub fn alpha_mode(t: &Texture) -> AlphaMode {
 }
 
 pub fn image(t: &Texture) -> Image {
+    use mgs2_formats::tri::Blend;
+    let rgba = match t.blend {
+        // `Cd - Cs * As` drawn as black over it with alpha `Cs * As`, which
+        // scales the destination by `1 - Cs * As` (Bevy's multiply mode
+        // tonemaps the source, so it darkens even with white).
+        Blend::Subtract => t
+            .rgba
+            .chunks_exact(4)
+            .flat_map(|p| {
+                let c = (p[0] as u32 + p[1] as u32 + p[2] as u32) / 3;
+                [0, 0, 0, (c * p[3] as u32 / 255) as u8]
+            })
+            .collect(),
+        // Leaves the destination as it is.
+        Blend::None => t.rgba.chunks_exact(4).flat_map(|p| [p[0], p[1], p[2], 0]).collect(),
+        _ => t.rgba.clone(),
+    };
     let mut img = Image::new(
         Extent3d { width: t.width, height: t.height, depth_or_array_layers: 1 },
         TextureDimension::D2,
-        t.rgba.clone(),
+        rgba,
         TextureFormat::Rgba8UnormSrgb,
         RenderAssetUsages::RENDER_WORLD,
     );
@@ -73,6 +97,12 @@ impl MaterialCache {
             Some(t) => StandardMaterial {
                 base_color_texture: Some(images.add(image(t))),
                 alpha_mode: alpha_mode(t),
+                // Subtractive overlays lie on the additive markings they
+                // follow in the model; drawn after them, as the game does.
+                depth_bias: if t.blend == mgs2_formats::tri::Blend::Subtract { 0.01 } else { 0.0 },
+                // Fog would tint what they add or take away (Bevy fogs the
+                // source colour) rather than fade it.
+                fog_enabled: t.blend == mgs2_formats::tri::Blend::Normal,
                 unlit,
                 cull_mode: self.cull,
                 double_sided: self.cull.is_none(),
@@ -176,6 +206,16 @@ pub fn light_meshes(model: &kms::Model, parts: &mut [(u32, Mesh, Part)], lt2: &m
     }
 }
 
+/// Subtractive overlays are drawn as darkening alpha (`image`); the light's
+/// shade is left off them.
+fn unshade_overlays(parts: &mut [(u32, Mesh, Part)], data: &StageData) {
+    for (tex, m, _) in parts.iter_mut() {
+        if data.textures.get(tex).is_some_and(|t| t.blend == mgs2_formats::tri::Blend::Subtract) {
+            m.remove_attribute(Mesh::ATTRIBUTE_COLOR);
+        }
+    }
+}
+
 /// Spawns a model as children of a new entity and returns that entity.
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_model(
@@ -218,6 +258,7 @@ pub fn spawn_model_lit(
     let named = lt2.and_then(|h| data.lights.iter().find(|(x, _)| *x & 0xFF_FFFF == h & 0xFF_FFFF));
     if let Some((_, l)) = named.or(data.lights.first()).filter(|_| std::env::var_os("MGS2_NO_LT2").is_none()) {
         light_meshes(model, &mut parts, l, place);
+        unshade_overlays(&mut parts, data);
     }
     let parent = commands.spawn((root, place, Visibility::default())).id();
     for (tex, mesh, part) in parts {
@@ -249,6 +290,7 @@ pub fn spawn_level(
         let lt2 = piece.lt2.and_then(|h| data.lights.iter().find(|(x, _)| *x == h)).map(|(_, l)| l);
         if let Some(l) = lt2.filter(|_| std::env::var_os("MGS2_NO_LT2").is_none()) {
             light_meshes(model, &mut parts, l, place);
+            unshade_overlays(&mut parts, data);
         }
         let e = commands.spawn((marker.clone(), place, Visibility::default())).id();
         for (tex, mesh, part) in parts {

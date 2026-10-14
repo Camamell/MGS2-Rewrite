@@ -131,7 +131,7 @@ pub fn load(
         .filter(|f| f.type_id == 19)
         .filter_map(|f| mgs2_formats::tri::parse(&f.data).ok())
         .flatten()
-        .map(|t| (t.hash, Texture { width: t.width, height: t.height, rgba: t.rgba }))
+        .map(|t| (t.hash, Texture { width: t.width, height: t.height, rgba: t.rgba, blend: t.blend }))
         .collect();
     let mut mats: HashMap<u32, Handle<StandardMaterial>> = HashMap::new();
     let mut material = |hash: u32, images: &mut Assets<Image>, materials: &mut Assets<StandardMaterial>| {

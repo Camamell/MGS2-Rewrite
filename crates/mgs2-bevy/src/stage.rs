@@ -22,6 +22,7 @@ pub struct Texture {
     pub width: u32,
     pub height: u32,
     pub rgba: Vec<u8>,
+    pub blend: mgs2_formats::tri::Blend,
 }
 
 /// Actor type that places static level geometry:
@@ -139,7 +140,7 @@ pub fn load(disc: &mut Disc, name: &str) -> Result<StageData> {
                     for t in set {
                         data.textures
                             .entry(t.hash)
-                            .or_insert(Texture { width: t.width, height: t.height, rgba: t.rgba });
+                            .or_insert(Texture { width: t.width, height: t.height, rgba: t.rgba, blend: t.blend });
                     }
                 }
                 Err(e) => data.warnings.push(format!("{what}: {e}")),

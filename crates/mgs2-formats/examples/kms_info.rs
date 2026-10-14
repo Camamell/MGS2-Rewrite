@@ -25,7 +25,7 @@ fn main() {
 fn show(m: &kms::Model) {
     println!("origin {:?}, {} objects", m.origin, m.objects.len());
     for (i, o) in m.objects.iter().enumerate() {
-        let verts: Vec<String> = o.meshes.iter().map(|x| format!("{}v tex {:x?}", x.positions.len(), x.textures)).collect();
+        let verts: Vec<String> = o.meshes.iter().map(|x| format!("{}v flags {:#x} tex {:x?}", x.positions.len(), x.flags, x.textures)).collect();
         println!(
             "{i:2}: parent {:2} flags {:#x} offset ({:.0}, {:.0}, {:.0}) bbox {:?} meshes [{}]",
             o.parent,

@@ -16,7 +16,8 @@
 //! ```
 //!
 //! Each entry holds a name hash at +0x10 and, from +0x20, a GIF packet of A+D
-//! register writes (CLAMP_1, TEX2_1, TEX0_1, ALPHA_1). TEX0's TBP0 is relative
+//! register writes (CLAMP_1, TEX2_1, TEX0_1, ALPHA_1; ALPHA_1 gives the
+//! blend, [`Blend`]). TEX0's TBP0 is relative
 //! to the image upload and CBP to the clut upload (which follows the image).
 //! Textures sharing a file are packed into one atlas; CLAMP_1's region clamp
 //! gives each one's rectangle.
@@ -39,6 +40,38 @@ pub struct Texture {
     pub height: u32,
     /// RGBA8, `width * height * 4` bytes, alpha expanded to 0..=255.
     pub rgba: Vec<u8>,
+    /// How it blends with what is drawn (its ALPHA_1).
+    pub blend: Blend,
+}
+
+/// The GS blend an entry's ALPHA_1 sets up, `(A - B) * C + D` with A, B, D
+/// one of source, destination, zero and C source alpha, destination alpha
+/// or a fixed value. In w04a: 326 normal, 11 + 6 additive (floor
+/// markings), 19 subtractive (dark overlays laid over them), 2 that leave
+/// the destination as it is.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Blend {
+    /// `(Cs - Cd) * As + Cd`, and anything not recognised.
+    #[default]
+    Normal,
+    /// `Cs * As + Cd` (or by the destination's alpha).
+    Add,
+    /// `Cd - Cs * As`.
+    Subtract,
+    /// The destination unchanged (`C` fixed at 0).
+    None,
+}
+
+impl Blend {
+    pub fn from_alpha(alpha: u64) -> Blend {
+        let (a, b, c, d, fix) = (alpha & 3, (alpha >> 2) & 3, (alpha >> 4) & 3, (alpha >> 6) & 3, (alpha >> 32) & 0xFF);
+        match (a, b, c, d) {
+            (0, 2, 0 | 1, 1) => Blend::Add,
+            (2, 0, 0, 1) => Blend::Subtract,
+            (_, _, 2, 1) if fix == 0 => Blend::None,
+            _ => Blend::Normal,
+        }
+    }
 }
 
 pub fn parse(data: &[u8]) -> Result<Vec<Texture>> {
@@ -66,12 +99,14 @@ pub fn parse(data: &[u8]) -> Result<Vec<Texture>> {
         let q = |o: usize| u64::from_le_bytes(e[o..o + 8].try_into().unwrap());
         let mut tex0 = None;
         let mut clamp = 0u64;
+        let mut alpha = 0x44u64;
         // A+D pairs follow the GIF tag at +0x20.
         for r in 0..5 {
             let (val, reg) = (q(0x30 + r * 16), q(0x38 + r * 16) & 0xFF);
             match reg {
                 0x06 => tex0 = Some(Tex0::decode(val)),
                 0x08 => clamp = val,
+                0x42 => alpha = val,
                 _ => {}
             }
         }
@@ -108,6 +143,7 @@ pub fn parse(data: &[u8]) -> Result<Vec<Texture>> {
             width: w,
             height: h,
             rgba,
+            blend: Blend::from_alpha(alpha),
         });
     }
     Ok(out)
