@@ -265,3 +265,21 @@ state +0x570 has bit 1; in w04a the proc cuts to a camera on the member and
 plays a line. The setter of bit 1 is not found yet (the soldiers' noise
 reader `FUN_00220078` is absent from the holds' resident), so the port does
 not raise it.
+
+## Stimuli (`FUN_00227520`, C+0x268)
+
+Checks at 0x2307f0..0x2316b0 set the stimulus bits each frame; the
+normal-phase transition picks a state per bit (C+0x32c):
+
+| Bit | Set by | State |
+|---|---|---|
+| 0x1 | heard level 5 / 6 / 8 / 9 (`FUN_00230830` via `FUN_0021e7a8`) | 3, `FUN_002345b0` |
+| 0x200 | heard level 3 (`FUN_002307f0`) | 5 |
+| 0x800 / 0x1000 | heard level 10 / 11 | (later branch) |
+| 0x8000 | a marker in list `DAT_001cccc8` in view (`FUN_002308b0`) | 9 |
+| 0x10000 | a footprint (`foot_print.c`, type 0x12) or blood (`blood_sp.c`, type 10) marker group in view (`FUN_00230948`) | 10 |
+| 0x40 / 0x2000000, 0x2000, 0x4000, 0x20000, 0x40000, 0x200000 / 0x4000000, 0x400000 | 0x230a48, 0x230b40, 0x230dd8, 0x2311f0, 0x2316b0, 0x230c20, 0x231418 | various |
+
+Level 8 is the soldier's own "!" call (`FUN_00237128`), so nearby soldiers
+hear a discovery. Marker groups register through `FUN_00117798`. Which bit
+is a downed body is not identified yet.
