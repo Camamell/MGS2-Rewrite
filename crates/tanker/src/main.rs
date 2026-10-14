@@ -214,6 +214,8 @@ pub struct Game {
     pub over_proc: Option<u32>,
     /// The song the scripts last requested (kept between script runs).
     pub song: i32,
+    /// Actor messages for the props (`PropName`).
+    pub prop_messages: Vec<(u32, u32, Vec<i32>)>,
     /// Item boxes a script event created (a soldier's drop), to place.
     pub new_items: Vec<gcl::Spawn>,
     /// Places of actors the port does not run, for the script (`#c1eb06`).
@@ -353,7 +355,14 @@ struct Prop {
     no_fog: bool,
     /// The lt2 lighting it names (`-l`, scenery only).
     lt2: Option<u32>,
+    /// Its actor name, for the script's messages.
+    name: u32,
 }
+
+/// A prop's actor name: `putobj.c` takes messages 0 hide, 1 show, 2 turn
+/// to x y z (4096ths), 3 move to x y z, 5 remove (`FUN_0022e798`).
+#[derive(Component)]
+struct PropName(u32);
 
 const PROP_ACTORS: &[u32] = &[0x7A8EC1, 0xD1279A, 0xCBA568];
 const SLIDING_DOOR: u32 = 0x55B942;
@@ -374,7 +383,7 @@ fn door_props(s: &gcl::Spawn, data: &StageData) -> Vec<Prop> {
         .filter_map(|m| {
             let hash = m.int()? as u32 & 0x00FF_FFFF;
             let model = data.models.iter().position(|(h, _)| *h & 0x00FF_FFFF == hash)?;
-            Some(Prop { model, transform, no_fog: false, lt2: None })
+            Some(Prop { model, transform, no_fog: false, lt2: None, name: 0 })
         })
         .collect()
 }
@@ -401,7 +410,7 @@ fn sliding_door(s: &gcl::Spawn, data: &StageData) -> Option<(Prop, SlidingDoor)>
         scale: Vec3::ONE,
     };
     let width = s.opt_int(b's', 0).filter(|w| *w > 0).unwrap_or(1000) as f32 * SCALE;
-    Some((Prop { model, transform, no_fog: false, lt2: None }, SlidingDoor { closed: transform, slide: transform.rotation * Vec3::X * width, open: 0.0 }))
+    Some((Prop { model, transform, no_fog: false, lt2: None, name: 0 }, SlidingDoor { closed: transform, slide: transform.rotation * Vec3::X * width, open: 0.0 }))
 }
 
 /// Sliding doors open for anyone within 2 m and close again after.
@@ -442,6 +451,7 @@ fn skyline(s: &gcl::Spawn, data: &StageData) -> Vec<Prop> {
             transform: Transform::from_translation(Vec3::new(*x, y, 0.0) * SKYLINE_SCALE * SCALE).with_scale(Vec3::splat(SKYLINE_SCALE)),
             no_fog: true,
             lt2: None,
+            name: 0,
         })
         .collect()
 }
@@ -468,7 +478,8 @@ fn prop(s: &gcl::Spawn, data: &StageData) -> Option<Prop> {
         Some(v) if s.kind == 0x7A8EC1 => v.int().map(|h| h as u32),
         _ => None,
     };
-    Some(Prop { model, transform, no_fog: false, lt2 })
+    let name = s.args.first().and_then(|v| v.int()).map_or(0, |n| n as u32 & 0x00FF_FFFF);
+    Some(Prop { model, transform, no_fog: false, lt2, name })
 }
 
 /// A stage ready to be put into the world.
@@ -752,6 +763,7 @@ fn prepare(
         over_proc: None,
         song,
         new_items: Vec::new(),
+        prop_messages: Vec::new(),
         places,
         continue_proc: None,
         death_voice: None,
@@ -1035,7 +1047,7 @@ fn main() -> Result<()> {
         .add_systems(Startup, photo::setup_hud)
         .add_systems(
             Update,
-            (photo::control.before(player::control), photo::view.after(player::follow_camera), codec_followup.after(codec::input), speech, holds_timer, guard_drops.after(guard::think), new_items.after(guard_drops), reinforcements.after(guard::think), snake_vars, crowd_watch.after(snake_vars))
+            (photo::control.before(player::control), photo::view.after(player::follow_camera), codec_followup.after(codec::input), speech, holds_timer, guard_drops.after(guard::think), new_items.after(guard_drops), prop_messages, reinforcements.after(guard::think), snake_vars, crowd_watch.after(snake_vars))
                 .run_if(codec::idle)
                 .run_if(demo::idle),
         )
@@ -1143,7 +1155,7 @@ fn spawn_level(
         } else {
             scene::spawn_model_lit(&mut commands, model, data, &mut cache, &mut meshes, &mut images, &mut materials, unlit, LevelEntity, p.transform, p.lt2)
         };
-        commands.entity(e).insert(p.transform);
+        commands.entity(e).insert((p.transform, PropName(p.name)));
         if p.no_fog {
             commands.entity(e).insert(fog::NoFog);
         }
@@ -1634,6 +1646,7 @@ fn apply_codec(game: &mut Game, reqs: &[gcl::CodecReq]) {
                 if let Some(col) = game.collision.as_mut() {
                     col.script_wall_message(target, code, &args);
                 }
+                game.prop_messages.push((target, code, args));
             }
             CodecReq::OverProcs { over, cont } => {
                 game.over_proc = over;
@@ -1836,6 +1849,29 @@ fn guard_drops(mut commands: Commands, session: Res<Session>, mut game: ResMut<G
     for (proc, args) in due {
         info!("soldier drop: running {proc:#x}");
         script_event(&mut commands, &session, &mut game, |vm| vm.call_proc(proc, &args), &level, &bullets);
+    }
+}
+
+/// Applies the script's messages to the props (`FUN_0022e798`).
+fn prop_messages(mut commands: Commands, mut game: ResMut<Game>, mut props: Query<(Entity, &PropName, &mut Transform, &mut Visibility)>) {
+    if game.prop_messages.is_empty() {
+        return;
+    }
+    for (target, code, args) in std::mem::take(&mut game.prop_messages) {
+        for (e, _, mut t, mut vis) in props.iter_mut().filter(|p| p.1.0 == target) {
+            let v = |i: usize| args.get(i).copied().unwrap_or(0) as f32;
+            match code {
+                0 => *vis = Visibility::Hidden,
+                1 => *vis = Visibility::Inherited,
+                2 if args.len() >= 3 => {
+                    let a = |i| v(i) / 4096.0 * std::f32::consts::TAU;
+                    t.rotation = Quat::from_euler(EulerRot::YXZ, a(1), a(0), a(2));
+                }
+                3 if args.len() >= 3 => t.translation = Vec3::new(v(0), v(1), v(2)) * SCALE,
+                5 => commands.entity(e).despawn(),
+                _ => {}
+            }
+        }
     }
 }
 
