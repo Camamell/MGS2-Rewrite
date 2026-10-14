@@ -244,6 +244,19 @@ const RESIST: i32 = 3000;
 /// w00a passes 4000, later stages As16:0x1c2.
 const HEARING: f32 = 12000.0;
 
+/// A soldier's line (`id` + his voice), through the game's queue
+/// (`FUN_0021c620`): it plays at once, and no other queued line plays in
+/// the next 30 frames.
+pub fn say(id: u32, g: &Guard, at: Vec3) {
+    static LAST: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+    let Ok(mut last) = LAST.lock() else { return };
+    if last.is_some_and(|t| t.elapsed().as_secs_f32() < 0.5) {
+        return;
+    }
+    *last = Some(std::time::Instant::now());
+    crate::sfx::play(id + g.voice(), Some(at));
+}
+
 /// The holds' Marines are not soldiers (their crowd actor has its own
 /// "heard something" event, not ported); their range is assumed.
 const MARINE_HEARING: f32 = 3000.0;
@@ -1102,7 +1115,7 @@ fn normal_brain(g: &mut Guard, body: &mut Body, snake: Vec3, dt: f32, ticks: u32
                     // 120 frames after arriving: "?" and line 0x144 (w00a
                     // `FUN_0023c370`, not during Evasion).
                     if before < 120 && timer >= 120 {
-                        crate::sfx::play(0x144 + g.voice(), Some(body.pos));
+                        say(0x144, g, body.pos);
                     }
                     if timer > 300 {
                         g.last_seen = None;

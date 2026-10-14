@@ -157,7 +157,7 @@ fn update(
                 _ => None,
             };
             if let Some(base) = base {
-                crate::sfx::play(base + g.voice(), Some(b.pos));
+                crate::guard::say(base, g, b.pos);
             }
             if want == Some(Kind::Exclaim) {
                 crate::sfx::play(0x53, Some(b.pos));
