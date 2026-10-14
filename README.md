@@ -120,7 +120,9 @@ What works:
   Damage follows the game's numbers: guards have life by difficulty and hit
   zones (a head shot kills, three body hits, limb wounds), darts drain their
   resistance until they drop (head at once, body about 8 s on Normal),
-  blows wear down their stamina, and they sleep 5 minutes or stay knocked
+  blows wear down their stamina, they drop the items the stage gives them
+  when they go down or are shaken after their tags (`-q` / `-a`, at the
+  script's chances), and they sleep 5 minutes or stay knocked
   out 30 s before getting up. Guards who find a sleeping comrade wake him
   and raise caution. An alert brings in the stage's reinforcements (its
   own script proc), who leave again once the alert is over.

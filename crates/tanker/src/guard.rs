@@ -206,6 +206,36 @@ impl Anim {
 }
 /// A held-up guard turns on Snake after this long without a gun on him.
 const HOLDUP_LOOSE: f32 = 120.0;
+/// A soldier's drop list: `-q` / `-a` (proc, chance) pairs.
+fn drop_list(s: &Spawn, letter: u8) -> Vec<(u32, i32)> {
+    s.opt(letter)
+        .unwrap_or(&[])
+        .chunks_exact(2)
+        .take(4)
+        .filter_map(|c| match (&c[0], c[1].int()) {
+            (crate::gcl::Val::Proc(p), Some(chance)) => Some((*p, chance)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Drop procs to run: (proc, arguments) (`FUN_00245e98`: map, x y z, flag,
+/// 0, 0, the soldier's name).
+pub static DROPS: std::sync::Mutex<Vec<(u32, Vec<i32>)>> = std::sync::Mutex::new(Vec::new());
+
+/// Tries the soldier's next drop from list `which` (0 `-q`, 1 `-a`) at
+/// `scale` times its chance (`FUN_00245e98`).
+fn try_drop(g: &mut Guard, which: usize, scale: f32, at: Vec3, rng: &mut Rng) {
+    let Some(&(proc, chance)) = g.drops[which].get(g.dropped[which]) else { return };
+    if (rng.next() % 100) as f32 >= chance as f32 * scale {
+        return;
+    }
+    g.dropped[which] += 1;
+    if let Ok(mut q) = DROPS.lock() {
+        q.push((proc, vec![0, at.x as i32, at.y as i32, at.z as i32, 0, 0, 0, g.name]));
+    }
+}
+
 /// Marks a soldier's dog tags (with his route) in `Inventory::taken`.
 const DOG_TAG_KEY: u32 = 0x8000_0000;
 /// Aiming at a held-up guard from the front this long gets his dog tags.
@@ -329,6 +359,13 @@ pub struct Guard {
     pub post: Option<Vec3>,
     /// Has given up his dog tags.
     pub tagged: bool,
+    /// What he drops (`-q` when he goes down, `-a` when shaken down after
+    /// his tags; `FUN_00245e08`): up to four (proc, chance %), used in
+    /// order, and how many of each list have dropped.
+    pub drops: [Vec<(u32, i32)>; 2],
+    pub dropped: [usize; 2],
+    /// His actor name (the drop procs pick the item by it).
+    pub name: i32,
     pub anim: Anim,
 }
 
@@ -403,6 +440,9 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         stuck: 0.0,
         post: post_at,
         tagged: false,
+        drops: [drop_list(s, b'q'), drop_list(s, b'a')],
+        dropped: [0, 0],
+        name: s.args.first().and_then(crate::gcl::Val::int).unwrap_or(0),
         anim: Anim::SOLDIER,
     };
     Some((guard, pos))
@@ -435,6 +475,9 @@ pub fn patrol(route: usize, vision: f32, anim: Anim) -> Guard {
         stuck: 0.0,
         post: None,
         tagged: false,
+        drops: [Vec::new(), Vec::new()],
+        dropped: [0, 0],
+        name: 0,
         anim,
     }
 }
@@ -719,6 +762,7 @@ pub fn think(
     snake: Query<(&Body, &Player), Without<Guard>>,
     mut guards: Query<(Entity, &mut Guard, &mut Body)>,
     mut clock: Local<f32>,
+    mut down: Local<std::collections::HashSet<Entity>>,
 ) {
     // The game's logic runs once per 60 Hz frame; counters advance by the
     // whole frames elapsed (movement uses the real time step).
@@ -762,6 +806,15 @@ pub fn think(
         g.drowse(ticks, difficulty);
         if !was_down && g.asleep() {
             crate::sfx::play(crate::sfx::GUARD_ASLEEP + g.voice(), Some(body.pos));
+        }
+        // Going down (asleep, knocked out or killed) drops his `-q` item
+        // (`FUN_00261a40` / `FUN_00262048` / `FUN_0024ae78`).
+        if g.asleep() {
+            if down.insert(me) {
+                try_drop(&mut g, 0, 1.0, body.pos, &mut rng);
+            }
+        } else {
+            down.remove(&me);
         }
         if let State::Dead { timer } = g.state {
             g.level = 0;
@@ -845,6 +898,11 @@ pub fn think(
             let in_front = (-to_guard).normalize_or_zero().angle_to(Vec2::new(guard_fwd.x, guard_fwd.z)).abs() < 1.0;
             g.state = if covered {
                 let shake = if in_front { shake + frames } else { 0.0 };
+                // Each further shake after his tags: his `-a` item
+                // (`FUN_0023acd8`).
+                if g.tagged && (shake / TAG_FRAMES).floor() > ((shake - frames) / TAG_FRAMES).floor() {
+                    try_drop(&mut g, 1, 1.0, body.pos, &mut rng);
+                }
                 if shake >= TAG_FRAMES && !g.tagged {
                     g.tagged = true;
                     // Each soldier's tags once (the game keeps which tags

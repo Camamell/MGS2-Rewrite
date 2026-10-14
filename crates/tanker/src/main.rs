@@ -214,6 +214,8 @@ pub struct Game {
     pub over_proc: Option<u32>,
     /// The song the scripts last requested (kept between script runs).
     pub song: i32,
+    /// Item boxes a script event created (a soldier's drop), to place.
+    pub new_items: Vec<gcl::Spawn>,
     /// Places of actors the port does not run, for the script (`#c1eb06`).
     pub places: HashMap<u32, [i32; 3]>,
     pub continue_proc: Option<u32>,
@@ -748,6 +750,7 @@ fn prepare(
         disabled: 0,
         over_proc: None,
         song,
+        new_items: Vec::new(),
         places,
         continue_proc: None,
         death_voice: None,
@@ -1031,7 +1034,7 @@ fn main() -> Result<()> {
         .add_systems(Startup, photo::setup_hud)
         .add_systems(
             Update,
-            (photo::control.before(player::control), photo::view.after(player::follow_camera), codec_followup.after(codec::input), speech, holds_timer, reinforcements.after(guard::think), snake_vars, crowd_watch.after(snake_vars))
+            (photo::control.before(player::control), photo::view.after(player::follow_camera), codec_followup.after(codec::input), speech, holds_timer, guard_drops.after(guard::think), new_items.after(guard_drops), reinforcements.after(guard::think), snake_vars, crowd_watch.after(snake_vars))
                 .run_if(codec::idle)
                 .run_if(demo::idle),
         )
@@ -1302,6 +1305,7 @@ fn script_event(
         add_script_walls(col, &spawns);
     }
     apply_codec(game, &codec);
+    game.new_items.extend(spawns.iter().filter(|s| s.kind == items::ITEM_ACTOR).cloned());
     game.arrivals.extend(spawns.into_iter().filter(|s| s.kind == guard::TROOPER_ACTOR).map(|s| (s, TROOPER_DELAY)));
     let Some(mut next) = load else {
         game.banks = banks;
@@ -1821,6 +1825,41 @@ fn speech(
     if let Some(p) = then {
         info!("speech {id:#x} over: running {p:#x}");
         script_event(&mut commands, &session, &mut game, |vm| vm.call_proc(p, &[0]), &level, &bullets);
+    }
+}
+
+/// Runs the drop procs soldiers queued (`guard::DROPS`): they create the
+/// item boxes.
+fn guard_drops(mut commands: Commands, session: Res<Session>, mut game: ResMut<Game>, level: LevelRoots, bullets: Query<Entity, With<bullet::Bullet>>) {
+    let due: Vec<(u32, Vec<i32>)> = guard::DROPS.lock().map(|mut q| std::mem::take(&mut *q)).unwrap_or_default();
+    for (proc, args) in due {
+        info!("soldier drop: running {proc:#x}");
+        script_event(&mut commands, &session, &mut game, |vm| vm.call_proc(proc, &args), &level, &bullets);
+    }
+}
+
+/// Places item boxes created after the stage was set up.
+fn new_items(
+    mut commands: Commands,
+    session: Res<Session>,
+    mut game: ResMut<Game>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut images: ResMut<Assets<Image>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    if game.new_items.is_empty() {
+        return;
+    }
+    let spawns = std::mem::take(&mut game.new_items);
+    let data = &game.data;
+    let mut cache = MaterialCache { cull: session.cull, ..default() };
+    for (item, model) in spawns.iter().filter_map(items::Item::from_spawn) {
+        // (Every drop box has the same name, so taken ones do not count.)
+        let Some(model) = data.models.iter().position(|(h, _)| *h & 0x00FF_FFFF == model) else { continue };
+        info!("item box placed at {}", item.pos);
+        let at = Transform::from_translation(item.pos * SCALE);
+        let e = scene::spawn_model_lit(&mut commands, &data.models[model].1, data, &mut cache, &mut meshes, &mut images, &mut materials, true, LevelEntity, at, None);
+        commands.entity(e).insert((at, item));
     }
 }
 
