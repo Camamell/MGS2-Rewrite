@@ -1558,6 +1558,40 @@ pub fn draw(game: Res<Game>, guards: Query<(&Guard, &Body)>, mut gizmos: Gizmos)
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gcl::Val;
+
+    #[test]
+    fn drops_follow_their_list() {
+        let s = Spawn {
+            kind: GUARD_ACTOR,
+            args: vec![Val::Int(0x26539FC)],
+            options: vec![(b'r', vec![Val::Int(3)]), (b'q', vec![Val::Proc(0x10), Val::Int(100), Val::Proc(0x11), Val::Int(0)])],
+        };
+        let (mut g, _) = from_spawn(&s, 6000.0).unwrap();
+        assert_eq!(g.drops[0], vec![(0x10, 100), (0x11, 0)]);
+        assert!(g.drops[1].is_empty());
+        assert_eq!(g.name, 0x26539FC);
+        let mut rng = Rng(12345);
+        DROPS.lock().unwrap().clear();
+        // A sure drop runs and moves on; a 0% one never does.
+        try_drop(&mut g, 0, 1.0, Vec3::ZERO, &mut rng);
+        try_drop(&mut g, 0, 1.0, Vec3::ZERO, &mut rng);
+        try_drop(&mut g, 0, 1.0, Vec3::ZERO, &mut rng);
+        assert_eq!(g.dropped[0], 1);
+        let q = DROPS.lock().unwrap().clone();
+        assert_eq!(q.len(), 1);
+        assert_eq!((q[0].0, q[0].1[7]), (0x10, 0x26539FC));
+    }
+
+    #[test]
+    fn loudest_noise_wins() {
+        NOISE.lock().unwrap().take();
+        noise(5, Vec3::X);
+        noise(6, Vec3::Y);
+        noise(5, Vec3::Z);
+        noise(0, Vec3::ONE);
+        assert_eq!(NOISE.lock().unwrap().take(), Some((6, Vec3::Y)));
+    }
 
     #[test]
     fn darts_follow_the_game_drain() {
