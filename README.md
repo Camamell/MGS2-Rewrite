@@ -218,12 +218,6 @@ the reload pause and where on the body a round or dart lands (hit zones by heigh
 camera is always available, a photo goes to the first empty album slot (else
 over the worst one).
 
-## Known issues
-
-- In the holds (w04a) the painted "W04B-1" floor marking sometimes renders
-  solid black (about one run in three, with either weapon); not tracked down
-  yet (it is not z-fighting: a depth bias did not change it).
-
 ## Viewer
 
 ```bash
