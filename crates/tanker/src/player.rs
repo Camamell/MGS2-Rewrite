@@ -417,6 +417,14 @@ pub fn control(
     };
     let right = Vec2::new(-fwd.y, fwd.x);
     let mut dir = (fwd * input.y + right * input.x).normalize_or_zero();
+    // MGS2_WALK_DIR=angle (4096 = full turn, 0 = +z): the auto-walk heads
+    // that way instead of up the screen (testing).
+    if auto.as_ref().is_some_and(|a| (a.from..a.from + a.seconds).contains(&time.elapsed_secs()))
+        && let Some(a) = std::env::var("MGS2_WALK_DIR").ok().and_then(|v| v.parse::<f32>().ok())
+    {
+        let yaw = a / 4096.0 * std::f32::consts::TAU;
+        dir = Vec2::new(yaw.sin(), yaw.cos());
+    }
     // Walking in through a door: straight ahead, no control yet.
     let entering = game.entrance > 0.0;
     let walking = walking || entering;
@@ -618,7 +626,8 @@ pub fn follow_camera(
     }
     let target = b.pos * SCALE + Vec3::Y * 0.9;
     let manual = buttons.pressed(MouseButton::Right) || keys.pressed(KeyCode::KeyQ) || keys.pressed(KeyCode::KeyE);
-    if keys.just_pressed(KeyCode::F3) {
+    // MGS2_FOLLOW_CAM=1: start on the follow camera (testing).
+    if keys.just_pressed(KeyCode::F3) || (std::env::var_os("MGS2_FOLLOW_CAM").is_some() && c.scripted && time.elapsed_secs() < 0.5) {
         c.scripted = !c.scripted;
     }
     // The stage's own camera for this area, eased into.

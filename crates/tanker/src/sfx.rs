@@ -113,6 +113,9 @@ pub fn motion_sounds(
                     let d = Quat::from_rotation_y(body.yaw) * Vec3::from(m.translation);
                     body.pos + Vec3::new(d.x, 0.0, d.z)
                 });
+            if player.is_some() {
+                crate::footprint::step(at, body.yaw);
+            }
             if let Some((id, noise)) = game.motion_sound(table, ev.sound, material) {
                 play(id, Some(at));
                 crate::guard::noise(noise, at);

@@ -19,6 +19,7 @@ mod sea;
 mod sfx;
 mod timer;
 mod fog;
+mod footprint;
 mod fpv;
 mod gcl;
 mod grenade;
@@ -990,7 +991,7 @@ fn main() -> Result<()> {
         app.add_systems(Update, (save::autosave, save::codec_save));
     }
     app.add_systems(Update, test_monitor);
-    app.add_plugins((pad::plugin, pause::plugin, scar::plugin)).add_systems(Update, pad::rumble);
+    app.add_plugins((pad::plugin, pause::plugin, scar::plugin, footprint::plugin)).add_systems(Update, pad::rumble);
     app.add_plugins(cbox::plugin);
     app.add_plugins(grenade::plugin);
     app.add_systems(Update, motion_sheet.after(player::control).before(body::skin));

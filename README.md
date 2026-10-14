@@ -152,6 +152,9 @@ What works:
 - A game-style HUD: LIFE gauge (and the boss's) top left, weapon box bottom
   right, item box bottom left, prompts at the bottom, the holds' timer top
   centre.
+- Wet footprints for 50 s after Snake steps out of the stages' wet areas
+  (`foot_print.c`; the doorways in from the rain in w01a, w01b, w01e; the
+  prints' look is assumed and soldiers do not follow them yet).
 - Character shadows: Snake's own shadow model (`sna_shadow`), others their
   body, posed with the body and flattened onto the floor (the game draws a
   shadow volume; here straight down, assumed).
