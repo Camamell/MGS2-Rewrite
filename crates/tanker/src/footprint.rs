@@ -73,8 +73,10 @@ const DROP_RADIUS: f32 = 70.0;
 #[derive(Resource, Default)]
 struct Blood {
     count: f32,
-    /// Frames toward the next point of life lost (`FUN_0026b650` +0xf74).
+    /// Frames toward the next point of life lost (`FUN_0026b650` +0xf74)
+    /// and gained (+0xf72).
     drain: f32,
+    regen: f32,
     drops: Vec<Entity>,
     assets: Option<(Handle<Mesh>, Handle<StandardMaterial>)>,
 }
@@ -102,6 +104,21 @@ fn bleed(
         p.life = l.clamp(1, p.max_life);
         p.bleeding = p.life < p.max_life / 3;
     }
+    p.since_hit += time.delta_secs();
+    // Keeping still (the idle states set +0xa68 bit 0x20000000) under a
+    // third of his life, 181 frames after the last hit: two points every
+    // 48 frames instead of the bleeding (`FUN_0026b650`).
+    let still = p.speed < 1.0 && !p.dead() && p.busy <= 0.0;
+    if still && p.life < p.max_life / 3 && p.since_hit * 60.0 >= 181.0 {
+        blood.regen += time.delta_secs() * 60.0;
+        if blood.regen >= 48.0 {
+            blood.regen = 0.0;
+            p.life = (p.life + 2).min(p.max_life);
+        }
+        blood.count = DROP_FRAMES;
+        return;
+    }
+    blood.regen = 0.0;
     if p.bleeding && (p.life >= p.max_life / 3 || p.dead()) {
         p.bleeding = false;
     }

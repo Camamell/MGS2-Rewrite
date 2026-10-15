@@ -159,7 +159,7 @@ What works:
   centre.
 - Wet footprints for 50 s after Snake steps out of the stages' wet areas
   (`foot_print.c`; the doorways in from the rain in w01a, w01b, w01e; the
-  prints' look is assumed), and blood drops (and a point of life every 3 s) while Snake is under a third of
+  prints' look is assumed), and blood drops (and a point of life every 3 s; keeping still instead wins back two points every 0.8 s) while Snake is under a third of
   his life after a hit (`blood_dp.c`); a soldier who sees either follows the
   trail.
 - The USP's light: a pool of light where Snake aims it (look assumed).

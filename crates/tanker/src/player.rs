@@ -103,6 +103,9 @@ pub struct Player {
     pub rations: u32,
     /// Seconds of hit flash left.
     pub hurt: f32,
+    /// Seconds since the last damage (`FUN_0026b650` compares the frame
+    /// clock with +0xfa8).
+    pub since_hit: f32,
     pub very_easy: bool,
     /// Holding the M9 up.
     pub aiming: bool,
@@ -178,6 +181,7 @@ impl Player {
             self.bleeding = true;
         }
         self.hurt = 0.25;
+        self.since_hit = 0.0;
         crate::sfx::play(crate::sfx::HURT, None);
         if self.life <= 0 && self.rations > 0 {
             self.rations -= 1;
