@@ -353,6 +353,9 @@ struct Cast {
     bosses: Vec<(usize, Option<usize>, Vec3, f32, Option<u32>)>,
     /// `putmodel.c` models: (model, motions, place, facing, motion).
     posed: Vec<(usize, Option<usize>, Vec3, f32, usize, u32)>,
+    /// `#de0402` attachments: (owner's actor name, model, joint, offset mm,
+    /// rotation).
+    attached: Vec<(u32, usize, usize, Vec3, Quat)>,
     /// Marines in formation: (model, motions, position, facing, idle, head
     /// accessory models).
     crowd: Vec<(usize, Option<usize>, Vec3, f32, i32, Vec<usize>, i32)>,
@@ -484,6 +487,9 @@ const SKYLINE_SCALE: f32 = 6.0;
 /// `-m model -r rx ry rz -p x y z -l lt2` group each. Drawn only (their
 /// collision and being shot apart are not ported).
 const ORGA_OBJ: u32 = 0x4FB2CA;
+
+/// `#de0402`: a model attached to another actor's joint.
+const ATTACHMENT: u32 = 0xDE0402;
 
 /// `putmodel.c` actor.
 const PUTMODEL: u32 = 0x72F23C;
@@ -661,6 +667,7 @@ fn prepare(
     let mut sliding = Vec::new();
     let mut bosses = Vec::new();
     let mut posed = Vec::new();
+    let mut attached = Vec::new();
     let mut crowd = Vec::new();
     let mut on_alert = None;
     let mut rain_spec = None;
@@ -759,6 +766,17 @@ fn prepare(
             let motion = s.opt_int(b'n', 0).unwrap_or(0).max(0) as usize;
             let name = s.args.first().and_then(|v| v.int()).map_or(0, |n| n as u32 & 0x00FF_FFFF);
             posed.push((model, motions, Vec3::new(v(0), v(1), v(2)), yaw, motion, name));
+        }
+        // `#de0402 <name> -n model -y owner -z joint -x x y z -r rx ry rz`:
+        // a model held on another actor's joint (Olga's hood, radio and
+        // holster in w01e).
+        for s in vm.spawns.iter().filter(|s| s.kind == ATTACHMENT) {
+            let hash = |l: u8| s.opt(l).and_then(|v| v.first()).and_then(|v| v.int()).map(|h| h as u32 & 0x00FF_FFFF);
+            let (Some(model), Some(owner)) = (hash(b'n').and_then(|h| data.models.iter().position(|(m, _)| *m & 0x00FF_FFFF == h)), hash(b'y')) else { continue };
+            let v = |l: u8, i: usize| s.opt_int(l, i).unwrap_or(0) as f32;
+            let a = |i: usize| v(b'r', i) / 4096.0 * std::f32::consts::TAU;
+            let rot = Quat::from_euler(EulerRot::YXZ, a(1), a(0), a(2));
+            attached.push((owner, model, v(b'z', 0) as usize, Vec3::new(v(b'x', 0), v(b'x', 1), v(b'x', 2)), rot));
         }
         let crates: Vec<Prop> = vm.spawns.iter().filter(|s| s.kind == ORGA_OBJ).flat_map(|s| orga_objects(s, &data)).collect();
         // The crates stop Snake: a wall round each model's bounds (an
@@ -951,7 +969,7 @@ fn prepare(
     } else {
         game.entrance_done();
     }
-    Ok(Level { game, phase, cast: Cast { snake, guards, props, items, sliding, bosses, crowd, posed } })
+    Ok(Level { game, phase, cast: Cast { snake, guards, props, items, sliding, bosses, crowd, posed, attached } })
 }
 
 fn main() -> Result<()> {
@@ -1369,6 +1387,9 @@ fn spawn_level(
         b.motion = motion;
         let e = spawn(&mut commands, model, b);
         commands.entity(e).insert(Posed { name, playing: false });
+        for (_, m, joint, offset, rot) in cast.attached.iter().filter(|a| a.0 == name) {
+            weapons.push((e, *m, false, *rot, *joint, *offset));
+        }
     }
     for (model, motions, pos, yaw, on_down) in cast.bosses {
         let e = spawn(&mut commands, model, Body::new(pos, yaw, model, motions));
