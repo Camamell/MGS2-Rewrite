@@ -2141,7 +2141,11 @@ fn crowd_heads(time: Res<Time>, mut game: ResMut<Game>, mut marines: Query<&mut 
         crowd::message(&mut game.crowd_head, n);
     }
     let turn = game.crowd_head.step(time.delta_secs() * 60.0);
+    let attention = game.crowd_head.attention;
     for mut m in &mut marines {
+        if attention && m.motion != crowd::ATTENTION {
+            m.play_once(crowd::ATTENTION);
+        }
         if m.turn != turn {
             m.turn = turn;
         }

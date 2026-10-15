@@ -237,11 +237,21 @@ pub fn model_name(variant: i32) -> &'static str {
 pub struct Head {
     target: [f32; 2],
     now: [f32; 2],
+    /// A head message came: the members come to attention first
+    /// (`FUN_00226280`: ushold motion 0x15, then the turn).
+    pub attention: bool,
 }
+
+/// The `ushold` motion members play on modes 10-14 before turning their
+/// heads.
+pub const ATTENTION: usize = 0x15;
 
 pub const HEAD_JOINT: usize = 12;
 
 pub fn message(h: &mut Head, code: u32) {
+    if (11..=15).contains(&code) {
+        h.attention = true;
+    }
     match code {
         11 => h.target[0] = -900.0,
         12 => h.target[0] = 900.0,
