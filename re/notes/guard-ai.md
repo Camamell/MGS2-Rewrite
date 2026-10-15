@@ -137,7 +137,10 @@ Shooting (`FUN_00228710` / `FUN_00228F80`): a guard aims (action 4) when
 he sees Snake (+0x18E level 3) or Snake is within 0x5dd mm (+0x188), and
 `FUN_002285b0` agrees (only when DAT_001ecd40 bit 35 is set: Snake must be
 within ±0x400 of facing him); within 1000 mm and seen it switches to
-sub-state 6 instead (close quarters). Each shot is action 6. Aim for 21 frames, then fire
+sub-state 6 instead (close quarters: alert action 5 or 9 when +0xf16 & 1,
+table `FUN_002281e8`: `FUN_0025f810` with motion 0x55 / `FUN_0025fa48` 0xf3;
+for 0x55 a hit box on joint 20 (`FUN_00254248`) rides frames 2-5; when the
+motion ends, back to sub-state 3. Ported with an assumed 15 damage). Each shot is action 6. Aim for 21 frames, then fire
 every 4 frames with a 1-in-3 chance to stop after each shot; reload after
 31 shots.
 
@@ -213,7 +216,7 @@ facing).
 
 ## Not yet ported
 
-- close-quarters sub-states, radio reports; the troopers' own brain;
+- radio reports; the troopers' own brain; the strike's real damage;
 - the game's precomputed shortest-path matrices in the `.hzx` (paths are
   recomputed from the node links instead).
 

@@ -231,6 +231,11 @@ pub fn control(
     mut q: Query<(&mut Player, &mut Body)>,
 ) {
     let Ok((mut p, mut body)) = q.single_mut() else { return };
+    // A soldier's rifle butt (`guard.rs` close quarters).
+    let struck = crate::guard::STRIKES.swap(0, std::sync::atomic::Ordering::Relaxed);
+    if struck > 0 && !p.dead() {
+        p.damage(struck);
+    }
     let Ok(cam_tf) = cam.single() else { return };
     let dt = time.delta_secs().min(0.05);
     p.hurt = (p.hurt - dt).max(0.0);

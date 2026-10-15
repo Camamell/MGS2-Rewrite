@@ -21,8 +21,10 @@
 //!   4 frames with a 1-in-3 chance to end the burst, reload after 31 shots;
 //!   bullets in `bullet.rs`.
 //!
-//! Simplified for now: the reload time,
-//! close-quarters sub-states, radio reports, body stimuli (noises are
+//! - close quarters: within 1 m and in sight, the rifle butt (motion 0x55;
+//!   its damage is assumed).
+//!
+//! Simplified for now: the reload time, radio reports, body stimuli (noises are
 //! heard: `noise`; footprints and blood are followed), and the evasion search
 //! pattern (guards visit nav nodes around the last known position).
 
@@ -401,7 +403,23 @@ struct Attack {
     firing: bool,
     shots: u32,
     reload: f32,
+    /// Frames into a rifle-butt strike, and whether it has landed.
+    strike: Option<(f32, bool)>,
 }
+
+/// Close quarters (`FUN_00228710` sub-state 6, `FUN_00229b90`): Snake
+/// seen within this (mm) gets the rifle butt instead of a burst: alert
+/// action 5 (`FUN_002281e8` -> `FUN_0025f810`), motion 0x55, whose hit box
+/// rides joint 20 on frames 2-5 (`FUN_00254248`).
+const STRIKE_RANGE: f32 = 1000.0;
+const STRIKE_MOTION: usize = 0x55;
+/// What a strike takes from Snake (the hit's damage is not read yet;
+/// assumed) and the reach of its hit box (assumed).
+const STRIKE_DAMAGE: i32 = 15;
+const STRIKE_REACH: f32 = 1100.0;
+
+/// Strikes that landed this frame (damage), taken by the player.
+pub static STRIKES: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
 
 const AIM_FRAMES: f32 = 21.0;
 const SHOT_FRAMES: f32 = 4.0;
@@ -1372,6 +1390,30 @@ fn alert_brain(
         a.reload -= frames;
         body.play(g.anim.idle);
         face(body, target, dt);
+        return false;
+    }
+    // Close quarters: the rifle butt.
+    if let Some((t, landed)) = a.strike {
+        let t = t + frames;
+        body.play_once(STRIKE_MOTION);
+        face(body, snake, dt);
+        let mut landed = landed;
+        if !landed && (2.0..=6.0).contains(&t) && !snake_dead {
+            let to = snake - body.pos;
+            if to.length() < STRIKE_REACH && to.normalize_or_zero().dot(body.forward()) > 0.5 {
+                landed = true;
+                STRIKES.fetch_add(STRIKE_DAMAGE, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+        let length = body.motions.and_then(|m| game.data.motions.get(m)).and_then(|(_, mar)| mar.motions.get(STRIKE_MOTION)).map_or(40.0, |m| m.length as f32);
+        a.strike = if t >= length { None } else { Some((t, landed)) };
+        return false;
+    }
+    if g.level == 3 && body.pos.distance(snake) < STRIKE_RANGE && !snake_dead && g.anim.knocked.is_some() {
+        g.path.clear();
+        a.strike = Some((0.0, false));
+        a.firing = false;
+        a.aim = 0.0;
         return false;
     }
     if (g.level == 3 || body.pos.distance(snake) < POINT_BLANK) && !snake_dead {

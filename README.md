@@ -117,7 +117,7 @@ What works:
   hard landing, darts and rounds striking surfaces, footsteps only on the floors the stage marks noisy;
   the nearest soldier within his `-h` range comes to look; an unsuppressed
   shot sends those in earshot straight to discovery, and a stun grenade's
-  blast raises the Alert), investigate, raise the alert, chase along the
+  blast raises the Alert), investigate, raise the alert, strike with the rifle butt up close, chase along the
   navigation graph and shoot (aim, bursts, reloads as in the game's code).
   Damage follows the game's numbers: guards have life by difficulty and hit
   zones (a head shot kills, three body hits, limb wounds), darts drain their
