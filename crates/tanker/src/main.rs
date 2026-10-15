@@ -352,7 +352,7 @@ struct Cast {
     /// Bosses: (model, motions, position, facing).
     bosses: Vec<(usize, Option<usize>, Vec3, f32, Option<u32>)>,
     /// `putmodel.c` models: (model, motions, place, facing, motion).
-    posed: Vec<(usize, Option<usize>, Vec3, f32, usize)>,
+    posed: Vec<(usize, Option<usize>, Vec3, f32, usize, u32)>,
     /// Marines in formation: (model, motions, position, facing, idle, head
     /// accessory models).
     crowd: Vec<(usize, Option<usize>, Vec3, f32, i32, Vec<usize>, i32)>,
@@ -488,13 +488,17 @@ const ORGA_OBJ: u32 = 0x4FB2CA;
 /// `putmodel.c` actor.
 const PUTMODEL: u32 = 0x72F23C;
 
-/// A `putmodel.c` model: held on its motion's first frame.
+/// A `putmodel.c` model by actor name: held on its motion's first frame
+/// until a message 6 n plays motion n through once (held at its end).
 #[derive(Component)]
-struct Posed;
+struct Posed {
+    name: u32,
+    playing: bool,
+}
 
-fn hold_posed(mut posed: Query<&mut Body, With<Posed>>) {
-    for mut b in &mut posed {
-        if b.frame != 0.0 {
+fn hold_posed(mut posed: Query<(&mut Body, &Posed)>) {
+    for (mut b, p) in &mut posed {
+        if !p.playing && b.frame != 0.0 {
             b.frame = 0.0;
         }
     }
@@ -753,7 +757,8 @@ fn prepare(
             let v = |i| s.opt_int(b'p', i).unwrap_or(0) as f32;
             let yaw = s.opt_int(b'd', 0).unwrap_or(0) as f32 / 4096.0 * std::f32::consts::TAU;
             let motion = s.opt_int(b'n', 0).unwrap_or(0).max(0) as usize;
-            posed.push((model, motions, Vec3::new(v(0), v(1), v(2)), yaw, motion));
+            let name = s.args.first().and_then(|v| v.int()).map_or(0, |n| n as u32 & 0x00FF_FFFF);
+            posed.push((model, motions, Vec3::new(v(0), v(1), v(2)), yaw, motion, name));
         }
         let crates: Vec<Prop> = vm.spawns.iter().filter(|s| s.kind == ORGA_OBJ).flat_map(|s| orga_objects(s, &data)).collect();
         // The crates stop Snake: a wall round each model's bounds (an
@@ -1359,11 +1364,11 @@ fn spawn_level(
         commands.entity(e).insert(g);
         weapons.extend(gun.map(|m| (e, m, false, body::rifle_grip(), body::RIGHT_HAND, Vec3::ZERO)));
     }
-    for (model, motions, pos, yaw, motion) in cast.posed {
+    for (model, motions, pos, yaw, motion, name) in cast.posed {
         let mut b = Body::new(pos, yaw, model, motions);
         b.motion = motion;
         let e = spawn(&mut commands, model, b);
-        commands.entity(e).insert(Posed);
+        commands.entity(e).insert(Posed { name, playing: false });
     }
     for (model, motions, pos, yaw, on_down) in cast.bosses {
         let e = spawn(&mut commands, model, Body::new(pos, yaw, model, motions));
@@ -2051,11 +2056,26 @@ fn prop_messages(
     mut props: Query<(Entity, &PropName, &mut Transform, &mut Visibility), Without<DoorName>>,
     mut doors: Query<(&DoorName, &mut SlidingDoor, &mut Visibility)>,
     mut snake: Query<&mut Body, (With<Player>, Without<PropName>, Without<DoorName>)>,
+    mut posed: Query<(&mut Body, &mut Posed), Without<Player>>,
 ) {
     if game.prop_messages.is_empty() {
         return;
     }
     for (target, code, args) in std::mem::take(&mut game.prop_messages) {
+        // A `putmodel.c` model, message 6 n: play its motion n once.
+        if code == 6
+            && let Some(n) = args.first()
+        {
+            let mut hit = false;
+            for (mut b, mut p) in posed.iter_mut().filter(|(_, p)| p.name == target) {
+                b.play_once((*n).max(0) as usize);
+                p.playing = true;
+                hit = true;
+            }
+            if hit {
+                continue;
+            }
+        }
         // Snake, message 1 x y z: put him there (w01b, w04b scripts).
         if target == SNAKE_NAME
             && code == 1
