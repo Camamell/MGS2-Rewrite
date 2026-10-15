@@ -14,6 +14,7 @@
 //! | L1 / LB | Z | prone |
 //! | R2 / RT | G | grenade |
 //! | L2 / LT | R | ration |
+//! | R3 | N | bandage |
 //! | D-pad left / right | 1 / 2 | M9 / USP |
 //! | D-pad up | B | cardboard box |
 //! | D-pad down | K | Codec |
@@ -61,7 +62,7 @@ pub fn rumble(
     *last_life = Some(p.life);
 }
 
-const BUTTONS: [(GamepadButton, &[KeyCode]); 14] = [
+const BUTTONS: [(GamepadButton, &[KeyCode]); 15] = [
     (GamepadButton::South, &[KeyCode::KeyC]),
     (GamepadButton::East, &[KeyCode::Space]),
     (GamepadButton::West, &[KeyCode::KeyF]),
@@ -76,6 +77,7 @@ const BUTTONS: [(GamepadButton, &[KeyCode]); 14] = [
     (GamepadButton::DPadDown, &[KeyCode::KeyK]),
     (GamepadButton::Start, &[KeyCode::KeyP, KeyCode::Enter, KeyCode::Escape]),
     (GamepadButton::Select, &[KeyCode::KeyL]),
+    (GamepadButton::RightThumb, &[KeyCode::KeyN]),
 ];
 
 /// Stick deflection that counts as a direction, and below which a held
@@ -106,9 +108,9 @@ pub fn feed(
                 x ^= x << 5;
                 x
             };
-            const POOL: [KeyCode; 17] = [
+            const POOL: [KeyCode; 18] = [
                 KeyCode::KeyW, KeyCode::KeyA, KeyCode::KeyS, KeyCode::KeyD, KeyCode::ShiftLeft, KeyCode::KeyC, KeyCode::Space, KeyCode::KeyF,
-                KeyCode::KeyV, KeyCode::KeyX, KeyCode::KeyZ, KeyCode::KeyG, KeyCode::KeyR, KeyCode::Digit1, KeyCode::Digit2, KeyCode::KeyB, KeyCode::KeyK,
+                KeyCode::KeyV, KeyCode::KeyX, KeyCode::KeyZ, KeyCode::KeyG, KeyCode::KeyR, KeyCode::Digit1, KeyCode::Digit2, KeyCode::KeyB, KeyCode::KeyK, KeyCode::KeyN,
             ];
             fuzz.1 = (0..1 + next() % 3).map(|_| POOL[(next() % POOL.len() as u32) as usize]).collect();
         }

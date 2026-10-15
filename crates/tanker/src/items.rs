@@ -15,6 +15,8 @@ use crate::player::Player;
 pub const ITEM_ACTOR: u32 = 0x9AFF54;
 /// Inventory key of the M9's darts (weapon ammunition, weapon 1).
 pub const M9_AMMO: (i32, i32) = (1, 1);
+/// Inventory key of bandages (item 5).
+pub const BANDAGE: (i32, i32) = (0, 5);
 /// Inventory key of dog tags (item 33).
 pub const DOG_TAGS: (i32, i32) = (0, 33);
 /// Inventory key of the USP's rounds (weapon 2).
@@ -185,6 +187,16 @@ pub fn pickup(
     let Ok((body, mut player)) = snake.single_mut() else { return };
     if keys.just_pressed(KeyCode::KeyR) {
         inv.ration_equipped = !inv.ration_equipped;
+    }
+    // A bandage stops the bleeding (MGS2's item 5; the game applies it when
+    // equipped, here on N / R3).
+    if keys.just_pressed(KeyCode::KeyN) && player.bleeding && !player.dead() {
+        let have = inv.counts.entry(BANDAGE).or_default();
+        if *have > 0 {
+            *have -= 1;
+            player.bleeding = false;
+            inv.message = Some(("Bandage used".into(), 2.5));
+        }
     }
     for (e, item) in &items {
         let d = Vec2::new(item.pos.x - body.pos.x, item.pos.z - body.pos.z).length();

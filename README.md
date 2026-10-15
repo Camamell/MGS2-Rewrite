@@ -70,6 +70,7 @@ too.
 | 1 / 2 | M9 tranquilizer / USP (Snake takes Olga's USP when she goes down; a head shot kills, the body takes three rounds, limbs wound, and guards within ~10 m hear it) |
 | V | punch (three in a row: punch, punch and a knock-down blow; two such combos knock a soldier out) |
 | R | equip / unequip a ration (revives Snake at zero life) |
+| N | use a bandage: stops the bleeding |
 | X (hold) | first-person view: A/D turn, W/S look up / down |
 | (walk into a wall) | back to the wall: sidestep along it (keep going at its end to peek round the corner), Space knocks (draws guards within 4 m), step away to leave |
 | G | throw a stun grenade (or chaff when out of stuns): stuns guards within 5 m of the blast; chaff jams the radar for 8 s |
@@ -89,7 +90,7 @@ too.
 A gamepad works too, laid out like the original: left stick to move
 (tilt gently to walk), right stick to turn the camera, Cross/A crouch,
 Circle/B action, Square/X aim and fire, Triangle/Y punch, R1 first person,
-L1 prone, R2 grenade, L2 ration, D-pad left/right M9/USP, D-pad up box,
+L1 prone, R2 grenade, L2 ration, R3 bandage, D-pad left/right M9/USP, D-pad up box,
 D-pad down Codec, Start pause/continue/skip, Select save (140.96) (`pad.rs`).
 
 Testing hooks: `--auto-walk <seconds>` holds forward (`--walk-from`),
