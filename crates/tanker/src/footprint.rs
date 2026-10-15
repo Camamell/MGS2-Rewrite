@@ -64,6 +64,8 @@ pub fn plugin(app: &mut App) {
 /// Frames between drops while Snake bleeds (`FUN_002898d0`: a drop when
 /// the count at +0xf76 passes 0x13).
 const DROP_FRAMES: f32 = 20.0;
+/// Frames per point of life bleeding costs.
+const DRAIN_FRAMES: f32 = 180.0;
 /// Drops kept at once and a drop's radius (mm) (assumed).
 const MAX_DROPS: usize = 64;
 const DROP_RADIUS: f32 = 70.0;
@@ -71,6 +73,8 @@ const DROP_RADIUS: f32 = 70.0;
 #[derive(Resource, Default)]
 struct Blood {
     count: f32,
+    /// Frames toward the next point of life lost (`FUN_0026b650` +0xf74).
+    drain: f32,
     drops: Vec<Entity>,
     assets: Option<(Handle<Mesh>, Handle<StandardMaterial>)>,
 }
@@ -103,7 +107,18 @@ fn bleed(
     }
     if !p.bleeding {
         blood.count = DROP_FRAMES;
+        blood.drain = 0.0;
         return;
+    }
+    // Bleeding also costs a point of life every 180 frames (`FUN_0026b650`:
+    // +0xf74 counts to 0xb4, then the life accumulator 0x1919f8 drops by
+    // one; never below 1 here).
+    blood.drain += time.delta_secs() * 60.0;
+    if blood.drain >= DRAIN_FRAMES {
+        blood.drain = 0.0;
+        if p.life > 1 {
+            p.life -= 1;
+        }
     }
     blood.count += time.delta_secs() * 60.0;
     if blood.count < DROP_FRAMES {
