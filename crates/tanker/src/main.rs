@@ -374,6 +374,8 @@ struct Prop {
     lt2: Option<u32>,
     /// Its actor name, for the script's messages.
     name: u32,
+    /// A light beam (`spotdraw.c`): drawn as glowing light.
+    beam: bool,
 }
 
 /// A prop's actor name: `putobj.c` takes messages 0 hide, 1 show, 2 turn
@@ -385,7 +387,36 @@ struct PropName(u32);
 #[derive(Component)]
 struct DoorName(u32);
 
-const PROP_ACTORS: &[u32] = &[0x7A8EC1, 0xD1279A, 0xCBA568];
+const PROP_ACTORS: &[u32] = &[0x7A8EC1, 0xD1279A, 0xCBA568, SPOTDRAW];
+/// `spotdraw.c`: a spotlight's beam, an untextured model the actor draws as
+/// light (its own shading is not ported: a soft additive white here).
+const SPOTDRAW: u32 = 0x9307AB;
+
+#[derive(Component)]
+struct Beam;
+
+fn beams(
+    added: Query<Entity, Added<Beam>>,
+    children: Query<&Children>,
+    mut mats: Query<&mut MeshMaterial3d<StandardMaterial>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    for root in &added {
+        let glow = materials.add(StandardMaterial {
+            base_color: Color::srgba(0.35, 0.35, 0.3, 0.25),
+            alpha_mode: AlphaMode::Add,
+            unlit: true,
+            cull_mode: None,
+            fog_enabled: false,
+            ..default()
+        });
+        for e in children.iter_descendants(root) {
+            if let Ok(mut m) = mats.get_mut(e) {
+                m.0 = glow.clone();
+            }
+        }
+    }
+}
 const SLIDING_DOOR: u32 = 0x55B942;
 
 /// Deck doors: `-k door handle -p x y z -r rx ry rz`, both models drawn in
@@ -404,7 +435,7 @@ fn door_props(s: &gcl::Spawn, data: &StageData) -> Vec<Prop> {
         .filter_map(|m| {
             let hash = m.int()? as u32 & 0x00FF_FFFF;
             let model = data.models.iter().position(|(h, _)| *h & 0x00FF_FFFF == hash)?;
-            Some(Prop { model, transform, no_fog: false, lt2: None, name: 0 })
+            Some(Prop { model, transform, no_fog: false, lt2: None, name: 0, beam: false })
         })
         .collect()
 }
@@ -435,7 +466,7 @@ fn sliding_door(s: &gcl::Spawn, data: &StageData) -> Option<(Prop, SlidingDoor)>
     };
     let width = s.opt_int(b's', 0).filter(|w| *w > 0).unwrap_or(1000) as f32 * SCALE;
     let name = s.args.first().and_then(|v| v.int()).map_or(0, |n| n as u32 & 0x00FF_FFFF);
-    Some((Prop { model, transform, no_fog: false, lt2: None, name }, SlidingDoor { closed: transform, slide: transform.rotation * Vec3::X * width, open: 0.0, locks: 0 }))
+    Some((Prop { model, transform, no_fog: false, lt2: None, name, beam: false }, SlidingDoor { closed: transform, slide: transform.rotation * Vec3::X * width, open: 0.0, locks: 0 }))
 }
 
 /// Sliding doors open for anyone within 2 m and close again after.
@@ -477,6 +508,7 @@ fn skyline(s: &gcl::Spawn, data: &StageData) -> Vec<Prop> {
             no_fog: true,
             lt2: None,
             name: 0,
+            beam: false,
         })
         .collect()
 }
@@ -525,6 +557,7 @@ fn orga_objects(s: &gcl::Spawn, data: &StageData) -> Vec<Prop> {
             no_fog: false,
             lt2,
             name: 0,
+            beam: false,
         });
     };
     let mut pending: Option<[i32; 3]> = None;
@@ -577,7 +610,7 @@ fn prop(s: &gcl::Spawn, data: &StageData) -> Option<Prop> {
         _ => None,
     };
     let name = s.args.first().and_then(|v| v.int()).map_or(0, |n| n as u32 & 0x00FF_FFFF);
-    Some(Prop { model, transform, no_fog: false, lt2, name })
+    Some(Prop { model, transform, no_fog: false, lt2, name, beam: s.kind == SPOTDRAW })
 }
 
 /// A stage ready to be put into the world.
@@ -1215,7 +1248,7 @@ fn main() -> Result<()> {
         .add_systems(Startup, photo::setup_hud)
         .add_systems(
             Update,
-            (photo::control.before(player::control), photo::view.after(player::follow_camera), codec_followup.after(codec::input), speech, holds_timer, guard_drops.after(guard::think), new_items.after(guard_drops), prop_messages, reinforcements.after(guard::think), snake_vars, crowd_watch.after(snake_vars), crowd_points.after(snake_vars), crowd_heads, hold_posed, crowd_hear.after(guard::think))
+            (photo::control.before(player::control), photo::view.after(player::follow_camera), codec_followup.after(codec::input), speech, holds_timer, guard_drops.after(guard::think), new_items.after(guard_drops), prop_messages, reinforcements.after(guard::think), snake_vars, crowd_watch.after(snake_vars), crowd_points.after(snake_vars), crowd_heads, hold_posed, beams, crowd_hear.after(guard::think))
                 .run_if(codec::idle)
                 .run_if(demo::idle),
         )
@@ -1328,6 +1361,9 @@ fn spawn_level(
             scene::spawn_model_lit(&mut commands, model, data, &mut cache, &mut meshes, &mut images, &mut materials, unlit, LevelEntity, p.transform, p.lt2)
         };
         commands.entity(e).insert((p.transform, PropName(p.name)));
+        if p.beam {
+            commands.entity(e).insert(Beam);
+        }
         if p.no_fog {
             commands.entity(e).insert(fog::NoFog);
         }
