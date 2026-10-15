@@ -269,5 +269,9 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
    - since: items and weapons, hold-ups, traps, stage cameras, Codec,
      hanging, Olga, cutscene subtitles, the holds' photo finale: the Tanker
      can be played from the deck to its end
-   - next: radio reports, the troopers' own brain, Olga's sequence selector,
-     cutscene scenes, the Marines' variants and reactions, voice timing
+   - then: cutscenes from DEMO.DAT with voices, music and lighting; sound
+     (the IOP driver ported); the Marines' formation (variants, idles,
+     drills, head turns, its sight and events); footprints and blood;
+     close quarters; texture blend modes
+   - next: radio reports, the troopers' own brain, Olga's sequence selector
+     (needs her cover objects), the commandant's walk
