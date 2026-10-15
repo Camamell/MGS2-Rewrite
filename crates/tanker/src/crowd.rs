@@ -73,6 +73,9 @@ pub fn accessories(flags: i32) -> Vec<&'static str> {
 pub fn members(s: &Spawn) -> Vec<Member> {
     let Some(list) = s.opt(b'a') else { return Vec::new() };
     let placed = placed(s);
+    // `-s x y z`: the point the members face (`FUN_0022a5d8` turns each
+    // toward it, `FUN_00223118`), overriding their own rotation.
+    let face = (0..3).map(|i| s.opt_int(b's', i)).collect::<Option<Vec<i32>>>().map(|p| Vec3::new(p[0] as f32, p[1] as f32, p[2] as f32));
     list.chunks_exact(RECORD)
         .filter_map(|r| {
             let v = |i: usize| r[i].int().unwrap_or(0);
@@ -80,14 +83,17 @@ pub fn members(s: &Spawn) -> Vec<Member> {
                 return None;
             }
             let mut pos = Vec3::new(v(1) as f32, v(2) as f32, v(3) as f32);
-            let mut yaw = v(5);
+            let mut yaw = v(5) as f32 / 4096.0 * std::f32::consts::TAU;
+            if let Some(f) = face {
+                yaw = (f.x - pos.x).atan2(f.z - pos.z);
+            }
             // A member the `-c` actor stands somewhere (the commandant).
             if let Some((at, dir)) = placed.iter().find(|p| p.0 == v(0)).map(|p| (p.1, p.2)) {
-                (pos, yaw) = (at, dir);
+                (pos, yaw) = (at, dir as f32 / 4096.0 * std::f32::consts::TAU);
             }
             (pos.y != 0.0).then(|| Member {
                 pos,
-                yaw: yaw as f32 / 4096.0 * std::f32::consts::TAU,
+                yaw,
                 variant: v(7).rem_euclid(22),
                 idle: v(9).rem_euclid(6),
                 flags: v(10),
