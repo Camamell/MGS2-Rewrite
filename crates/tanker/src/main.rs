@@ -254,6 +254,9 @@ pub struct Game {
     pub crowd_points: Vec<(Vec3, f32, f32)>,
     /// Events 0-2 that have run (bit per event), until a restart.
     pub crowd_fired: u8,
+    /// The crowd actor's name (its messages turn the Marines' heads).
+    pub crowd_name: Option<u32>,
+    pub crowd_head: crowd::Head,
     /// Spoken line playing: (id, proc to run after, seconds left).
     pub speech: Option<(u32, Option<u32>, f32)>,
     /// Motion sound variants by floor material (`#b44bbb`).
@@ -590,6 +593,7 @@ fn prepare(
     let mut thunder_spec = None;
     let mut crowd_procs = Vec::new();
     let mut crowd_points = Vec::new();
+    let mut crowd_name = None;
     let mut cameras = script_cam::Cameras::default();
     let mut codec_reqs = Vec::new();
     let mut photos = (Vec::new(), None);
@@ -695,6 +699,7 @@ fn prepare(
         if let Some(s) = vm.spawns.iter().find(|s| s.kind == crowd::CROWD_ACTOR) {
             crowd_procs = crowd::events(s);
             crowd_points = crowd::points(s);
+            crowd_name = s.args.first().and_then(|v| v.int()).map(|n| n as u32 & 0x00FF_FFFF);
         }
         let members: Vec<crowd::Member> = vm.spawns.iter().filter(|s| s.kind == crowd::CROWD_ACTOR).flat_map(crowd::members).collect();
         // Each Marine variant once, built from the part library.
@@ -795,6 +800,8 @@ fn prepare(
         crowd_procs,
         crowd_points,
         crowd_fired: 0,
+        crowd_name,
+        crowd_head: crowd::Head::default(),
         speech: None,
         speech_volume: None,
         sound_tables: Vec::new(),
@@ -1064,7 +1071,7 @@ fn main() -> Result<()> {
         .add_systems(Startup, photo::setup_hud)
         .add_systems(
             Update,
-            (photo::control.before(player::control), photo::view.after(player::follow_camera), codec_followup.after(codec::input), speech, holds_timer, guard_drops.after(guard::think), new_items.after(guard_drops), prop_messages, reinforcements.after(guard::think), snake_vars, crowd_watch.after(snake_vars), crowd_points.after(snake_vars), crowd_hear.after(guard::think))
+            (photo::control.before(player::control), photo::view.after(player::follow_camera), codec_followup.after(codec::input), speech, holds_timer, guard_drops.after(guard::think), new_items.after(guard_drops), prop_messages, reinforcements.after(guard::think), snake_vars, crowd_watch.after(snake_vars), crowd_points.after(snake_vars), crowd_heads, crowd_hear.after(guard::think))
                 .run_if(codec::idle)
                 .run_if(demo::idle),
         )
@@ -1667,6 +1674,10 @@ fn apply_codec(game: &mut Game, reqs: &[gcl::CodecReq]) {
                 if let Some(col) = game.collision.as_mut() {
                     col.script_wall_message(target, code, &args);
                 }
+                if Some(target) == game.crowd_name {
+                    info!("crowd message {code}");
+                    crowd::message(&mut game.crowd_head, code);
+                }
                 game.prop_messages.push((target, code, args));
             }
             CodecReq::OverProcs { over, cont } => {
@@ -2117,6 +2128,24 @@ fn crowd_watch(
     game.crowd_alarm = true;
     info!("a Marine saw Snake at {}: running {proc:#x}", snake.pos);
     script_event(&mut commands, &session, &mut game, |vm| vm.call_proc(proc, &at), &level, &bullets);
+}
+
+/// The Marines' heads follow the crowd's head targets.
+fn crowd_heads(time: Res<Time>, mut game: ResMut<Game>, mut marines: Query<&mut Body, With<crowd::Marine>>, mut tested: Local<bool>) {
+    // MGS2_CROWD_MSG=n: send the crowd message n after a second (testing).
+    if !*tested
+        && time.elapsed_secs() > 1.0
+        && let Some(n) = std::env::var("MGS2_CROWD_MSG").ok().and_then(|v| v.parse().ok())
+    {
+        *tested = true;
+        crowd::message(&mut game.crowd_head, n);
+    }
+    let turn = game.crowd_head.step(time.delta_secs() * 60.0);
+    for mut m in &mut marines {
+        if m.turn != turn {
+            m.turn = turn;
+        }
+    }
 }
 
 /// Snake walks up to one of the crowd's `-p` points: its event (1 or 2)

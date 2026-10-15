@@ -227,3 +227,42 @@ pub fn model_name(variant: i32) -> &'static str {
         _ => "us_def_1",
     }
 }
+
+/// The Marines' head (object 12) turn: script messages 11-15 set formation
+/// modes 10-14, which aim it (`FUN_00225690` / `FUN_00225fa0`: +0x588 yaw
+/// -900 / 900 for 10 / 11, +0x58a pitch 800 / -800 for 12 / 14, 13 leaves
+/// them); each frame the turn closes an eighth of the way (`FUN_001419c8`)
+/// and is applied to the head's matrix (`FUN_002282f0`). 4096ths of a turn.
+#[derive(Default, Clone, Copy, Debug)]
+pub struct Head {
+    target: [f32; 2],
+    now: [f32; 2],
+}
+
+pub const HEAD_JOINT: usize = 12;
+
+pub fn message(h: &mut Head, code: u32) {
+    match code {
+        11 => h.target[0] = -900.0,
+        12 => h.target[0] = 900.0,
+        13 => h.target[1] = 800.0,
+        15 => h.target[1] = -800.0,
+        _ => {}
+    }
+}
+
+impl Head {
+    /// Advances `frames` frames; the head's turn, if any.
+    pub fn step(&mut self, frames: f32) -> Option<(usize, Quat)> {
+        let k = 1.0 - (7.0f32 / 8.0).powf(frames.min(10.0));
+        for i in 0..2 {
+            let d = self.target[i] - self.now[i];
+            self.now[i] = if d.abs() < 1.0 { self.target[i] } else { self.now[i] + d * k };
+        }
+        if self.now == [0.0, 0.0] {
+            return None;
+        }
+        let a = |v: f32| v / 4096.0 * std::f32::consts::TAU;
+        Some((HEAD_JOINT, Quat::from_rotation_y(a(self.now[0])) * Quat::from_rotation_x(a(self.now[1]))))
+    }
+}

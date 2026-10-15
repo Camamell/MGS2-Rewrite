@@ -349,6 +349,9 @@ Script messages to the crowd (`#3822c7 <crowd> n`) map to a formation mode:
 11-15 -> 10-14, 16 -> 0x16 (face a point), 17 -> 0x10, 18 -> 0xf; 0x40 sets a
 target member, 0x42-0x45 arm / disarm the `-p` points. Modes 10-14
 (`FUN_00225690` action 6) set +0x588 to -900 / 900 (10 / 11) and +0x58a to
-800 / -800 (12 / 14): a turn of the head or upper body, joint not yet
-identified. w04a-c send 11-15 in proc `#4b58a6` and 14 in `#678089`. Not
-ported.
+800 / -800 (12 / 14): the head's turn (`FUN_002282f0` eases +0x58c / +0x58e
+toward them by an eighth a frame and multiplies the rotation (x pitch, y yaw)
+into the matrix at +0x3b0, joint 12 of the 0x10-byte list at +0x2f0). w04a-c
+send 11-15 in proc `#4b58a6` and 14 in `#678089`. Ported (`crowd::Head`;
+`MGS2_CROWD_MSG=n` sends one for testing); the axis order and signs are
+assumed.

@@ -21,11 +21,13 @@ pub struct Body {
     pub frame: f32,
     /// Stop on the last frame instead of looping.
     pub once: bool,
+    /// One object turned further (object, rotation): a Marine's head.
+    pub turn: Option<(usize, Quat)>,
 }
 
 impl Body {
     pub fn new(pos: Vec3, yaw: f32, model: usize, motions: Option<usize>) -> Self {
-        Self { pos, yaw, model, motions, motion: 0, frame: 0.0, once: false }
+        Self { pos, yaw, model, motions, motion: 0, frame: 0.0, once: false, turn: None }
     }
 
     /// Switches to a looping motion, restarting it only when it changes.
@@ -264,7 +266,7 @@ pub fn skin(
             scope.spawn(async move {
                 let model = &game.data.models[b.model].1;
                 let motion = b.motions.and_then(|m| game.data.motions[m].1.motions.get(b.motion));
-                let mats = anim::pose(model, motion, *frame, false);
+                let mats = anim::pose_turned(model, motion, *frame, false, b.turn);
                 let reach = Vec3::splat(2000.0);
                 let lights = lt2.map(|l| l.gather((b.pos - reach).into(), (b.pos + reach).into())).unwrap_or_default();
                 list.iter()
@@ -315,6 +317,7 @@ pub struct SkinKey {
     frame: i32,
     pos: [i32; 3],
     yaw: u32,
+    turn: Option<(usize, [u32; 4])>,
 }
 
 /// Animation frames per skinning update by distance from the camera (mm):
@@ -339,6 +342,7 @@ impl SkinKey {
             frame: (b.frame.floor() as i32).div_euclid(step) * step,
             pos: b.pos.round().as_ivec3().to_array(),
             yaw: b.yaw.to_bits(),
+            turn: b.turn.map(|(j, q)| (j, q.to_array().map(f32::to_bits))),
         }
     }
 }

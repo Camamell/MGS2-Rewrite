@@ -12,6 +12,12 @@ pub const OVERLAY: u32 = 0x4000;
 /// keep their bind orientation. The motion's root track supplies the hips
 /// height (horizontal root motion is left to the caller).
 pub fn pose(model: &kms::Model, motion: Option<&Motion>, frame: f32, conjugate: bool) -> Vec<Affine3A> {
+    pose_turned(model, motion, frame, conjugate, None)
+}
+
+/// [`pose`] with one object turned further by `turn` (in its own space,
+/// after the motion's rotation): a head looking about.
+pub fn pose_turned(model: &kms::Model, motion: Option<&Motion>, frame: f32, conjugate: bool, turn: Option<(usize, Quat)>) -> Vec<Affine3A> {
     let root_y = motion.and_then(|m| m.root_position(frame)).map_or(0.0, |p| p[1]);
     let mut out: Vec<Affine3A> = Vec::with_capacity(model.objects.len());
     for (i, o) in model.objects.iter().enumerate() {
@@ -22,6 +28,10 @@ pub fn pose(model: &kms::Model, motion: Option<&Motion>, frame: f32, conjugate: 
                 if conjugate { q.conjugate() } else { q }
             })
             .unwrap_or(Quat::IDENTITY);
+        let rot = match turn {
+            Some((j, t)) if j == i => rot * t,
+            _ => rot,
+        };
         let mut offset = Vec3::from(o.offset);
         if o.parent < 0 {
             offset += Vec3::from(model.origin);
