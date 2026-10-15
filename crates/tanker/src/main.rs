@@ -351,6 +351,8 @@ struct Cast {
     sliding: Vec<(Prop, SlidingDoor)>,
     /// Bosses: (model, motions, position, facing).
     bosses: Vec<(usize, Option<usize>, Vec3, f32, Option<u32>)>,
+    /// `putmodel.c` models: (model, motions, place, facing, motion).
+    posed: Vec<(usize, Option<usize>, Vec3, f32, usize)>,
     /// Marines in formation: (model, motions, position, facing, idle, head
     /// accessory models).
     crowd: Vec<(usize, Option<usize>, Vec3, f32, i32, Vec<usize>, i32)>,
@@ -482,6 +484,21 @@ const SKYLINE_SCALE: f32 = 6.0;
 /// `-m model -r rx ry rz -p x y z -l lt2` group each. Drawn only (their
 /// collision and being shot apart are not ported).
 const ORGA_OBJ: u32 = 0x4FB2CA;
+
+/// `putmodel.c` actor.
+const PUTMODEL: u32 = 0x72F23C;
+
+/// A `putmodel.c` model: held on its motion's first frame.
+#[derive(Component)]
+struct Posed;
+
+fn hold_posed(mut posed: Query<&mut Body, With<Posed>>) {
+    for mut b in &mut posed {
+        if b.frame != 0.0 {
+            b.frame = 0.0;
+        }
+    }
+}
 
 fn orga_objects(s: &gcl::Spawn, data: &StageData) -> Vec<Prop> {
     let mut out = Vec::new();
@@ -639,6 +656,7 @@ fn prepare(
     let mut items = Vec::new();
     let mut sliding = Vec::new();
     let mut bosses = Vec::new();
+    let mut posed = Vec::new();
     let mut crowd = Vec::new();
     let mut on_alert = None;
     let mut rain_spec = None;
@@ -723,6 +741,20 @@ fn prepare(
         props = vm.spawns.iter().filter(|s| PROP_ACTORS.contains(&s.kind)).filter_map(|s| prop(s, &data)).collect();
         props.extend(vm.spawns.iter().filter(|s| s.kind == DOOR_ACTOR).flat_map(|s| door_props(s, &data)));
         props.extend(vm.spawns.iter().flat_map(|s| skyline(s, &data)));
+        // `putmodel.c` (`#72f23c <name> -p x y z -d ry -k model -m motions
+        // -n motion -s ..`): a model held in a pose of its motions (the
+        // holds' hatches, the deck's broken railings, the dead crewman in
+        // the w02a locker). Shown in the motion's first frame; the
+        // messages that play the motions are not ported.
+        for s in vm.spawns.iter().filter(|s| s.kind == PUTMODEL) {
+            let hash = |l: u8| s.opt(l).and_then(|v| v.first()).and_then(|v| v.int()).map(|h| h as u32 & 0x00FF_FFFF);
+            let Some(model) = hash(b'k').and_then(|h| data.models.iter().position(|(m, _)| *m & 0x00FF_FFFF == h)) else { continue };
+            let motions = hash(b'm').and_then(|h| data.motions.iter().position(|(m, _)| *m & 0x00FF_FFFF == h));
+            let v = |i| s.opt_int(b'p', i).unwrap_or(0) as f32;
+            let yaw = s.opt_int(b'd', 0).unwrap_or(0) as f32 / 4096.0 * std::f32::consts::TAU;
+            let motion = s.opt_int(b'n', 0).unwrap_or(0).max(0) as usize;
+            posed.push((model, motions, Vec3::new(v(0), v(1), v(2)), yaw, motion));
+        }
         let crates: Vec<Prop> = vm.spawns.iter().filter(|s| s.kind == ORGA_OBJ).flat_map(|s| orga_objects(s, &data)).collect();
         // The crates stop Snake: a wall round each model's bounds (an
         // approximation of their own collision, which is not read).
@@ -914,7 +946,7 @@ fn prepare(
     } else {
         game.entrance_done();
     }
-    Ok(Level { game, phase, cast: Cast { snake, guards, props, items, sliding, bosses, crowd } })
+    Ok(Level { game, phase, cast: Cast { snake, guards, props, items, sliding, bosses, crowd, posed } })
 }
 
 fn main() -> Result<()> {
@@ -1160,7 +1192,7 @@ fn main() -> Result<()> {
         .add_systems(Startup, photo::setup_hud)
         .add_systems(
             Update,
-            (photo::control.before(player::control), photo::view.after(player::follow_camera), codec_followup.after(codec::input), speech, holds_timer, guard_drops.after(guard::think), new_items.after(guard_drops), prop_messages, reinforcements.after(guard::think), snake_vars, crowd_watch.after(snake_vars), crowd_points.after(snake_vars), crowd_heads, crowd_hear.after(guard::think))
+            (photo::control.before(player::control), photo::view.after(player::follow_camera), codec_followup.after(codec::input), speech, holds_timer, guard_drops.after(guard::think), new_items.after(guard_drops), prop_messages, reinforcements.after(guard::think), snake_vars, crowd_watch.after(snake_vars), crowd_points.after(snake_vars), crowd_heads, hold_posed, crowd_hear.after(guard::think))
                 .run_if(codec::idle)
                 .run_if(demo::idle),
         )
@@ -1326,6 +1358,12 @@ fn spawn_level(
         let e = spawn(&mut commands, model, Body::new(pos, 0.0, model, motions));
         commands.entity(e).insert(g);
         weapons.extend(gun.map(|m| (e, m, false, body::rifle_grip(), body::RIGHT_HAND, Vec3::ZERO)));
+    }
+    for (model, motions, pos, yaw, motion) in cast.posed {
+        let mut b = Body::new(pos, yaw, model, motions);
+        b.motion = motion;
+        let e = spawn(&mut commands, model, b);
+        commands.entity(e).insert(Posed);
     }
     for (model, motions, pos, yaw, on_down) in cast.bosses {
         let e = spawn(&mut commands, model, Body::new(pos, yaw, model, motions));
