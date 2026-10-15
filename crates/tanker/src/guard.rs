@@ -46,6 +46,25 @@ pub const TROOPER_ACTOR: u32 = 0xCC9A07;
 /// The enemy manager (`cmd_ddf5ca`): phases and their timers.
 pub const MANAGER_ACTOR: u32 = 0xDDF5CA;
 
+/// The soldier's radio (`radio.c`, model `rad`), made by his body setup
+/// `FUN_0025a718` for every model but 0xc9aaaf / 0x296d9c / 0xd7aaaf /
+/// 0xfbbaaf. Each frame `FUN_00265fe0` hangs it on a joint of his model
+/// (objects are 0x130 bytes after a 0xc0 header) by his radio flags
+/// (+0xb4): 0x2 the left hand (joint 10, place 0x1f3e00), 0x4 the right
+/// hand (joint 6, 0x1f3e20), else the belt (joint 0, 0x1f3e40 / 0x1f3e50:
+/// offset in mm, then turns in 4096ths about x, y, z by `FUN_001253f8`).
+/// Only the belt is used: the moves to the hand (his radio calls) are not
+/// ported. The order of the three turns is assumed (`EulerRot::XYZ`).
+pub mod radio {
+    use bevy::math::{EulerRot, Quat, Vec3};
+    pub const JOINT: usize = 0;
+    pub const OFFSET: Vec3 = Vec3::new(-120.0, 25.0, -97.5);
+    pub fn turn() -> Quat {
+        let a = |n: f32| n / 4096.0 * std::f32::consts::TAU;
+        Quat::from_euler(EulerRot::XYZ, a(4028.0), a(3777.0), a(2048.0))
+    }
+}
+
 mod motion {
     pub const IDLE: usize = 0;
     pub const WALK: usize = 1;

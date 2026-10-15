@@ -1413,10 +1413,12 @@ fn spawn_level(
         }
         None => error!("Snake's model (sna_def) not found"),
     }
+    let radio = model_index(data, "rad");
     for (g, model, motions, pos, gun) in cast.guards {
         let e = spawn(&mut commands, model, Body::new(pos, 0.0, model, motions));
         commands.entity(e).insert(g);
         weapons.extend(gun.map(|m| (e, m, false, body::rifle_grip(), body::RIGHT_HAND, Vec3::ZERO)));
+        weapons.extend(radio.map(|m| (e, m, false, guard::radio::turn(), guard::radio::JOINT, guard::radio::OFFSET)));
     }
     for (model, motions, pos, yaw, motion, name) in cast.posed {
         let mut b = Body::new(pos, yaw, model, motions);

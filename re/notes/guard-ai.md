@@ -382,3 +382,22 @@ set from outside the soldier (Snake's actions), and one of them is likely
 the hold. Snake's `snake.mar` contact sheet (`MGS2_MOTION_SHEET` with
 `--look`) shows arms-at-chest poses at 73-78 and 160-164 and big swings at
 177-180, candidates for hold / drag / throw; none confirmed.
+
+## The radio (`radio.c`, w00a 0x265ea0..0x266458)
+
+`FUN_0025a718` (the soldier's body setup) makes the `rad` model actor
+(`FUN_00266458(owner body, model, &flags, ?)`) unless his model is
+0xc9aaaf / 0x296d9c / 0xd7aaaf / 0xfbbaaf. Its act `FUN_00266168`:
+`FUN_00265fe0` places it each frame by the flags word (soldier +0xb4, set
+to 1 at setup; < 0 removes the radio): bit 0x1 shown, 0x2 on the left hand
+(joint 10, 0x1f3e00 / 0x1f3e10), 0x4 on the right hand (joint 6, 0x1f3e20 /
+0x1f3e30), else on the belt (joint 0, 0x1f3e40 offset (-120, 25, -97.5) mm,
+0x1f3e50 turns (4028, 3777, 2048)). Joint matrices: model objects
+(`FUN_001287f0`) have a 0xc0 header and 0x130 bytes per joint, the matrix
+first. `FUN_00125268` translates in the joint's space, `FUN_001253f8` turns
+about x, y, z (order of the multiplies not decoded: VU macro code).
+`FUN_00265f50`: the radio's own hit box (`FUN_00107da0(.., 0x2000011, ..)`)
+struck by 0x800000004801e damage sets flag 0x10000 and plays the
+`FUN_002b9ca8` effect (a shot radio; what 0x10000 stops in the soldier,
+probably his radio call, is not traced). Ported: the belt place only.
+Leads: who sets 0x2 / 0x4 (his radio calls) in `cmd_f7f777`.
