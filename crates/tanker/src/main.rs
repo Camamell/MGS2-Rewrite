@@ -2108,6 +2108,7 @@ fn snake_vars(
             if *have > 0 {
                 *have -= 1;
                 game.banks.set_b16(COLD, 0);
+                info!("cold medicine used");
                 inv.message = Some(("Cold Medicine used".into(), 2.5));
             }
         }

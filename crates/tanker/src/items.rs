@@ -202,6 +202,7 @@ pub fn pickup(
         if *have > 0 {
             *have -= 1;
             player.bleeding = false;
+            info!("bandage used");
             inv.message = Some(("Bandage used".into(), 2.5));
         }
     }
