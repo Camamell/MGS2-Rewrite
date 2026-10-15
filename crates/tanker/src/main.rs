@@ -1246,7 +1246,7 @@ fn spawn_level(
         b.motion = idle as usize;
         b.frame = idle as f32 * 7.0;
         let e = spawn(&mut commands, model, b);
-        commands.entity(e).insert(crowd::Marine);
+        commands.entity(e).insert((crowd::Marine, crowd::Drill::new(idle as usize, yaw)));
         weapons.extend(extras.into_iter().map(|m| (e, m, false, Quat::IDENTITY, crowd::HEAD, Vec3::ZERO)));
         if let Some(m) = rifle.filter(|_| flags & crowd::RIFLE_FLAGS != 0) {
             weapons.push((e, m, false, crowd::rifle_turn(), crowd::RIFLE_JOINT, crowd::RIFLE_OFFSET));
@@ -2133,26 +2133,44 @@ fn crowd_watch(
     script_event(&mut commands, &session, &mut game, |vm| vm.call_proc(proc, &at), &level, &bullets);
 }
 
-/// The Marines' heads follow the crowd's head targets.
-fn crowd_heads(time: Res<Time>, mut game: ResMut<Game>, mut marines: Query<&mut Body, With<crowd::Marine>>, mut tested: Local<bool>) {
-    // MGS2_CROWD_MSG=n: send the crowd message n after a second (testing).
-    if !*tested
-        && time.elapsed_secs() > 1.0
-        && let Some(n) = std::env::var("MGS2_CROWD_MSG").ok().and_then(|v| v.parse().ok())
-    {
-        *tested = true;
-        crowd::message(&mut game.crowd_head, n);
+/// The formation's members follow its state (`crowd::drill`) and head turn.
+fn crowd_heads(
+    time: Res<Time>,
+    mut game: ResMut<Game>,
+    mut marines: Query<(&mut Body, &mut crowd::Drill), With<crowd::Marine>>,
+    mut sent: Local<usize>,
+    mut clock: Local<f32>,
+    mut rng: Local<u32>,
+) {
+    // MGS2_CROWD_MSG=n[,n..]: send these crowd messages two seconds apart
+    // from the first second (testing).
+    if let Ok(list) = std::env::var("MGS2_CROWD_MSG") {
+        let list: Vec<u32> = list.split(',').filter_map(|v| v.parse().ok()).collect();
+        let due = ((time.elapsed_secs() - 1.0) / 2.0).floor();
+        if due >= 0.0 && (due as usize) >= *sent && *sent < list.len() {
+            crowd::message(&mut game.crowd_head, list[*sent]);
+            *sent += 1;
+        }
     }
     let turn = game.crowd_head.step(time.delta_secs() * 60.0);
-    let attention = game.crowd_head.attention;
-    for mut m in &mut marines {
-        if attention && m.motion != crowd::ATTENTION {
-            m.play_once(crowd::ATTENTION);
+    *clock += time.delta_secs().min(0.05) * 60.0;
+    let ticks = clock.floor() as u32;
+    *clock -= ticks as f32;
+    if *rng == 0 {
+        *rng = 0x1234_5678;
+    }
+    let head = game.crowd_head;
+    for (mut m, mut d) in &mut marines {
+        let mar = m.motions.and_then(|i| game.data.motions.get(i)).map(|(_, mar)| mar);
+        let len = |i: usize| mar.and_then(|mar| mar.motions.get(i)).map_or(30, |x| x.length.max(1));
+        for _ in 0..ticks {
+            crowd::drill(&mut d, &head, &mut m, &mut rng, len);
         }
         if m.turn != turn {
             m.turn = turn;
         }
     }
+    game.crowd_head.face_zero = false;
 }
 
 /// Snake walks up to one of the crowd's `-p` points: its event (1 or 2)

@@ -235,29 +235,46 @@ pub fn model_name(variant: i32) -> &'static str {
     }
 }
 
-/// The Marines' head (object 12) turn: script messages 11-15 set formation
-/// modes 10-14, which aim it (`FUN_00225690` / `FUN_00225fa0`: +0x588 yaw
-/// -900 / 900 for 10 / 11, +0x58a pitch 800 / -800 for 12 / 14, 13 leaves
-/// them); each frame the turn closes an eighth of the way (`FUN_001419c8`)
-/// and is applied to the head's matrix (`FUN_002282f0`). 4096ths of a turn.
+/// The formation's state, set by script messages to the crowd (the
+/// handler before `FUN_00227ee0`): mode A (+0x8cab0) from messages 0, 7-15
+/// and 18, a facing order (+0x8cab4) from message 5, and the head turn.
+///
+/// Mode 0 is at ease (each member's idle), 6-9 the facing drills (absolute
+/// facings 0x400 / 0xc00 / 0 / 0x800, `FUN_00224a28`), 10-14 attention with
+/// the head turned (+0x588 yaw -900 / 900 for 10 / 11, +0x58a pitch 800 /
+/// -800 for 12 / 14, 13 leaves them; `FUN_00226338`), 15 looking about.
+/// The head turn closes an eighth of the way each frame (`FUN_001419c8`)
+/// and is applied to the head's matrix (`FUN_002282f0`). Angles in 4096ths.
 #[derive(Default, Clone, Copy, Debug)]
 pub struct Head {
     target: [f32; 2],
     now: [f32; 2],
-    /// A head message came: the members come to attention first
-    /// (`FUN_00226280`: ushold motion 0x15, then the turn).
-    pub attention: bool,
+    pub mode: u32,
+    /// Message 5 (mode B 0x14): face 0.
+    pub face_zero: bool,
 }
-
-/// The `ushold` motion members play on modes 10-14 before turning their
-/// heads.
-pub const ATTENTION: usize = 0x15;
 
 pub const HEAD_JOINT: usize = 12;
 
+/// `ushold` motions: attention (`FUN_00226280`), the drill's start
+/// (`FUN_002265b8`), turns right / left / small, each followed by the next
+/// motion as its end (`FUN_00226650`, `FUN_00226868`), small steps round
+/// (`FUN_00225fc8`).
+pub const ATTENTION: usize = 0x15;
+const DRILL_START: usize = 0x1c;
+const TURN_BIG_A: usize = 6;
+const TURN_BIG_B: usize = 8;
+const TURN_SMALL: usize = 10;
+const STEP_A: usize = 0x1d;
+const STEP_B: usize = 0x1e;
+
 pub fn message(h: &mut Head, code: u32) {
-    if (11..=15).contains(&code) {
-        h.attention = true;
+    match code {
+        0 => h.mode = 0,
+        5 => h.face_zero = true,
+        7..=15 => h.mode = code - 1,
+        18 => h.mode = 15,
+        _ => {}
     }
     match code {
         11 => h.target[0] = -900.0,
@@ -282,4 +299,183 @@ impl Head {
         let a = |v: f32| v / 4096.0 * std::f32::consts::TAU;
         Some((HEAD_JOINT, Quat::from_rotation_y(a(self.now[0])) * Quat::from_rotation_x(a(self.now[1]))))
     }
+}
+
+/// One member's place in the formation's state machine (`FUN_002273b8`:
+/// action +0x5a8, sub-state +0x5aa, frame count +0x5ac).
+#[derive(Component, Clone, Debug)]
+pub struct Drill {
+    pub idle: usize,
+    action: u8,
+    sub: u8,
+    count: u32,
+    /// The frame count at which the sub-state acts (+0x5b0).
+    at: u32,
+    /// Ordered facing (+0x584) and the yaw he turns to (+0x5ba), radians.
+    facing: f32,
+    target: f32,
+    /// The turn motion playing.
+    turn: usize,
+}
+
+impl Drill {
+    pub fn new(idle: usize, yaw: f32) -> Self {
+        Self { idle, action: 0, sub: 0, count: 0, at: 0, facing: yaw, target: yaw, turn: 0 }
+    }
+}
+
+fn units(v: u32) -> f32 {
+    v as f32 / 4096.0 * std::f32::consts::TAU
+}
+
+/// A facing the crowd code gives (4096ths) as a body yaw: its angles are
+/// taken from the member toward the point behind him (`FUN_00223118` on
+/// `pos - point`), so 0 faces -z, the way the formation looks; message 9
+/// ("front") is 0 and 10 (about) 0x800.
+fn game_yaw(v: u32) -> f32 {
+    units(v) + std::f32::consts::PI
+}
+
+fn signed(a: f32) -> f32 {
+    use std::f32::consts::{PI, TAU};
+    let d = a.rem_euclid(TAU);
+    if d > PI { d - TAU } else { d }
+}
+
+fn set(d: &mut Drill, action: u8, sub: u8) {
+    d.action = action;
+    d.sub = sub;
+    d.count = 0;
+}
+
+/// One 60 Hz frame of a member: the mode checks (`FUN_00225690`,
+/// `FUN_002257f8`), then his action. `len` gives a motion's length.
+pub fn drill(d: &mut Drill, h: &Head, body: &mut crate::body::Body, rng: &mut u32, len: impl Fn(usize) -> u32) {
+    let mut rand = |n: u32| {
+        *rng = rng.wrapping_mul(0x5d58_8b65).wrapping_add(1);
+        (*rng >> 16) % n.max(1)
+    };
+    match h.mode {
+        0 if d.action != 0 && d.action != 4 => {
+            set(d, 0, 0);
+            body.play(d.idle);
+        }
+        6..=9 => {
+            let t = game_yaw([0x400, 0xc00, 0, 0x800][(h.mode - 6) as usize]);
+            if d.action != 7 {
+                d.facing = t;
+                set(d, 7, 6);
+            } else if signed(d.facing - t).abs() > 0.01 {
+                d.facing = t;
+                set(d, 7, 0);
+            }
+        }
+        10..=14 if d.action != 6 => set(d, 6, 0),
+        15 if d.action != 8 => set(d, 8, 1),
+        _ => {}
+    }
+    if h.face_zero && d.action == 0 && signed(d.facing - game_yaw(0)).abs() > 0.01 {
+        d.facing = game_yaw(0);
+        set(d, 4, 0);
+    }
+    let count = d.count;
+    match (d.action, d.sub) {
+        // At ease.
+        (0, _) => {
+            body.play(d.idle);
+            d.target = d.facing;
+        }
+        // Attention, then the head turn (`Head`).
+        (6, 0) => {
+            if count == 0 {
+                d.at = rand(5);
+            }
+            if count == d.at {
+                body.play_once(ATTENTION);
+            }
+            if count > d.at && count + 1 >= d.at + len(ATTENTION) {
+                set(d, 6, 1);
+                return;
+            }
+        }
+        (6, _) => {}
+        // The drill: brace, then turn.
+        (7, 6) => {
+            if count == 0 {
+                d.at = rand(5);
+            }
+            if count == d.at {
+                body.play_once(DRILL_START);
+            }
+            if count > d.at + 11 {
+                set(d, 7, 0);
+                return;
+            }
+        }
+        (7, 0) => {
+            if count == 0 {
+                d.at = rand(5);
+            }
+            if count == d.at {
+                let diff = signed(d.facing - body.yaw);
+                let quarter = std::f32::consts::FRAC_PI_2 + 0.01;
+                d.turn = if diff > quarter {
+                    TURN_BIG_B
+                } else if diff < -quarter {
+                    TURN_BIG_A
+                } else {
+                    TURN_SMALL
+                };
+                body.play_once(d.turn);
+                // (The game turns the big ones to a quarter short and lets
+                // the motion carry the rest; here straight to the facing.)
+                d.target = d.facing;
+            }
+            if count > d.at && count + 1 >= d.at + len(d.turn) {
+                set(d, 7, 1);
+                return;
+            }
+        }
+        (7, _) => {
+            if count == 0 {
+                body.play_once(d.turn + 1);
+            }
+        }
+        // Looking about (`FUN_00226400`): now and then a glance to one side
+        // or the other of his facing.
+        (8, _) => {
+            if count == d.at {
+                d.at = count + 60 + rand(120);
+                let k = rand(5) as f32;
+                d.target = d.facing + units(0x200) * (k - 2.0) * 0.5;
+            }
+        }
+        // A step round to face 0 (`FUN_00225fc8`).
+        (4, _) => {
+            if count == 0 {
+                d.at = rand(15);
+                d.turn = 0;
+            }
+            if count == d.at {
+                let diff = signed(d.facing - body.yaw);
+                if diff.abs() > units(2) {
+                    d.turn = if diff > 0.0 { STEP_B } else { STEP_A };
+                    body.play_once(d.turn);
+                }
+            }
+            if count == d.at + 15 {
+                d.target = d.facing;
+            }
+            if count > d.at + 15 && (d.turn == 0 || count + 1 >= d.at + len(d.turn)) {
+                set(d, 0, 0);
+                body.play(d.idle);
+                return;
+            }
+        }
+        _ => {}
+    }
+    d.count += 1;
+    // His yaw closes an eighth of the way each frame (+0x542).
+    let diff = signed(d.target - body.yaw);
+    body.yaw = if diff.abs() < 0.001 { d.target } else { body.yaw + diff / 8.0 };
 }

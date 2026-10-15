@@ -203,14 +203,17 @@ state bit 0x80; the proc gets his position), 5..9 further states (bits
 called. In w04a event 4 is `#0b6271`: the "caught" sequence, which ends in
 `load "d14t" -g` (game over). The port fires event 4 when a Marine in
 formation sees Snake (the 6 m box, 0x100 of his facing, 2 m of height, a
-clear line; `-t` is level of detail, not sight); of the members' own state
-machine (`FUN_002273b8`, actions at +0x5a8) the idle motions and the head
-turns are ported.
+clear line; `-t` is level of detail, not sight); the members' own state machine
+(`FUN_002273b8`, actions at +0x5a8) is ported in outline (`crowd::drill`):
+idle motions, attention and head turns, the facing drills with their turn
+motions, looking about and the step round to face front; the crowd's angles
+are 180 degrees from the port's yaw (0 faces -z). The big turns' quarter
+offset carried by the motion is not reproduced (they turn straight to the
+facing).
 
 ## Not yet ported
 
 - close-quarters sub-states, radio reports; the troopers' own brain;
-- the crowd's facing drills (modes 6-9) and looking about (mode 15);
 - the game's precomputed shortest-path matrices in the `.hzx` (paths are
   recomputed from the node links instead).
 
