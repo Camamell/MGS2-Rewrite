@@ -2072,8 +2072,55 @@ fn reinforcements(
 /// height is taken as his body's centre: the holds' scripts test it
 /// against the floor level -17000 and the catwalks' -9000), and a game
 /// over the script asked for.
-fn snake_vars(mut game: ResMut<Game>, inv: Res<items::Inventory>, mut player: Query<(&Body, &mut Player)>) {
+/// Snake has a cold while Bs16:0x100 is 1; Bs16:0x102 is the frames
+/// between sneezes. The sneeze's sound.
+const COLD: u16 = 0x100;
+const SNEEZE: u32 = 0x512;
+
+fn snake_vars(
+    time: Res<Time>,
+    mut game: ResMut<Game>,
+    mut inv: ResMut<items::Inventory>,
+    keys: Res<ButtonInput<KeyCode>>,
+    phase: Res<guard::Phase>,
+    mut player: Query<(&Body, &mut Player)>,
+    mut sneeze: Local<f32>,
+) {
     let Ok((b, mut p)) = player.single_mut() else { return };
+    // A cold (`achuu.c`): with Bs16:0x100 set, Snake keeping still outside
+    // an alert sneezes once Bs16:0x102 frames have passed (`FUN_00299a98`
+    // counts DAT_001f582c), playing 0x512 and making a noise of 6
+    // (`FUN_00299950`). Cold medicine (N, when not bleeding) clears it.
+    // MGS2_COLD=n: start with a cold, sneezing every n frames (testing).
+    if let Some(n) = std::env::var("MGS2_COLD").ok().and_then(|v| v.parse::<i16>().ok())
+        && time.elapsed_secs() < 0.5
+    {
+        game.banks.set_b16(COLD, 1);
+        game.banks.set_b16(COLD + 2, n);
+    }
+    if game.banks.b16(COLD) == 1 {
+        if keys.just_pressed(KeyCode::KeyN) && !p.bleeding {
+            let have = inv.counts.entry((0, 4)).or_default();
+            if *have > 0 {
+                *have -= 1;
+                game.banks.set_b16(COLD, 0);
+                inv.message = Some(("Cold Medicine used".into(), 2.5));
+            }
+        }
+        let still = p.speed < 1.0 && !p.dead() && p.busy <= 0.0;
+        if still && phase.kind != guard::PhaseKind::Alert {
+            *sneeze += time.delta_secs() * 60.0;
+            let every = game.banks.b16(COLD + 2).max(1) as f32;
+            if *sneeze >= every {
+                *sneeze = 0.0;
+                info!("Snake sneezes");
+                sfx::play(SNEEZE, Some(b.pos));
+                guard::noise(6, b.pos);
+            }
+        } else {
+            *sneeze = 0.0;
+        }
+    }
     inv.to_banks(&mut game.banks);
     game.banks.set_b16(gcl::SNAKE_LIFE, p.life.clamp(0, i32::from(i16::MAX)) as i16);
     let centre = b.pos.y + p.height() * 0.5;
