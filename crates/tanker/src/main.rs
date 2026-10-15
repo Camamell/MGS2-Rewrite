@@ -1105,6 +1105,10 @@ fn main() -> Result<()> {
     if cli.codec_at.is_some() || cli.codec_auto {
         app.insert_resource(codec::AutoCall(cli.codec_at.unwrap_or(f32::MAX), cli.codec_auto));
     }
+    // MGS2_KEYS=N@3,T@5: tap these keys (letters) at these times (testing).
+    if std::env::var_os("MGS2_KEYS").is_some() {
+        app.add_systems(PreUpdate, test_keys.after(bevy::input::InputSystems));
+    }
     if !cli.press_at.is_empty() {
         app.insert_resource(AutoPress(cli.press_at.clone()));
     }
@@ -2293,6 +2297,32 @@ fn crowd_hear(
     script_event(&mut commands, &session, &mut game, |vm| vm.call_proc(proc, &place), &level, &bullets);
 }
 
+/// `MGS2_KEYS`: taps letter keys at given times (testing).
+fn test_keys(time: Res<Time>, mut keys: ResMut<ButtonInput<KeyCode>>, mut done: Local<Vec<usize>>) {
+    let list = std::env::var("MGS2_KEYS").unwrap_or_default();
+    for (i, e) in list.split(',').enumerate() {
+        let Some((k, t)) = e.split_once('@') else { continue };
+        let Ok(t) = t.parse::<f32>() else { continue };
+        let code = match k.trim().to_ascii_uppercase().as_str() {
+            "N" => KeyCode::KeyN,
+            "T" => KeyCode::KeyT,
+            "R" => KeyCode::KeyR,
+            "B" => KeyCode::KeyB,
+            "G" => KeyCode::KeyG,
+            "V" => KeyCode::KeyV,
+            _ => continue,
+        };
+        if done.contains(&i) {
+            if keys.pressed(code) {
+                keys.release(code);
+            }
+        } else if time.elapsed_secs() >= t {
+            done.push(i);
+            keys.press(code);
+        }
+    }
+}
+
 /// `--press-at`: action button presses at these times (seconds).
 #[derive(Resource)]
 struct AutoPress(Vec<f32>);
@@ -2459,7 +2489,7 @@ fn hud(
     if inv.usp {
         carried.insert(0, format!("[{}]", if inv.weapon == 1 { "USP" } else { "M9" }));
     }
-    let mut message = inv.message.as_ref().map_or(String::new(), |(m, _)| format!("  Got: {m}"));
+    let mut message = inv.message.as_ref().map_or(String::new(), |(m, _)| if hud::is_pickup(m) { format!("  Got: {m}") } else { format!("  {m}") });
     if let Some(t) = &game.timer {
         message += &format!("   TIME {}", t.text());
     }

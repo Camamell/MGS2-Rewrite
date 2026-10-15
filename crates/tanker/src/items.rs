@@ -158,6 +158,13 @@ impl Inventory {
         if usp {
             counts.insert(USP_AMMO, TEST_USP_ROUNDS);
         }
+        // MGS2_GIVE=kind/id:count,..: start with these (testing).
+        for e in std::env::var("MGS2_GIVE").unwrap_or_default().split(',') {
+            let mut it = e.split([':', '/']).filter_map(|v| v.trim().parse::<i32>().ok());
+            if let (Some(k), Some(i), Some(n)) = (it.next(), it.next(), it.next()) {
+                counts.insert((k, i), n);
+            }
+        }
         Self {
             counts,
             taken: HashSet::new(),

@@ -207,7 +207,7 @@ fn update(
         if !prompt.is_empty() {
             prompt.push('\n');
         }
-        prompt += &format!("Got: {m}");
+        prompt += &if is_pickup(m) { format!("Got: {m}") } else { m.clone() };
     }
     for (e, life, weapon, it, pr, centre, timer) in &labels {
         let s = if hidden {
@@ -229,4 +229,10 @@ fn update(
         };
         set_text(&mut texts, e, s);
     }
+}
+
+/// Inventory messages that report something taken (others, like "Bandage
+/// used" or "Thermal Goggles on", are shown as they are).
+pub fn is_pickup(m: &str) -> bool {
+    !(m.ends_with(" used") || m.ends_with(" on") || m.ends_with(" off") || m.contains("equipped"))
 }
