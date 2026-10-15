@@ -25,7 +25,9 @@ pub struct MaterialCache {
 
 pub fn alpha_mode(t: &Texture) -> AlphaMode {
     use mgs2_formats::tri::Blend;
-    match t.blend {
+    // MGS2_NO_BLEND=1: treat every texture as normal (comparing).
+    let blend = if std::env::var_os("MGS2_NO_BLEND").is_some() { Blend::Normal } else { t.blend };
+    match blend {
         Blend::Add => return AlphaMode::Add,
         Blend::Subtract => return AlphaMode::Blend,
         Blend::None => return AlphaMode::Blend,
