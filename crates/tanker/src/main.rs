@@ -1951,6 +1951,22 @@ fn prop_messages(
             b.pos = Vec3::new(x as f32, y as f32, z as f32);
             continue;
         }
+        // Message 2 (axis value)..: set single coordinates (0 x, 1 y, 2 z;
+        // `FUN_00270380` case 2).
+        if target == SNAKE_NAME
+            && code == 2
+            && let Ok(mut b) = snake.single_mut()
+        {
+            for pair in args.chunks_exact(2) {
+                match pair[0] {
+                    0 => b.pos.x = pair[1] as f32,
+                    1 => b.pos.y = pair[1] as f32,
+                    2 => b.pos.z = pair[1] as f32,
+                    _ => {}
+                }
+            }
+            continue;
+        }
         // Sliding doors (`FUN_00291878`): 1 lock, 2 unlock, 3 show, 4 hide,
         // 7 opened.
         for (_, mut d, mut vis) in doors.iter_mut().filter(|d| d.0.0 == target) {
