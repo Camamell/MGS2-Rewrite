@@ -1962,7 +1962,7 @@ fn prop_messages(
             && code == 0xC
             && let [x, _y, z, mode, face, ..] = args[..]
         {
-            info!("script walks Snake to {x} {z}");
+            info!("script walks Snake to {x} {z} ({args:?})");
             game.script_walk = Some((Vec2::new(x as f32, z as f32), mode != 0, face as f32 / 4096.0 * std::f32::consts::TAU));
             continue;
         }

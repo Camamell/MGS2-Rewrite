@@ -80,6 +80,9 @@ const FATAL_FALL: f32 = 6400.0;
 #[derive(Resource)]
 pub struct AutoHang(pub f32);
 
+/// The farthest a scripted walk is taken to go (mm).
+const SCRIPT_WALK_MAX: f32 = 8000.0;
+
 /// Turning while aiming (radians per second).
 const AIM_TURN: f32 = 1.6;
 const TURN_RATE: f32 = TAU * 1.5;
@@ -470,7 +473,12 @@ pub fn control(
     let mut walking = walking;
     if let Some((to, run, face)) = game.script_walk {
         let d = to - Vec2::new(body.pos.x, body.pos.z);
-        if d.length() < 120.0 || p.blocked > 0.5 {
+        // (Door arrivals pass places from expressions the port does not
+        // evaluate right yet; a target far off is dropped.)
+        if d.length() > SCRIPT_WALK_MAX {
+            warn!("scripted walk to {to} dropped ({:.0} mm away)", d.length());
+            game.script_walk = None;
+        } else if d.length() < 120.0 || p.blocked > 0.5 {
             body.yaw = face;
             game.script_walk = None;
             dir = Vec2::ZERO;
