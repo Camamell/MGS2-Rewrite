@@ -202,14 +202,15 @@ state bit 0x80; the proc gets his position), 5..9 further states (bits
 0x10 / 0x1000 / 0x2000, flags 0x400 / 0x800). Each pointer is cleared once
 called. In w04a event 4 is `#0b6271`: the "caught" sequence, which ends in
 `load "d14t" -g` (game over). The port fires event 4 when a Marine in
-formation sees Snake (within `-t` near, or far while Snake stands; ±0x200
-of his facing; clear line); the members' own state machine is not ported.
+formation sees Snake (the 6 m box, 0x100 of his facing, 2 m of height, a
+clear line; `-t` is level of detail, not sight); of the members' own state
+machine (`FUN_002273b8`, actions at +0x5a8) the idle motions and the head
+turns are ported.
 
 ## Not yet ported
 
-- the per-guard "!" length (from the action's motion);
 - close-quarters sub-states, radio reports; the troopers' own brain;
-- noise, footprints and bodies as stimuli;
+- the crowd's facing drills (modes 6-9) and looking about (mode 15);
 - the game's precomputed shortest-path matrices in the `.hzx` (paths are
   recomputed from the node links instead).
 
