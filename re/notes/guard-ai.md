@@ -340,3 +340,15 @@ mm and in front (within 200/4096): state 11, the box inspection
 (`FUN_00242448`, actions `FUN_002413d0`). Sight ranges (`FUN_002559C0`):
 near +0x248, far 1.5x; in first person (camera mode 6) both x 3/4; in the
 box at Alert max(near / 4, 2000).
+
+### Crowd messages (`FUN_00227d..`, handler before `FUN_00227ee0`)
+
+Script messages to the crowd (`#3822c7 <crowd> n`) map to a formation mode:
+2-6 -> 0x11-0x15 (facing modes, +0x8cab4: 0x12 / 0x13 / 0x15 turn to 0x400 /
+0xc00 / 0x800, 0x14 back to 0, 0x10 / 0x11 the `-c` facings), 7-10 -> 6-9,
+11-15 -> 10-14, 16 -> 0x16 (face a point), 17 -> 0x10, 18 -> 0xf; 0x40 sets a
+target member, 0x42-0x45 arm / disarm the `-p` points. Modes 10-14
+(`FUN_00225690` action 6) set +0x588 to -900 / 900 (10 / 11) and +0x58a to
+800 / -800 (12 / 14): a turn of the head or upper body, joint not yet
+identified. w04a-c send 11-15 in proc `#4b58a6` and 14 in `#678089`. Not
+ported.
