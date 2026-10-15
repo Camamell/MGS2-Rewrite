@@ -98,7 +98,9 @@ pub const SNAKE_DIR: u16 = 0x7F8;
 /// (`0x743c9f`), so a door's exit proc reaches its `load` and the holds'
 /// "caught" sequence its game over. (A `delay`'s `-e` block always runs at
 /// once.)
-const EAGER: &[u32] = &[0xE22388, 0x743C9F];
+const EAGER: &[u32] = &[0xE22388, DELAY_ACTOR];
+/// The `delay` timer actor (`cmd_743c9f`).
+const DELAY_ACTOR: u32 = 0x743C9F;
 
 /// Commands that run their `-p` proc once their action is over; with
 /// `eager` it runs at once. `0x709df6`: Snake plays an action (`-m`) and
@@ -500,10 +502,26 @@ impl<'a> Vm<'a> {
                 Some(v) => v.int()?,
                 None => return None,
             };
+            let spawn_args: Vec<Val> = vals.collect();
+            let kind = kind as u32 & 0x00FF_FFFF;
+            // A `delay`'s blocks see its `-a` values as their `$1`.. (the
+            // door's walk-out passes the distance that way).
+            let own: Option<Vec<i32>> = (kind == DELAY_ACTOR).then(|| {
+                options
+                    .iter()
+                    .filter(|(l, _)| *l == b'a')
+                    .flat_map(|(_, v)| v.iter())
+                    .map(|x| self.value(x, args).int().unwrap_or(0))
+                    .collect()
+            });
+            let block_args: Vec<i32> = own.unwrap_or_else(|| args.to_vec());
             let spawn = Spawn {
-                kind: kind as u32 & 0x00FF_FFFF,
-                args: vals.collect(),
-                options: options.iter().map(|(l, v)| (*l, v.iter().map(|x| self.value(x, args)).collect())).collect(),
+                kind,
+                args: spawn_args,
+                options: options
+                    .iter()
+                    .map(|(l, v)| (*l, v.iter().map(|x| if matches!(x, Value::Block(_)) { self.value(x, &block_args) } else { self.value(x, args) }).collect()))
+                    .collect(),
             };
             let on_create = CALL_ON_CREATE
                 .iter()

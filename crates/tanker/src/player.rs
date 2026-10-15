@@ -481,6 +481,9 @@ pub fn control(
         } else if d.length() < 120.0 || p.blocked > 0.5 {
             body.yaw = face;
             game.script_walk = None;
+            if let Some(then) = game.script_walk_then.take() {
+                game.codec_then.push(then);
+            }
             dir = Vec2::ZERO;
         } else {
             dir = d.normalize();

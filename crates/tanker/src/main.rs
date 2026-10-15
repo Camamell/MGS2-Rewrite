@@ -204,6 +204,8 @@ pub struct Game {
     /// A scripted walk (Snake message 0xc, `FUN_00298868` /
     /// `FUN_00298158`): target (mm), running, facing at the end.
     pub script_walk: Option<(Vec2, bool, f32)>,
+    /// The proc a scripted walk runs when it ends (its 7th value).
+    pub script_walk_then: Option<u32>,
     /// The script camera switched on, if any.
     pub cameras: script_cam::Cameras,
     /// (frequency, CODEC.DAT id) Snake reaches by calling from here.
@@ -777,6 +779,7 @@ fn prepare(
         snake_start: (pos, yaw),
         entrance: 0.0,
         script_walk: None,
+        script_walk_then: None,
         prime_traps: false,
         cameras,
         codec_area: None,
@@ -1964,6 +1967,7 @@ fn prop_messages(
         {
             info!("script walks Snake to {x} {z} ({args:?})");
             game.script_walk = Some((Vec2::new(x as f32, z as f32), mode != 0, face as f32 / 4096.0 * std::f32::consts::TAU));
+            game.script_walk_then = args.get(6).map(|p| *p as u32 & 0x00FF_FFFF).filter(|p| *p != 0);
             continue;
         }
         // Message 2 (axis value)..: set single coordinates (0 x, 1 y, 2 z;
