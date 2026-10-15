@@ -69,6 +69,13 @@ the letter marks a handler that also runs on unload):
   lifeboats on the 2F deck.
 - The area's +04/+0C pointers are navigation nodes (see Guards, and
   `hzx.rs`).
+- Railings in scripts: stages also call proc `#702569 <trap> x $6 z0 z1 k`
+  from a trap on Snake ("beyond_set"); with the action button held and
+  Snake facing 0xc00 / 0x400 (±0x100) it sends him `mesg #28dce6 0` with
+  mode 5 / 6, the facing, and his place (x + 500 / + 250, z clamped to
+  z0 + 450 .. z1 - 450), and limits him to x ± 2000, z0..z1
+  (`#5686ae -x -z`). The holds (w04a/b), which have no 0x800 walls, get
+  their hang ledges only this way; the port builds ledges from these calls.
 - Hang ledges: second-set walls with flag 0x800 run 200-250 mm below a deck
   edge under its railing (top = the deck floor); 24 in w00a.
 - Element flags (+0x14 of each wall/floor element) are masked by the
