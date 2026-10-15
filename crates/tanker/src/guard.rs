@@ -1443,6 +1443,7 @@ fn alert_brain(
         a.shots += 1;
         if a.shots >= MAGAZINE {
             a.shots = 0;
+            info!("guard {} reloads", g.route);
             a.reload = if g.anim.knocked.is_some() {
                 body.motions.and_then(|m| game.data.motions.get(m)).and_then(|(_, mar)| mar.motions.get(RELOAD_MOTION)).map_or(RELOAD_FRAMES, |m| m.length as f32)
             } else {

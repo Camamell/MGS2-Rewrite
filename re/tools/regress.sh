@@ -43,6 +43,8 @@ check holds_quiet "game over" eq 0 w04a --skip-cutscenes --auto-walk 8 --shot-at
 # Guards: the box check and the rifle butt.
 MGS2_BOX_TEST=1 check box_check "checks the box" ge 1 w01a --skip-cutscenes --snake-at=6000,0,1500 --shot-at 26
 check close_quarters "life=(8|7)" ge 1 w01a --skip-cutscenes --trace --snake-at=6000,0,3300 --snake-dir=0 --shot-at 6
+# A guard empties his magazine at an invulnerable Snake and reloads.
+MGS2_GOD=1 check reload "reloads" ge 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 14
 # Items: a bandage stops the bleeding; cold medicine ends the sneezing.
 MGS2_LIFE=25 MGS2_GIVE=0/5:1 MGS2_KEYS=N@2 check bandage "bandage used" ge 1 w01a --skip-cutscenes --shot-at 3
 MGS2_COLD=120 MGS2_GIVE=0/4:1 MGS2_KEYS=N@4 check cold "cold medicine used" ge 1 w01a --skip-cutscenes --shot-at 6

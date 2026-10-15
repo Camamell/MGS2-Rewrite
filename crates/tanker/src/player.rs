@@ -174,6 +174,10 @@ impl Player {
     /// Damage with the ration revive of `FUN_00289320`: an equipped ration
     /// restores full life on Very Easy, half otherwise.
     pub fn damage(&mut self, amount: i32) {
+        // MGS2_GOD=1: no damage (testing).
+        if amount > 0 && std::env::var_os("MGS2_GOD").is_some() {
+            return;
+        }
         self.life -= amount;
         // A hit that leaves him under a third of his life starts him
         // bleeding (`FUN_002713e8` sets 0x1000000; `blood_dp.c`).
