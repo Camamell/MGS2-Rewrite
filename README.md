@@ -185,6 +185,8 @@ What works:
 - Olga on the navigational deck (w00b): her original step tables are run
   from the disc (aim, burst timings, reloads, moving between her positions);
   only the choice of the next sequence is simplified (`re/notes/guard-ai.md`).
+  The crates on her platform (`orga_obj.c`) stand where the script puts
+  them and block Snake (a box round each; they cannot be shot apart yet).
 - Codec calls (K) with the original dialogue and voices (VOX.DAT) and the
   speakers' 3D faces from FACE.DAT, moving with their idle motions and the voice clips' own face animation (lips, brows, posture); hanging from railings (the deck's ledges, and in the holds the railings the stage scripts mark for climbing over).
 - Cutscenes play from DEMO.DAT: the camera track, the characters posed by

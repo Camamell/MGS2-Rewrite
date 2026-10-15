@@ -478,6 +478,57 @@ fn skyline(s: &gcl::Spawn, data: &StageData) -> Vec<Prop> {
 
 const SKYLINE_SCALE: f32 = 6.0;
 
+/// `orga_obj.c` (`cmd_4fb2ca`, w00b): the crates on Olga's platform, one
+/// `-m model -r rx ry rz -p x y z -l lt2` group each. Drawn only (their
+/// collision and being shot apart are not ported).
+const ORGA_OBJ: u32 = 0x4FB2CA;
+
+fn orga_objects(s: &gcl::Spawn, data: &StageData) -> Vec<Prop> {
+    let mut out = Vec::new();
+    let mut model = None;
+    let mut rot = [0i32; 3];
+    let mut lt2 = None;
+    let push = |out: &mut Vec<Prop>, model: Option<usize>, rot: [i32; 3], pos: [i32; 3], lt2: Option<u32>| {
+        let Some(model) = model else { return };
+        let a = |v: i32| v as f32 / 4096.0 * std::f32::consts::TAU;
+        out.push(Prop {
+            model,
+            transform: Transform::from_translation(Vec3::new(pos[0] as f32, pos[1] as f32, pos[2] as f32) * SCALE)
+                .with_rotation(Quat::from_euler(EulerRot::YXZ, a(rot[1]), a(rot[0]), a(rot[2]))),
+            no_fog: false,
+            lt2,
+            name: 0,
+        });
+    };
+    let mut pending: Option<[i32; 3]> = None;
+    for (l, v) in &s.options {
+        let i = |k: usize| v.get(k).and_then(|x| x.int()).unwrap_or(0);
+        match l {
+            b'm' => {
+                if let Some(p) = pending.take() {
+                    push(&mut out, model, rot, p, lt2);
+                }
+                let h = v.first().and_then(|x| x.int()).map(|h| h as u32 & 0x00FF_FFFF);
+                model = h.and_then(|h| data.models.iter().position(|(m, _)| *m & 0x00FF_FFFF == h));
+                lt2 = None;
+            }
+            b'r' => rot = [i(0), i(1), i(2)],
+            b'p' => pending = Some([i(0), i(1), i(2)]),
+            b'l' => {
+                lt2 = match v.first() {
+                    Some(gcl::Val::Str(n)) => Some(str_code(n.as_bytes())),
+                    _ => None,
+                }
+            }
+            _ => {}
+        }
+    }
+    if let Some(p) = pending {
+        push(&mut out, model, rot, p, lt2);
+    }
+    out
+}
+
 fn prop(s: &gcl::Spawn, data: &StageData) -> Option<Prop> {
     // `-f` bit 0x100 marks helpers that are never drawn (e.g. the stretched
     // `w04_test_bou` poles).
@@ -672,6 +723,25 @@ fn prepare(
         props = vm.spawns.iter().filter(|s| PROP_ACTORS.contains(&s.kind)).filter_map(|s| prop(s, &data)).collect();
         props.extend(vm.spawns.iter().filter(|s| s.kind == DOOR_ACTOR).flat_map(|s| door_props(s, &data)));
         props.extend(vm.spawns.iter().flat_map(|s| skyline(s, &data)));
+        let crates: Vec<Prop> = vm.spawns.iter().filter(|s| s.kind == ORGA_OBJ).flat_map(|s| orga_objects(s, &data)).collect();
+        // The crates stop Snake: a wall round each model's bounds (an
+        // approximation of their own collision, which is not read).
+        if let Some(col) = collision.as_mut() {
+            for c in &crates {
+                let m = &data.models[c.model].1;
+                let (b, o) = (m.bbox, m.origin);
+                let t = c.transform;
+                let corner = |x: f32, z: f32| t.transform_point(Vec3::new(x + o[0], 0.0, z + o[2]) * SCALE) / SCALE;
+                let ps = [corner(b[0], b[2]), corner(b[3], b[2]), corner(b[3], b[5]), corner(b[0], b[5])];
+                let bottom = t.translation.y / SCALE + b[1] + o[1];
+                let h = b[4] - b[1];
+                for i in 0..4 {
+                    let (p, q) = (ps[i], ps[(i + 1) % 4]);
+                    col.add_script_wall(ORGA_OBJ, [p.x as i32, bottom as i32, p.z as i32, h as i32, q.x as i32, bottom as i32, q.z as i32, h as i32], 0);
+                }
+            }
+        }
+        props.extend(crates);
         sliding = vm.spawns.iter().filter(|s| s.kind == SLIDING_DOOR).filter_map(|s| sliding_door(s, &data)).collect();
         bosses = vm
             .spawns
