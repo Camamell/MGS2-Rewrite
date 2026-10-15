@@ -254,6 +254,16 @@ facing).
   `FUN_00267DE0` picks the next sequence through a condition function from
   0x1F8198 (indexed by +0xF70 & 3), avoiding the last 8 picks (+0xF88).
 
+Cover objects: the array at w00b 0x3ca0b0 (0x70 bytes each, up to 10) is
+built by actor `cmd_53209a` (`FUN_00259f30`): w00b's script creates it as
+`chara #53209a #c970e3 -m ~obs_box1 ~obs_box2 ~obs_irs -r 0 0 0 -p 0 0 0
+...` (three obstacle models, all placed at the origin, so moved later);
+`-r` sets each one's turn (+0x68, 10-bit), `-p` its place. Olga's +0x107c
+points at them; `FUN_00268d80(cover, point, flags)` grades each (2 bits),
+`FUN_002673b0` picks one by those grades and Snake's zone (+0x109c: 0x0,
+0x20, 0x60, 0x160, 0x170, 0x1f0, 0x1f2, 0x1fa, 0x1fb, 0x1ff map to cover
+masks). Who moves the obstacles is not traced yet.
+
 ## Noise (`FUN_0011b630`, `FUN_00220078`, `FUN_0021f958`)
 
 Emitters latch the loudest (level, place) of a frame; soldiers read it the
