@@ -24,7 +24,7 @@
 //! - close quarters: within 1 m and in sight, the rifle butt (motion 0x55;
 //!   its damage is assumed).
 //!
-//! Simplified for now: the reload time, radio reports, body stimuli (noises are
+//! Simplified for now: radio reports, body stimuli (noises are
 //! heard: `noise`; footprints and blood are followed), and the evasion search
 //! pattern (guards visit nav nodes around the last known position).
 
@@ -424,8 +424,11 @@ pub static STRIKES: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32:
 const AIM_FRAMES: f32 = 21.0;
 const SHOT_FRAMES: f32 = 4.0;
 const MAGAZINE: u32 = 31;
-/// Reload pause (the reload motion's length; not read yet).
+/// Reload (`FUN_00228f80` after 31 shots -> sub-state 5: alert action 7,
+/// `FUN_002281e8` -> motion 0x3e, 0x155 under flag 0x4000) lasts the
+/// motion; this if the motion is missing.
 const RELOAD_FRAMES: f32 = 90.0;
+const RELOAD_MOTION: usize = 0x3E;
 /// Guards aim when they see Snake (level 3, inside their near range) or
 /// when he is closer than this (`FUN_00228710`: 0x5dd mm).
 const POINT_BLANK: f32 = 1501.0;
@@ -1388,7 +1391,11 @@ fn alert_brain(
     let a = &mut g.attack;
     if a.reload > 0.0 {
         a.reload -= frames;
-        body.play(g.anim.idle);
+        if g.anim.knocked.is_some() {
+            body.play_once(RELOAD_MOTION);
+        } else {
+            body.play(g.anim.idle);
+        }
         face(body, target, dt);
         return false;
     }
@@ -1436,7 +1443,11 @@ fn alert_brain(
         a.shots += 1;
         if a.shots >= MAGAZINE {
             a.shots = 0;
-            a.reload = RELOAD_FRAMES;
+            a.reload = if g.anim.knocked.is_some() {
+                body.motions.and_then(|m| game.data.motions.get(m)).and_then(|(_, mar)| mar.motions.get(RELOAD_MOTION)).map_or(RELOAD_FRAMES, |m| m.length as f32)
+            } else {
+                RELOAD_FRAMES
+            };
             a.firing = false;
             a.aim = 0.0;
         } else if rng.next().is_multiple_of(3) {
