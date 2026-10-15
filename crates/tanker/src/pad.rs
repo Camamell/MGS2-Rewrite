@@ -108,9 +108,9 @@ pub fn feed(
                 x ^= x << 5;
                 x
             };
-            const POOL: [KeyCode; 18] = [
+            const POOL: [KeyCode; 19] = [
                 KeyCode::KeyW, KeyCode::KeyA, KeyCode::KeyS, KeyCode::KeyD, KeyCode::ShiftLeft, KeyCode::KeyC, KeyCode::Space, KeyCode::KeyF,
-                KeyCode::KeyV, KeyCode::KeyX, KeyCode::KeyZ, KeyCode::KeyG, KeyCode::KeyR, KeyCode::Digit1, KeyCode::Digit2, KeyCode::KeyB, KeyCode::KeyK, KeyCode::KeyN,
+                KeyCode::KeyV, KeyCode::KeyX, KeyCode::KeyZ, KeyCode::KeyG, KeyCode::KeyR, KeyCode::Digit1, KeyCode::Digit2, KeyCode::KeyB, KeyCode::KeyK, KeyCode::KeyN, KeyCode::KeyT,
             ];
             fuzz.1 = (0..1 + next() % 3).map(|_| POOL[(next() % POOL.len() as u32) as usize]).collect();
         }

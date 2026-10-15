@@ -71,6 +71,7 @@ too.
 | V | punch (three in a row: punch, punch and a knock-down blow; two such combos knock a soldier out) |
 | R | equip / unequip a ration (revives Snake at zero life) |
 | N | use a bandage: stops the bleeding |
+| T | thermal goggles on / off (once Snake has them; the look is assumed) |
 | X (hold) | first-person view: A/D turn, W/S look up / down |
 | (walk into a wall) | back to the wall: sidestep along it (keep going at its end to peek round the corner), Space knocks (draws guards within 4 m), step away to leave |
 | G | throw a stun grenade (or chaff when out of stuns): stuns guards within 5 m of the blast; chaff jams the radar for 8 s |

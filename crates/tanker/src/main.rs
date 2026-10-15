@@ -22,6 +22,7 @@ mod usp_light;
 mod fog;
 mod footprint;
 mod fpv;
+mod thermal;
 mod gcl;
 mod grenade;
 mod guard;
@@ -1036,7 +1037,7 @@ fn main() -> Result<()> {
         app.add_systems(Update, (save::autosave, save::codec_save));
     }
     app.add_systems(Update, test_monitor);
-    app.add_plugins((pad::plugin, pause::plugin, scar::plugin, footprint::plugin, usp_light::plugin)).add_systems(Update, pad::rumble);
+    app.add_plugins((pad::plugin, pause::plugin, scar::plugin, footprint::plugin, usp_light::plugin, thermal::plugin)).add_systems(Update, pad::rumble);
     app.add_plugins(cbox::plugin);
     app.add_plugins(grenade::plugin);
     app.add_systems(Update, motion_sheet.after(player::control).before(body::skin));
