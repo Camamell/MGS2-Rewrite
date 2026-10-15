@@ -10,9 +10,10 @@
 //! (`sco_def`), 20-21 `us_def_pants`. Members placed at the origin are
 //! moved by the actor later (the commandant's walk) and are left out here.
 //!
-//! Drawn standing with the first `ushold` motion, with their variants'
-//! parts, head accessories and slung rifles; the crowd's reactions are
-//! not done yet.
+//! Each stands looping his idle variation's `ushold` motion, with his
+//! variant's parts, head accessories and slung rifle; the script's head
+//! messages bring them to attention and turn their heads (`Head`). The
+//! other formation modes (facing drills, looking about) are not done.
 
 use bevy::prelude::*;
 use mgs2_formats::kms;

@@ -1240,7 +1240,10 @@ fn spawn_level(
     }
     let rifle = model_index(data, "m4a_nm");
     for (model, motions, pos, yaw, idle, extras, flags) in cast.crowd {
+        // Each member loops his idle variation's `ushold` motion (0-5,
+        // the sequence table at w04c 0x1f3800, `FUN_00224f80`).
         let mut b = Body::new(pos, yaw, model, motions);
+        b.motion = idle as usize;
         b.frame = idle as f32 * 7.0;
         let e = spawn(&mut commands, model, b);
         commands.entity(e).insert(crowd::Marine);
