@@ -201,6 +201,9 @@ pub struct Game {
     /// Distance (mm) Snake still walks in by himself after coming through a
     /// door (the script's entrance `mesg`); exits arm when it is over.
     pub entrance: f32,
+    /// A scripted walk (Snake message 0xc, `FUN_00298868` /
+    /// `FUN_00298158`): target (mm), running, facing at the end.
+    pub script_walk: Option<(Vec2, bool, f32)>,
     /// The script camera switched on, if any.
     pub cameras: script_cam::Cameras,
     /// (frequency, CODEC.DAT id) Snake reaches by calling from here.
@@ -773,6 +776,7 @@ fn prepare(
         traps,
         snake_start: (pos, yaw),
         entrance: 0.0,
+        script_walk: None,
         prime_traps: false,
         cameras,
         codec_area: None,
@@ -1951,6 +1955,17 @@ fn prop_messages(
             b.pos = Vec3::new(x as f32, y as f32, z as f32);
             continue;
         }
+        // Message 0xc x y z mode facing flags: walk there by himself
+        // (mode 0 walking, others running — assumed), then turn to the
+        // facing (4096ths; its meaning is assumed).
+        if target == SNAKE_NAME
+            && code == 0xC
+            && let [x, _y, z, mode, face, ..] = args[..]
+        {
+            info!("script walks Snake to {x} {z}");
+            game.script_walk = Some((Vec2::new(x as f32, z as f32), mode != 0, face as f32 / 4096.0 * std::f32::consts::TAU));
+            continue;
+        }
         // Message 2 (axis value)..: set single coordinates (0 x, 1 y, 2 z;
         // `FUN_00270380` case 2).
         if target == SNAKE_NAME
@@ -2159,6 +2174,13 @@ fn snake_vars(
     // an alert sneezes once Bs16:0x102 frames have passed (`FUN_00299a98`
     // counts DAT_001f582c), playing 0x512 and making a noise of 6
     // (`FUN_00299950`). Cold medicine (N, when not bleeding) clears it.
+    // MGS2_WALK_TO=x,z: a scripted walk there after a second (testing).
+    if let Some((x, z)) = std::env::var("MGS2_WALK_TO").ok().and_then(|v| v.split_once(',').map(|(a, b)| (a.parse::<f32>(), b.parse::<f32>())))
+        && let (Ok(x), Ok(z)) = (x, z)
+        && (1.0..1.0 + time.delta_secs() * 1.5).contains(&time.elapsed_secs())
+    {
+        game.script_walk = Some((Vec2::new(x, z), false, 0.0));
+    }
     // MGS2_COLD=n: start with a cold, sneezing every n frames (testing).
     if let Some(n) = std::env::var("MGS2_COLD").ok().and_then(|v| v.parse::<i16>().ok())
         && time.elapsed_secs() < 0.5

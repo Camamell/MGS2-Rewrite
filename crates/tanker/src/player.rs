@@ -465,6 +465,20 @@ pub fn control(
         let f = body.forward();
         dir = Vec2::new(f.x, f.z).normalize_or_zero();
     }
+    // A scripted walk: toward its point, no control; at the point, the
+    // facing.
+    let mut walking = walking;
+    if let Some((to, run, face)) = game.script_walk {
+        let d = to - Vec2::new(body.pos.x, body.pos.z);
+        if d.length() < 120.0 || p.blocked > 0.5 {
+            body.yaw = face;
+            game.script_walk = None;
+            dir = Vec2::ZERO;
+        } else {
+            dir = d.normalize();
+            walking = !run;
+        }
+    }
 
     // MGS2_WALK_DIR=x,z (testing): walk that world direction meanwhile.
     // (Several segments: `x,z@until;x,z@until` seconds.)
