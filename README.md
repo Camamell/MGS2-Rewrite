@@ -186,7 +186,7 @@ What works:
   from the disc (aim, burst timings, reloads, moving between her positions);
   only the choice of the next sequence is simplified (`re/notes/guard-ai.md`).
 - Codec calls (K) with the original dialogue and voices (VOX.DAT) and the
-  speakers' 3D faces from FACE.DAT, moving with their idle motions and the voice clips' own face animation (lips, brows, posture); hanging from railings.
+  speakers' 3D faces from FACE.DAT, moving with their idle motions and the voice clips' own face animation (lips, brows, posture); hanging from railings (the deck's ledges, and in the holds the railings the stage scripts mark for climbing over).
 - Cutscenes play from DEMO.DAT: the camera track, the characters posed by
   the demo's actor stream, the cutscene stage's scenery, and subtitles
   (`--skip-cutscenes` to skip; Space next line, Esc skip), with the

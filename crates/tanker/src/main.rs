@@ -820,6 +820,17 @@ fn prepare(
     apply_codec(&mut game, &codec_reqs);
     if let (Some(h), Some(c)) = (&game.data.collision, &game.collision) {
         game.hang_lines = collision::hang_lines(h, c);
+        // The holds' railings have no ledge walls: their scripts put Snake
+        // over them (`call #702569 <trap> x $6 z0 z1 k`, "beyond_set").
+        if let Some(script) = &game.data.script {
+            let mut calls = Vec::new();
+            for p in &script.procs {
+                collect_beyond_calls(&p.body, &mut calls);
+            }
+            collect_beyond_calls(&script.main, &mut calls);
+            let extra = collision::beyond_lines(h, c, &calls);
+            game.hang_lines.extend(extra);
+        }
     }
     if walk_in {
         game.entrance = ENTRANCE_WALK;
@@ -1546,6 +1557,32 @@ fn collect_scene_calls(stmts: &[mgs2_formats::gcx::Stmt], out: &mut Vec<(i32, u3
         }
     }
 }
+
+/// `call #702569 <trap> x $6 z0 z1 k` (the railing proc): (trap name, x,
+/// z0, z1).
+fn collect_beyond_calls(stmts: &[mgs2_formats::gcx::Stmt], out: &mut Vec<(u32, f32, f32, f32)>) {
+    use mgs2_formats::gcx::{Stmt, Value};
+    for s in stmts {
+        match s {
+            Stmt::Call { proc, args } if *proc & 0x00FF_FFFF == BEYOND_PROC => {
+                if let [Value::Name(t), Value::Int(_, x), _, Value::Int(_, z0), Value::Int(_, z1), ..] = args.as_slice() {
+                    out.push((*t & 0x00FF_FFFF, *x as f32, *z0 as f32, *z1 as f32));
+                }
+            }
+            Stmt::Command { args, options, .. } => {
+                for v in args.iter().chain(options.iter().flat_map(|(_, v)| v)) {
+                    if let Value::Block(b) = v {
+                        collect_beyond_calls(b, out);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// The stage scripts' railing proc (hang over the railing at x, z0..z1).
+const BEYOND_PROC: u32 = 0x702569;
 
 fn collect_loads(stmts: &[mgs2_formats::gcx::Stmt], out: &mut Vec<String>) {
     use mgs2_formats::gcx::{Stmt, Value};

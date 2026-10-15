@@ -21,6 +21,14 @@ fn main() {
         }
         return;
     }
+    // `walls2`: the second set's walls, flags and first point.
+    if std::env::args().nth(2).as_deref() == Some("walls2") {
+        for w in hzx.areas.iter().flat_map(|a| &a.groups).flat_map(|g| &g.walls2) {
+            let (p, h) = w.points[0];
+            println!("{:#x} {} pts at ({:.0},{:.0},{:.0}) h {:.0}", w.flags, w.points.len(), p[0], p[1], p[2], h);
+        }
+        return;
+    }
     if std::env::args().nth(2).as_deref() == Some("traps") {
         for t in &hzx.traps {
             println!("#{:06x} {:?} .. {:?}", t.name & 0xFF_FFFF, t.min, t.max);

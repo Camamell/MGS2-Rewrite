@@ -353,6 +353,39 @@ pub fn hang_lines(hzx: &Hzx, col: &Collision) -> Vec<HangLine> {
     out
 }
 
+/// Ledges from the scripts' railing calls (trap name, x, z0, z1): a line
+/// along z at x, at the floor of the trap's box, hanging out on the side
+/// without floor. (The proc's own position offsets, x + 500 or + 250 by
+/// its mode, are folded into the usual hang distance.)
+pub fn beyond_lines(hzx: &Hzx, col: &Collision, calls: &[(u32, f32, f32, f32)]) -> Vec<HangLine> {
+    let mut out = Vec::new();
+    for &(trap, x, z0, z1) in calls {
+        let (lo, hi) = (z0.min(z1), z0.max(z1));
+        let mid = (lo + hi) * 0.5;
+        // The deck: the floor inside the trap box nearest the line.
+        let Some(t) = hzx
+            .traps
+            .iter()
+            .filter(|t| t.name & 0x00FF_FFFF == trap)
+            .min_by(|a, b| ((a.min[0] + a.max[0]) * 0.5 - x).abs().total_cmp(&((b.min[0] + b.max[0]) * 0.5 - x).abs()))
+        else {
+            continue;
+        };
+        let deck = |s: f32| col.floor_below(x + s * 400.0, mid.clamp(t.min[2], t.max[2]), t.max[1]).filter(|y| *y >= t.min[1]);
+        let (y, out_n) = match (deck(-1.0), deck(1.0)) {
+            (Some(y), None) => (y, Vec2::X),
+            (None, Some(y)) => (y, -Vec2::X),
+            (Some(a), Some(b)) if (a - b).abs() > 1000.0 => (a.max(b), if a > b { Vec2::X } else { -Vec2::X }),
+            _ => continue,
+        };
+        let line = HangLine { a: Vec3::new(x, y, lo + 450.0), b: Vec3::new(x, y, hi - 450.0), out: out_n };
+        if line.length() > 1.0 && !out.iter().any(|l: &HangLine| l.a == line.a && l.b == line.b) {
+            out.push(line);
+        }
+    }
+    out
+}
+
 /// Even-odd point-in-polygon test.
 fn inside(poly: &[Vec2], p: Vec2) -> bool {
     let mut c = false;
