@@ -1935,11 +1935,22 @@ fn prop_messages(
     mut game: ResMut<Game>,
     mut props: Query<(Entity, &PropName, &mut Transform, &mut Visibility), Without<DoorName>>,
     mut doors: Query<(&DoorName, &mut SlidingDoor, &mut Visibility)>,
+    mut snake: Query<&mut Body, (With<Player>, Without<PropName>, Without<DoorName>)>,
 ) {
     if game.prop_messages.is_empty() {
         return;
     }
     for (target, code, args) in std::mem::take(&mut game.prop_messages) {
+        // Snake, message 1 x y z: put him there (w01b, w04b scripts).
+        if target == SNAKE_NAME
+            && code == 1
+            && let [x, y, z, ..] = args[..]
+            && let Ok(mut b) = snake.single_mut()
+        {
+            info!("script puts Snake at {x} {y} {z}");
+            b.pos = Vec3::new(x as f32, y as f32, z as f32);
+            continue;
+        }
         // Sliding doors (`FUN_00291878`): 1 lock, 2 unlock, 3 show, 4 hide,
         // 7 opened.
         for (_, mut d, mut vis) in doors.iter_mut().filter(|d| d.0.0 == target) {
