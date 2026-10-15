@@ -362,3 +362,13 @@ into the matrix at +0x3b0, joint 12 of the 0x10-byte list at +0x2f0). w04a-c
 send 11-15 in proc `#4b58a6` and 14 in `#678089`. Ported (`crowd::Head`;
 `MGS2_CROWD_MSG=n` sends one for testing); the axis order and signs are
 assumed.
+
+## Notes toward the hold (not ported)
+
+The soldiers' stimuli 0x8000000 / 0x1000000 / 0x2000000 lead to normal
+states 0xf (`FUN_00245db0`, action table `LAB_00245880`), 0xd
+(`FUN_00244ad0`, table `FUN_00243cf0`) and 0xe (`FUN_00245840`); they are
+set from outside the soldier (Snake's actions), and one of them is likely
+the hold. Snake's `snake.mar` contact sheet (`MGS2_MOTION_SHEET` with
+`--look`) shows arms-at-chest poses at 73-78 and 160-164 and big swings at
+177-180, candidates for hold / drag / throw; none confirmed.
