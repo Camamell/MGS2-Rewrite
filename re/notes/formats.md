@@ -76,6 +76,16 @@ the letter marks a handler that also runs on unload):
   z0 + 450 .. z1 - 450), and limits him to x ± 2000, z0..z1
   (`#5686ae -x -z`). The holds (w04a/b), which have no 0x800 walls, get
   their hang ledges only this way; the port builds ledges from these calls.
+- Snake's script messages (`FUN_00270380`): 1 x y z place him; 2 (axis
+  value).. set coordinates; 8 v toggles player flag 0x40000000000; 0xe sets
+  +0x6a; 0xc x y z mode facing flags [proc] walks him there by himself
+  (`FUN_00298868` -> state `FUN_00298158`) and runs the proc at the end
+  (door walk-outs and walk-ins, `delay`-timed); 0 mode facing -1 k flags x
+  y z.. starts a scripted move (`FUN_0026fda8`): 5 / 6 the railing, 18 the
+  drop to the ledge below, 26 / 36-47 the holds' floor hatches (`~hatch`
+  actor `#72f23c`: open, climb down to y -18000 beside it, climb back;
+  the three numbers look like x, z, y). 0xa is a registered handler
+  (0x297f18, not decompiled). The port does 1, 2, 0xc and the railings.
 - Hang ledges: second-set walls with flag 0x800 run 200-250 mm below a deck
   edge under its railing (top = the deck floor); 24 in w00a.
 - Element flags (+0x14 of each wall/floor element) are masked by the
