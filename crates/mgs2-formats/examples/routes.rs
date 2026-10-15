@@ -21,6 +21,22 @@ fn main() {
         }
         return;
     }
+    // `floors_at x z`: the floors whose bounds cover (x, z), with height.
+    if std::env::args().nth(2).as_deref() == Some("floors_at") {
+        let x: f32 = std::env::args().nth(3).and_then(|v| v.parse().ok()).unwrap_or(0.0);
+        let z: f32 = std::env::args().nth(4).and_then(|v| v.parse().ok()).unwrap_or(0.0);
+        for f in hzx.areas.iter().flat_map(|a| &a.groups).flat_map(|g| &g.floors) {
+            for p in &f.polygons {
+                let (lo, hi) = p.vertices.iter().fold(([f32::MAX; 3], [f32::MIN; 3]), |(lo, hi), v| {
+                    ([lo[0].min(v[0]), lo[1].min(v[1]), lo[2].min(v[2])], [hi[0].max(v[0]), hi[1].max(v[1]), hi[2].max(v[2])])
+                });
+                if lo[0] <= x && x <= hi[0] && lo[2] <= z && z <= hi[2] {
+                    println!("{:#x} y {:.0}..{:.0}", f.flags, lo[1], hi[1]);
+                }
+            }
+        }
+        return;
+    }
     // `walls2`: the second set's walls, flags and first point.
     if std::env::args().nth(2).as_deref() == Some("walls2") {
         for w in hzx.areas.iter().flat_map(|a| &a.groups).flat_map(|g| &g.walls2) {

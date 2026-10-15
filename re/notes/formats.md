@@ -84,7 +84,11 @@ the letter marks a handler that also runs on unload):
   y z.. starts a scripted move (`FUN_0026fda8`): 5 / 6 the railing, 18 the
   drop to the ledge below, 26 / 36-47 the holds' floor hatches (`~hatch`
   actor `#72f23c`: open, climb down to y -18000 beside it, climb back;
-  the three numbers look like x, z, y). 0xa is a registered handler
+  the three numbers look like x, z, y; one button press queues several,
+  e.g. 36 then 40 via `#a0bbdb`, and Snake plays them one after another:
+  a mode-0 move that starts marks him busy, so later ones in the same
+  message list wait (`FUN_00270380` keeps them for the next frames); under
+  the w04a hatches there is floor at y -19500). 0xa is a registered handler
   (0x297f18, not decompiled). The port does 1, 2, 0xc and the railings.
 - Hang ledges: second-set walls with flag 0x800 run 200-250 mm below a deck
   edge under its railing (top = the deck floor); 24 in w00a.
