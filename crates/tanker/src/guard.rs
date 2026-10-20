@@ -231,6 +231,10 @@ pub const LINE_OVER_THERE: u32 = 0x0C04_001E;
 /// backup." (0x2c000000, after a shot heard).
 pub const LINE_ENEMY: u32 = 0x2C00_0004;
 pub const LINE_SIGHTED: u32 = 0x2C00_0000;
+/// "What was that sound?" (normal state 3, a second noise) and its
+/// Evasion form.
+const LINE_SOUND: u32 = 0x0C04_0013;
+const LINE_SOUND_EVASION: u32 = 0x0C04_0014;
 /// Lines per voice in the `-v` table.
 const LINES_PER_VOICE: u32 = 0x38;
 /// The radio click (`FUN_00114b30(0x20, 0x3f, 99)`).
@@ -1186,6 +1190,9 @@ pub fn think(
             .min_by(|a, b| a.2.pos.distance(at).total_cmp(&b.2.pos.distance(at)))
             .map(|(e, _, _)| (e, at))
     });
+    // Soldiers still able (the "What was that sound?" needs a comrade to
+    // ask; the game counts his group, `FUN_0021d530`).
+    let able = guards.iter().filter(|(_, g, _)| !g.asleep()).count();
     let changed = std::mem::take(&mut phase.changed);
     let mut highest = 0i32;
 
@@ -1503,6 +1510,13 @@ pub fn think(
             && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Investigate { .. } | State::Search { .. })
         {
             info!("guard {} heard a noise at {at:?}", g.route);
+            // Heard again while already looking into one (normal state 3,
+            // `FUN_00233b20` on +0x286 > 0): "What was that sound?"
+            // (0xc040013; 0xc040014 in Evasion), with a comrade about.
+            if matches!(g.state, State::Investigate { .. } | State::Search { .. }) && able >= 2 {
+                let line = if phase.kind == PhaseKind::Evasion { LINE_SOUND_EVASION } else { LINE_SOUND };
+                phase.speak(line, &g);
+            }
             stimulus(&mut g, &body, at, &game);
         }
 

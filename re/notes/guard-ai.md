@@ -509,8 +509,10 @@ Leads for the other radio lines (not ported):
   5 / 9, `FUN_00234320` in 8, which go to 0xd, `FUN_00233c58`); 0xd goes
   to 6 (and then 2, the line) only when `FUN_001194e0` finds a nav cell
   for the noise and `FUN_00233888` > 0, else 7 / 4. So the line is said
-  on a second noise; the port runs state 3 through the investigation
-  without it.
+  on a second noise. Ported in outline: a soldier still investigating
+  (or searching) who hears another noise says it, given another able
+  soldier in the stage (the group count and the 61-frame wait are not
+  modelled).
 - Discovery (table 0x3f0c20, `re/ghidra/ai_s8_table.c`): sub 0x14
   (`FUN_00237c90`) goes to 0x1e (`FUN_00237d48`) when `FUN_00256910`
   says so; 0x1e clears the radio-shot flag (+0xb4 0x10000), says
