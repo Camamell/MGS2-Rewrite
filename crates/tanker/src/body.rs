@@ -79,6 +79,8 @@ pub struct Held {
     pub offset: Vec3,
     /// Shown only with this weapon in Snake's hand (0 M9, 1 USP).
     pub weapon: Option<u8>,
+    /// Not shown (a soldier's radio shot to pieces).
+    pub hidden: bool,
 }
 
 /// Grip for the AKS (barrel along -y in the model): points it forward (+z)
@@ -121,7 +123,7 @@ pub fn hold(
         let owner = Transform::from_translation(b.pos * SCALE).with_rotation(Quat::from_rotation_y(b.yaw));
         let (_, rot, pos) = hand.to_scale_rotation_translation();
         *t = owner * Transform::from_translation((pos + rot * h.offset) * SCALE).with_rotation(rot * h.grip);
-        let shown = (!h.when_aiming || player.is_some_and(|p| p.aiming)) && h.weapon.is_none_or(|w| w == if inv.usp { inv.weapon } else { 0 });
+        let shown = !h.hidden && (!h.when_aiming || player.is_some_and(|p| p.aiming)) && h.weapon.is_none_or(|w| w == if inv.usp { inv.weapon } else { 0 });
         *vis = if shown { Visibility::Inherited } else { Visibility::Hidden };
         // Lit like its owner, again whenever it has moved 10 cm.
         if let Some(l) = lt2.filter(|_| shown)

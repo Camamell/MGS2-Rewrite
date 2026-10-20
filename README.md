@@ -286,6 +286,7 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      sight follows); a dart that leaves a soldier awake makes him turn
      toward where Snake was and look about; the Evasion search looks about with the head;
      chaff jams the soldiers' radios: a caller shakes his dead radio, runs to
-     the manager's report point and reports in person (Caution, not Alert)
-   - next: shooting a soldier's radio (`radio.c`'s hit box), the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
+     the manager's report point and reports in person (Caution, not Alert);
+     a shot radio (a dart will do) fails him the same way
+   - next: the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects), the commandant's walk

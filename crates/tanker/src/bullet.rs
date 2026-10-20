@@ -120,6 +120,7 @@ pub fn fly(
     mut snake: Query<(&Body, &mut Player), Without<Guard>>,
     mut guards: Query<(&Body, &mut Guard), (Without<Player>, Without<Olga>)>,
     mut olgas: Query<(&Body, &mut Olga), (Without<Player>, Without<Guard>)>,
+    radios: Query<(&crate::body::Held, &Transform), With<crate::guard::radio::Radio>>,
 ) {
     let dt = time.delta_secs().min(0.05);
     let Ok((sb, mut player)) = snake.single_mut() else { return };
@@ -141,6 +142,33 @@ pub fn fly(
             continue 'bullets;
         }
         if b.dart {
+            // A soldier's radio in the way, nearer than any body: shot to
+            // pieces (`FUN_00265f50`: any of damage 0x800000004801e, darts
+            // included, sets +0xb4 bit 0x10000; the effect `FUN_002b9ca8`
+            // is not ported).
+            // (The radio sits inside the port's 300 mm body cylinder, so
+            // the order is judged against a torso core instead.)
+            let body_t = guards.iter().filter(|(_, g)| !g.dead()).filter_map(|(gb, _)| core_t(b.pos, end, gb.pos)).fold(f32::INFINITY, f32::min);
+            let radio = radios
+                .iter()
+                .filter_map(|(h, t)| {
+                    let g = guards.get(h.owner).ok()?.1;
+                    if g.dead() || g.radio_shot || h.hidden {
+                        return None;
+                    }
+                    let c = t.translation / SCALE + Vec3::Y * if g.radio_in_hand { RADIO_DROP } else { -RADIO_DROP };
+                    segment_box(b.pos, end, c, RADIO_BOX).map(|t| (t, h.owner))
+                })
+                .min_by(|x, y| x.0.total_cmp(&y.0));
+            if let Some((t, owner)) = radio
+                && t <= body_t
+                && let Ok((_, mut g)) = guards.get_mut(owner)
+            {
+                info!("guard {}'s radio shot", g.route);
+                g.radio_shot = true;
+                commands.entity(e).despawn();
+                continue 'bullets;
+            }
             for (gb, mut g) in &mut guards {
                 if g.dead() {
                     continue;
@@ -234,4 +262,59 @@ fn segment_distance(a: Vec3, b: Vec3, p: Vec3) -> f32 {
     let ab = b - a;
     let t = if ab.length_squared() > 0.0 { ((p - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0) } else { 0.0 };
     (a + ab * t).distance(p)
+}
+
+/// A soldier's radio hit box (`radio.c`, `FUN_002662d0`:
+/// `FUN_00107da0(.., 0x2000011, 1, 2, (50, 100, 50), (0, -50, 0))`; the
+/// y offset is +50 with the radio in a hand, `FUN_00265fe0`). Taken as
+/// half extents of a box along the world axes (assumed).
+const RADIO_BOX: Vec3 = Vec3::new(50.0, 100.0, 50.0);
+const RADIO_DROP: f32 = 50.0;
+
+/// Where along `a`..`b` (0..1) the segment enters the box at `c` with half
+/// extents `h`, if it does.
+fn segment_box(a: Vec3, b: Vec3, c: Vec3, h: Vec3) -> Option<f32> {
+    let d = b - a;
+    let (mut t0, mut t1) = (0.0f32, 1.0f32);
+    for i in 0..3 {
+        let (lo, hi) = (c[i] - h[i], c[i] + h[i]);
+        if d[i].abs() < 1e-6 {
+            if a[i] < lo || a[i] > hi {
+                return None;
+            }
+            continue;
+        }
+        let (mut n, mut f) = ((lo - a[i]) / d[i], (hi - a[i]) / d[i]);
+        if n > f {
+            std::mem::swap(&mut n, &mut f);
+        }
+        t0 = t0.max(n);
+        t1 = t1.min(f);
+        if t0 > t1 {
+            return None;
+        }
+    }
+    Some(t0)
+}
+
+/// The torso's core radius, for whether a radio on the belt or a body is
+/// struck first (mm; assumed: the game's hit spheres are not ported).
+const CORE: f32 = 150.0;
+
+/// Where along `a`..`b` (0..1) the segment enters the upright cylinder of
+/// radius [`CORE`] over the feet at `base`, if it does.
+fn core_t(a: Vec3, b: Vec3, base: Vec3) -> Option<f32> {
+    let (p, d) = (a.xz() - base.xz(), (b - a).xz());
+    let (qa, qb, qc) = (d.dot(d), 2.0 * p.dot(d), p.dot(p) - CORE * CORE);
+    let t = if qc <= 0.0 {
+        0.0
+    } else {
+        let disc = qb * qb - 4.0 * qa * qc;
+        if qa < 1e-6 || disc < 0.0 {
+            return None;
+        }
+        (-qb - disc.sqrt()) / (2.0 * qa)
+    };
+    let y = a.y + (b.y - a.y) * t;
+    ((0.0..=1.0).contains(&t) && y > base.y && y < base.y + HEIGHT).then_some(t)
 }

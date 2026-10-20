@@ -85,6 +85,8 @@ pub mod radio {
     pub fn place(guards: Query<&super::Guard>, mut radios: Query<&mut crate::body::Held, With<Radio>>) {
         for mut h in &mut radios {
             let Ok(g) = guards.get(h.owner) else { continue };
+            // A shot radio is not drawn (`FUN_00265fe0`: +0x164 bit 0x80000).
+            h.hidden = g.radio_shot;
             let (object, offset) = if g.radio_in_hand { (HAND_JOINT, HAND_OFFSET) } else { (JOINT, OFFSET) };
             if h.object != object {
                 h.object = object;
@@ -712,6 +714,10 @@ pub struct Guard {
     /// His radio found dead in this call (controller +0x348 bit 4, set on
     /// frame 0x73 of the dead-radio action): he reports in person.
     radio_dead: bool,
+    /// His radio shot (`radio.c` +0xb4 bit 0x10000, `FUN_00265f50`): his
+    /// calls fail as under chaff until he reports in person, which clears
+    /// it (`FUN_00232050` / `FUN_0023a610` / `FUN_00237d48`).
+    pub radio_shot: bool,
     /// The radio line he is saying (its clip), until it ends.
     on_air: Option<u32>,
     /// Seconds spent walking without getting anywhere.
@@ -829,6 +835,7 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         checked: false,
         radio_in_hand: false,
         radio_dead: false,
+        radio_shot: false,
         on_air: None,
         stuck: 0.0,
         post: post_at,
@@ -872,6 +879,7 @@ pub fn patrol(route: usize, vision: f32, anim: Anim) -> Guard {
         checked: false,
         radio_in_hand: false,
         radio_dead: false,
+        radio_shot: false,
         on_air: None,
         stuck: 0.0,
         post: None,
@@ -1957,13 +1965,13 @@ fn comrade(g: &mut Guard, body: &mut Body, phase: &mut Phase, (target, at, sub, 
             let Some(c) = check else { return None };
             if radio_out(g, body, c, t, game) {
                 // `FUN_00231d08`: a jammed radio -> 0xb.
-                next = Some((if phase.jammed { 0xb } else { 0xc }, 0));
+                next = Some((if no_radio(g, phase) { 0xb } else { 0xc }, 0));
             }
         }
         0xc => {
             // `FUN_00231d88`: the report; at its end the caution timer.
             let Some(c) = check else { return None };
-            if timer > 0 && t < phase.line_frames(LINE_REPORT, g, REPORT_FRAMES) && phase.jammed {
+            if timer > 0 && t < phase.line_frames(LINE_REPORT, g, REPORT_FRAMES) && no_radio(g, phase) {
                 cut_short(g, phase);
                 next = Some((0xb, 0));
             } else {
@@ -2056,6 +2064,12 @@ const REPORT_RUN_FRAMES: u32 = 1800;
 /// He is there within this (mm; assumed).
 const REPORT_REACH: f32 = 500.0;
 
+/// His radio cannot be used: shot (+0xb4 bit 0x10000) or jammed
+/// (`DAT_0017f48c` bit 0x10), as every call checks.
+fn no_radio(g: &Guard, phase: &Phase) -> bool {
+    g.radio_shot || phase.jammed
+}
+
 /// The dead radio (`FUN_0025ef08`, then `FUN_0025f068`): he shakes it
 /// (motion 10) and puts it away; true once it is away (+0xf58 == 1). On
 /// frame 0x73 he knows it is dead (+0x348 bit 4).
@@ -2077,7 +2091,7 @@ fn radio_fails(g: &mut Guard, body: &mut Body, c: Check, t: u32, game: &Game) ->
 /// A radio line cut short by jamming (`FUN_0021d0a8`): the clip stops and
 /// HQ waits for an answer.
 fn cut_short(g: &mut Guard, phase: &mut Phase) {
-    info!("guard {}: radio jammed", g.route);
+    info!("guard {}: radio dead mid-line", g.route);
     if let Some(id) = g.on_air.take() {
         phase.cut(id, g.route);
     }
@@ -2104,6 +2118,8 @@ fn say_in_person(g: &mut Guard, body: &mut Body, phase: &mut Phase, line: u32, (
     body.play(g.anim.idle);
     if timer == 0 && t > 0 {
         info!("guard {} reports in person", g.route);
+        // The in-person subs clear the shot-radio flag on entry.
+        g.radio_shot = false;
         g.on_air = phase.speak(line, g);
     }
     let frames = phase.line_frames(line, g, REPORT_FRAMES);
@@ -2173,12 +2189,12 @@ fn holdup_call(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, (
             let Some(c) = g.anim.check else { return false };
             if radio_out(g, body, c, t, game) {
                 // `FUN_0023a2c8`: a jammed radio -> 6.
-                next = Some((if phase.jammed { 6 } else { 7 }, 0));
+                next = Some((if no_radio(g, phase) { 6 } else { 7 }, 0));
             }
         }
         7 => {
             let Some(c) = g.anim.check else { return false };
-            if timer > 0 && t < phase.line_frames(LINE_HOLDUP, g, REPORT_FRAMES) && phase.jammed {
+            if timer > 0 && t < phase.line_frames(LINE_HOLDUP, g, REPORT_FRAMES) && no_radio(g, phase) {
                 cut_short(g, phase);
                 next = Some((6, 0));
             } else {
@@ -2359,7 +2375,7 @@ fn call(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, (sub, ti
                 face(body, snake, dt);
             }
             if radio_out(g, body, c, t, game) {
-                next = (if phase.jammed { 0xf } else if seen { 6 } else { 7 }, 0, line, None);
+                next = (if no_radio(g, phase) { 0xf } else if seen { 6 } else { 7 }, 0, line, None);
             }
         }
         0xf => {
@@ -2403,7 +2419,7 @@ fn call(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, (sub, ti
             } else if (0x79..=0xB3).contains(&timer) {
                 g.head_to = -512.0;
             }
-            if timer > 0 && t < phase.line_frames(line, g, REPORT_FRAMES) && phase.jammed {
+            if timer > 0 && t < phase.line_frames(line, g, REPORT_FRAMES) && no_radio(g, phase) {
                 cut_short(g, phase);
                 g.state = State::Call { sub: 0xf, timer: 0, line, to: None };
                 return out;

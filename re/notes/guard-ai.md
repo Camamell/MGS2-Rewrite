@@ -400,6 +400,16 @@ about x, y, z (order of the multiplies not decoded: VU macro code).
 struck by 0x800000004801e damage sets flag 0x10000 and plays the
 `FUN_002b9ca8` effect (a shot radio; what 0x10000 stops in the soldier,
 probably his radio call, is not traced). Ported: the belt place only.
+The hit box (`FUN_002662d0`): `FUN_00107da0(+0x160, 0x2000011, 1, 2,
+(50, 100, 50), (0, -50, 0))`, the y offset (+0x1c4) -50 on the belt and
++50 in a hand (`FUN_00265fe0`). Damage 0x800000004801e includes the
+darts' bit 2, so a dart breaks it too. Shot, the radio is no longer drawn
+(+0x164 bit 0x80000) and `FUN_00265ea0` re-makes its collision as kind
+0x11000000 (not traced). The flag 0x10000 is what every radio call checks
+(see "A dead radio"). Ported: the box taken as half extents along the
+world axes, judged against a 150 mm torso core for which is struck first
+(the port's body cylinder is 300 mm and holds the radio); the effect
+`FUN_002b9ca8` is not ported.
 The hand flags come from the radio motions (body action functions):
 `FUN_0025ebc0` (action 4, motion 0x23 radio out; 0x31 with the left arm
 wounded, +0xf16 & 3 == 2) sets 0x2 (0x4 for the other motion) at frame 28
@@ -758,7 +768,10 @@ the shot-radio flag and call `FUN_00255978` (not traced).
 
 Ported (`radio_fails`, `run_to_report`, `say_in_person`; chaff = the
 port's `Jam` timer). Assumed: the run's reach (500 mm) and a 30 s cap,
-the hold-up's action 8 as motion 10. Not ported: the shot radio, 0x14's
+the hold-up's action 8 as motion 10. The shot radio is ported too (see
+"The radio"): `Guard::radio_shot`, cleared by the in-person subs, which
+brings the radio back on his belt (as clearing 0x10000 does in
+`FUN_00265fe0`). Not ported: 0x14's
 close-range 0x20 (Snake within 1 m), 0xf's 0x18 (+0x348 bit 0x2000), the
 runner's +0x348 bit 0x100 (it puts him in the manager's list of soldiers
 to see to, `FUN_0021e998`). Test: `MGS2_GRENADE_AT=<s>c` throws chaff.

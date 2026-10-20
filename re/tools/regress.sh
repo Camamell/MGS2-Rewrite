@@ -63,6 +63,8 @@ MGS2_GOD=1 MGS2_DOWN=3:s@10 check discovery_cut "radio cut off|radios for backup
 # point and reports in person (Caution, no alert); the comrade report too.
 MGS2_GOD=1 MGS2_GRENADE_AT=4c check discovery_jammed "reported Snake in person" ge 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 26
 MGS2_DOWN=11:s@3 MGS2_GRENADE_AT=8c check comrade_jammed "Comrade0xd/" ge 1 w01d --skip-cutscenes --trace --shot-at 21
+# A dart into guard 3's radio from behind: his call fails the same way.
+MGS2_FPV_TEST=1 MGS2_FPV_AT=5893,762,3886 check radio_shot "radio shot|reported Snake in person" ge 2 w01a --skip-cutscenes --snake-at=6000,0,2000 --fire-at 1 --aim-for 0.2 --shot-at 26
 # Out of sight on the radio he looks about (sub 7: +-0x200 head turns).
 MGS2_GOD=1 check radio_look "looks about on the radio" ge 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 12
 # Darted from beyond earshot and still awake: he turns to look (state 7).

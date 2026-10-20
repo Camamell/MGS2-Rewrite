@@ -1538,16 +1538,16 @@ fn spawn_level(
         let e = scene::spawn_model(&mut commands, m, data, &mut cache, &mut meshes, &mut images, &mut materials, unlit, LevelEntity);
         // Snake's M9 shows only with the M9 in hand.
         let weapon = when_aiming.then_some(0);
-        commands.entity(e).insert(body::Held { owner, object, when_aiming, grip, offset, weapon });
+        commands.entity(e).insert(body::Held { owner, object, when_aiming, grip, offset, weapon, hidden: false });
     }
     for (owner, model) in radios {
         let e = scene::spawn_model(&mut commands, &data.models[model].1, data, &mut cache, &mut meshes, &mut images, &mut materials, unlit, LevelEntity);
-        let held = body::Held { owner, object: guard::radio::JOINT, when_aiming: false, grip: guard::radio::turn(), offset: guard::radio::OFFSET, weapon: None };
+        let held = body::Held { owner, object: guard::radio::JOINT, when_aiming: false, grip: guard::radio::turn(), offset: guard::radio::OFFSET, weapon: None, hidden: false };
         commands.entity(e).insert((held, guard::radio::Radio));
     }
     if let Some((owner, m)) = usp_model {
         let e = scene::spawn_model(&mut commands, &data.models[m].1, data, &mut cache, &mut meshes, &mut images, &mut materials, unlit, LevelEntity);
-        commands.entity(e).insert(body::Held { owner, object: body::RIGHT_HAND, when_aiming: true, grip: body::pistol_grip(), offset: Vec3::ZERO, weapon: Some(1) });
+        commands.entity(e).insert(body::Held { owner, object: body::RIGHT_HAND, when_aiming: true, grip: body::pistol_grip(), offset: Vec3::ZERO, weapon: Some(1), hidden: false });
     }
     if !cache.missing.is_empty() {
         let mut m = cache.missing.clone();
@@ -2470,7 +2470,7 @@ fn reinforcements(
         commands.entity(e).insert((g, Trooper { entry: pos }));
         if let Some(m) = gun {
             let w = scene::spawn_model(&mut commands, &data.models[m].1, data, &mut cache, &mut meshes, &mut images, &mut materials, true, LevelEntity);
-            commands.entity(w).insert(body::Held { owner: e, object: body::RIGHT_HAND, when_aiming: false, grip: body::rifle_grip(), offset: Vec3::ZERO, weapon: None });
+            commands.entity(w).insert(body::Held { owner: e, object: body::RIGHT_HAND, when_aiming: false, grip: body::rifle_grip(), offset: Vec3::ZERO, weapon: None, hidden: false });
         }
     }
 }

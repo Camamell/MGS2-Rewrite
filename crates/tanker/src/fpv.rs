@@ -2,7 +2,7 @@
 //! eyes; A/D turn, W/S look up and down. Snake stands his ground meanwhile.
 //! Not taken from the game: the turn rates and the eye height (92% of his
 //! current height: standing, crouched or prone). `MGS2_FPV_TEST=1` holds it
-//! on (for screenshots).
+//! on (for screenshots); `MGS2_FPV_AT=x,y,z` keeps the look on a point.
 
 use bevy::prelude::*;
 
@@ -67,6 +67,15 @@ fn control(
     }
     if keys.pressed(KeyCode::KeyS) {
         fp.pitch = (fp.pitch - turn).max(-1.3);
+    }
+    // MGS2_FPV_AT=x,y,z: keep looking at that point (testing).
+    if let Some(at) = std::env::var("MGS2_FPV_AT").ok().and_then(|v| {
+        let n: Vec<f32> = v.split(',').filter_map(|s| s.trim().parse().ok()).collect();
+        (n.len() == 3).then(|| Vec3::new(n[0], n[1], n[2]))
+    }) {
+        let d = at - (body.pos + Vec3::Y * p.height() * 0.92);
+        fp.yaw = d.x.atan2(d.z);
+        fp.pitch = d.y.atan2(d.xz().length());
     }
     body.yaw = fp.yaw;
 }
