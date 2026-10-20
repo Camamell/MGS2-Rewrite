@@ -477,9 +477,17 @@ by default); 0x1c000009 / 0xa -> line 0xc00000e, then the reply (or
 0x1081400f once the manager's count +0x814 reaches +0x816); 0x2c00000x
 and 0x20008003 -> an area line (`FUN_0021c940`).
 
+Investigation (normal state 6, `FUN_0023c470`): sub 0 (`FUN_0023c028`,
+line 0x140, a turn, action 3) goes to 5, to 6 in Evasion (action 4, then
+5), or to 1 (flag 0x20 with a noise of kind 1); sub 5 (`FUN_0023c108`)
+waits 61 frames, says 0xc04001d "Is there somebody there?" (0xc04001e
+"Over there?" in Evasion; no click: bit 0x40000) and walks there (sub 8,
+`FUN_0023bcf8(.., 0x23bfd8, 350)`).
+
 Ported: the downed-comrade report (voice set `voice()`, set 0 only, line
-0xb) and HQ's first reply, and "it was nothing" (0xc000012) when a
-comrade comes round; they play through the spoken-line player with their
+0xb) and HQ's first reply, "it was nothing" (0xc000012) when a
+comrade comes round, and the investigation's line (its pause after the
+port's assumed 30-frame turn); they play through the spoken-line player with their
 subtitles (assumed shown, as the clips carry them), unplaced. Not ported:
 the priority rule, the other lines' callers, the 0xe0 sets (what sets body
 flag 0x4000 is not traced), the voice index (+0x284; the port's

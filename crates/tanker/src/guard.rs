@@ -188,6 +188,9 @@ pub struct Radio {
 pub const LINE_REPORT: u32 = 0x1C00_000B;
 /// "It was nothing" (0xc000012, a comrade up again in Infiltration).
 pub const LINE_ALL_CLEAR: u32 = 0x0C00_0012;
+/// "Is there somebody there?" / "Over there?" (investigation, state 6).
+pub const LINE_SOMEBODY: u32 = 0x0C04_001D;
+pub const LINE_OVER_THERE: u32 = 0x0C04_001E;
 /// Lines per voice in the `-v` table.
 const LINES_PER_VOICE: u32 = 0x38;
 /// The radio click (`FUN_00114b30(0x20, 0x3f, 99)`).
@@ -1360,12 +1363,12 @@ pub fn think(
                     g.state = State::Discovery { timer: 0 };
                 }
                 if matches!(g.state, State::Discovery { .. }) {
-                    normal_brain(&mut g, &mut body, snake_pos, player.boxed, dt, ticks, &game);
+                    normal_brain(&mut g, &mut body, &mut phase, snake_pos, player.boxed, dt, ticks, &game);
                 } else {
                     evasion_brain(&mut g, &mut body, &phase, dt, ticks, &game);
                 }
             }
-            _ => normal_brain(&mut g, &mut body, snake_pos, player.boxed, dt, ticks, &game),
+            _ => normal_brain(&mut g, &mut body, &mut phase, snake_pos, player.boxed, dt, ticks, &game),
         }
         highest = highest.max(i32::from(g.meter));
     }
@@ -1629,7 +1632,7 @@ fn report(g: &Guard, phase: &Phase) -> (u8, u32) {
 
 /// `FUN_00227BC8` + transitions `FUN_00227520` (states the game can
 /// currently produce).
-fn normal_brain(g: &mut Guard, body: &mut Body, snake: Vec3, boxed: bool, dt: f32, ticks: u32, game: &Game) {
+fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, boxed: bool, dt: f32, ticks: u32, game: &Game) {
     // Transitions out of patrol/wait/return, in the game's priority order
     // (later checks override earlier ones).
     if matches!(g.state, State::Patrol | State::Wait(_) | State::Return) {
@@ -1700,8 +1703,9 @@ fn normal_brain(g: &mut Guard, body: &mut Body, snake: Vec3, boxed: bool, dt: f3
             };
         }
         State::Investigate { target, sub, timer } => {
-            // Sub-states: 0 glance toward the target, 1 walk there,
-            // 2 look around (sub-state 10: up to 300 frames), then return.
+            // Sub-states: 0 glance toward the target, 5 a pause and a
+            // line, 1 walk there, 2 look around (sub-state 10: up to 300
+            // frames), then return.
             let before = timer;
             let timer = timer + ticks;
             g.state = match sub {
@@ -1709,6 +1713,18 @@ fn normal_brain(g: &mut Guard, body: &mut Body, snake: Vec3, boxed: bool, dt: f3
                     body.play(g.anim.idle);
                     face(body, target, dt);
                     if timer > 30 {
+                        State::Investigate { target, sub: 5, timer: 0 }
+                    } else {
+                        State::Investigate { target, sub, timer }
+                    }
+                }
+                5 => {
+                    // `FUN_0023c108`: after 61 frames "Is there somebody
+                    // there?" (line 0xc04001d; "Over there?" 0xc04001e in
+                    // Evasion), then the walk (sub-state 8 in the game).
+                    body.play(g.anim.idle);
+                    if timer > 0x3c {
+                        phase.speak(if phase.kind == PhaseKind::Evasion { LINE_OVER_THERE } else { LINE_SOMEBODY }, g);
                         plan(g, body.pos, target, game);
                         State::Investigate { target, sub: 1, timer: 0 }
                     } else {
