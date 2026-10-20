@@ -593,6 +593,22 @@ impl<'a> Vm<'a> {
             let n = a.first().map_or(0, |v| self.value(v, args).int().unwrap_or(0));
             self.last = self.rand(n);
             None
+        } else if is("command") && Self::is_foreach(a.first()) {
+            // `command "foreach" -a n -r rows -d values.. -e { .. }`: the
+            // block once per row of n values, which are its `$1`..`$n`.
+            let opt = |l: u8| options.iter().find(|(o, _)| *o == l).map(|(_, v)| v);
+            let n = opt(b'a').and_then(|v| v.first()).map_or(1, |v| self.value(v, args).int().unwrap_or(1)).max(1) as usize;
+            let values: Vec<i32> = opt(b'd').map_or(Vec::new(), |v| v.iter().map(|x| self.value(x, args).int().unwrap_or(0)).collect());
+            let rows = opt(b'r').and_then(|v| v.first()).map_or(values.len() / n, |v| self.value(v, args).int().unwrap_or(0) as usize);
+            if let Some(Value::Block(b)) = opt(b'e').and_then(|v| v.first()) {
+                for row in values.chunks(n).take(rows) {
+                    if let Some(r) = self.block(b, row) {
+                        return Some(r);
+                    }
+                }
+            }
+            self.last = 0;
+            None
         } else if is("command") && matches!(a.first(), Some(Value::Name(CODEC_COMMAND))) {
             // `command #4a243a -o <event> <freq> <id>` (the call Snake gets on
             // this frequency here), `-c <freq> <id> <mode>` (an incoming
@@ -786,6 +802,15 @@ impl<'a> Vm<'a> {
             self.song = 0;
         }
         self.codec.push(CodecReq::Sound(u));
+    }
+
+    fn is_foreach(v: Option<&Value>) -> bool {
+        let want = str_code(b"foreach") & 0x00FF_FFFF;
+        match v {
+            Some(Value::Name(h)) => *h & 0x00FF_FFFF == want,
+            Some(Value::Str(s)) => s == "foreach",
+            _ => false,
+        }
     }
 
     fn command_id(v: Option<&Value>) -> Option<u32> {
