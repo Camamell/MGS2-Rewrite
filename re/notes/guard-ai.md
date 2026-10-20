@@ -635,6 +635,59 @@ with "away" stands for `FUN_00253c38`'s pick; the rounds use the alert's
 bullet and sound; when the alert begins the caller switches to the chase
 (the game finishes the radio-away action first). A caller darted or
 knocked down mid-line raises no alert: the line is cut (`FUN_0021d0a8`)
-and HQ calls for him. Not ported: the radio shot / jammed (0xf), sub 7's
-head turns, the arm-wound variants, sub 3's comrade check, sub 0x14 /
+and HQ calls for him. Not ported: the radio shot / jammed (0xf), the arm-wound variants, sub 3's comrade check, sub 0x14 /
 0x1e, the Marines (no radio motions: their "!" still raises the alert).
+
+## Head look (`FUN_00254f..` draw, `FUN_00111f40` / `FUN_00112448`)
+
+A state points the head by setting body +0xf66 (an absolute yaw) and
+controller +0x354 bit 0x800 for that frame; the soldier's draw then calls
+`FUN_00111f40(pos, yaw +0x22, pitch +0xf62, +0xf66, angles +0x132c, 0, 0
+or 10 under bit 0x2000, limits)`, else `FUN_00111d80` looks at the point
++0xf70 (not traced). Limits: w00a 0x1f3c98 = yaw 0x400 / 0x400, pitch
+0x300 / 0x300 (0x1f3c90, all 0x7ff, under bit 0x20000). The turn closes an
+eighth of the way per frame (`FUN_001419c8`). `FUN_00112448(model, angles,
+yaw, mask)` hands it to joint slots (16 bytes each at model +0x3c, flag
+1 << joint at +0x30): mask 0x27 (bit 0x10000 clear; 0x21 with it, 0xf
+under 0x400): 0x20 = joint 2 gets half the yaw (smoothed, angles[3]),
+then joint 11 the rest, joint 12 (the head) pitch and yaw, joints 4 / 8
+pitch and the half (bits 2 / 4). How the slots combine with the motion
+is not traced. The sight's yaw (+0x240) is read back from the head's
+matrix (`FUN_0022d8d0(model +0xf00)`), so the view follows the head.
+
+Ported (`Guard::turn_head`): the yaw only, on joint 12 alone, and the
+sight follows it; callers: discovery sub 7 (frames 0x3d-0x77 +0x200,
+0x79-0xb3 -0x200, unless Snake is seen: then the body faces him).
+Assumed: bit 0x800 lasts one frame (it is or-ed in every frame). Other
+setters of bit 0x800 (not ported): `FUN_00224618`, `FUN_00224d20`,
+`FUN_00225590`, `FUN_00225770`, `FUN_002258a0`, `FUN_00225dc8`,
+`FUN_0022ab38` .. `FUN_0022adc0`, `FUN_002368c0`, `FUN_0023c890` /
+`FUN_0023c970`, and `FUN_002a5380` .. `FUN_002aafa0`,
+`FUN_003bd088` / `FUN_003bd2f0` (other actors, not traced).
+
+## A dart that leaves him awake (normal state 7, `FUN_0023cb78`)
+
+The dart handler (`FUN_0024f490`) sets body +0xf98 bit 0x800000000 (with
+0x800, +0xf64 = 6 and effect 0x86) for a dart that does not put him
+under; `FUN_00230c20` turns +0xf98 & 0x8800000000 into stimulus 0x200000
+(and Snake in the bump box into 0x4000000, but a bumped soldier sees
+Snake, level 3, and the discovery overrides). `FUN_00227520` sends both
+to state 7 (`FUN_0023cc58`: target Snake's place via `FUN_002572a0`,
++0x26c |= 0x200000 so `FUN_00227888` keeps him there, pace 3; sub 1, or
+3 / 4 when +0x270 is 1 / 2, which the hit reactions of `FUN_00251cc8`
+set). Sub 1 (`FUN_0023c7f0`): mark kind 4 and `FUN_0021d1f8` (his radio
+line cut, `FUN_0021da18(+0x140)`) on frame 6, the turn from 0x3d (action
+3 = `FUN_0025e7b8`: motion 0xd / 0xe by the turn's sign, up to 0x440 by
+the motion, then the heading), then sub 2 (`FUN_0023c890`): the head
+look of the discovery's sub 7, mark kind 5 at 0xa0, sub 5 at 0xf0, which
+clears the 0x26c bit: back to state 0 (`FUN_00227e00`; state 1 with
+wounded limbs). Subs 3 / 4 (`FUN_0023c970` / `FUN_0023ca70`): actions 2
+(motion 0xf) / 4 (motion 0x91) until they end, marks at 0x78, the head
+look in 3. `FUN_0023cb18` (subs 2-4): the stimulus again -> sub 1.
+Transitions `FUN_00226798` still run (noise, meter, books, prints...).
+
+Ported (`guard::stung`): subs 1 and 2 from the patrol states (a line he
+was saying is cut, as for any state change). Not ported:
+the marks (kinds 4 / 5: `FUN_002c3590` -> `FUN_002c5ae8`, sprites not
+identified), subs 3 / 4, the effect 0x86. Assumed:
+idle motion while he waits and looks.

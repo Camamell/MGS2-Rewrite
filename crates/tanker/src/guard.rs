@@ -28,7 +28,7 @@
 //! heard: `noise`; footprints and blood are followed), and the evasion search
 //! pattern (guards visit nav nodes around the last known position).
 
-use std::f32::consts::TAU;
+use std::f32::consts::{PI, TAU};
 
 use bevy::prelude::*;
 use mgs2_formats::hzx::Waypoint;
@@ -465,6 +465,10 @@ pub enum State {
     /// Normal 11: walked into Snake's box and looks it over
     /// (`FUN_00242448`), frames so far.
     BoxCheck { timer: u32 },
+    /// Normal 7 (`FUN_0023cb78`, stimulus 0x200000: a dart that left him
+    /// awake): he turns toward where Snake was and looks about. See
+    /// [`stung`].
+    Stung { at: Vec3, sub: u8, timer: u32 },
 }
 
 /// The motions a guard plays (indices into his motion archive).
@@ -702,6 +706,14 @@ pub struct Guard {
     pub dropped: [usize; 2],
     /// His actor name (the drop procs pick the item by it).
     pub name: i32,
+    /// His head turned from his facing (4096ths): now, and where a state
+    /// points it this frame (body +0xf66 under controller +0x354 bit 0x800).
+    /// See [`Guard::turn_head`].
+    head: f32,
+    head_to: f32,
+    /// A dart hit him this frame and left him awake (body +0xf98 bit
+    /// 0x800000000, `FUN_0024f490`; stimulus 0x200000 via `FUN_00230c20`).
+    stung: bool,
     pub anim: Anim,
 }
 
@@ -802,6 +814,9 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         drops: [drop_list(s, b'q'), drop_list(s, b'a')],
         dropped: [0, 0],
         name: s.args.first().and_then(crate::gcl::Val::int).unwrap_or(0),
+        head: 0.0,
+        head_to: 0.0,
+        stung: false,
         anim: Anim::SOLDIER,
     };
     Some((guard, pos))
@@ -841,11 +856,37 @@ pub fn patrol(route: usize, vision: f32, anim: Anim) -> Guard {
         drops: [Vec::new(), Vec::new()],
         dropped: [0, 0],
         name: 0,
+        head: 0.0,
+        head_to: 0.0,
+        stung: false,
         anim,
     }
 }
 
+/// The soldier's head (`FUN_00112448` puts the look's turn in joint slot
+/// 12, flag 0x1000; the Marines' head is joint 12 too).
+const HEAD_JOINT: usize = 12;
+/// How far the head turns from the facing (w00a table 0x1f3c98: yaw
+/// 0x400 either way; 0x1f3c90, all 0x7ff, under +0x354 bit 0x20000).
+const HEAD_LIMIT: f32 = 1024.0;
+
 impl Guard {
+    /// The head look, once per frame (`FUN_00111f40` with the yaw a state
+    /// set this frame, from the soldier's draw): the turn from his facing,
+    /// limited to [`HEAD_LIMIT`], closes an eighth of the way each frame
+    /// (`FUN_001419c8`). His sight follows the head (`FUN_002559C0` takes
+    /// +0x240, the head matrix's yaw). Without a target he looks ahead
+    /// (assumed: the game then looks at a point, `FUN_00111d80`, not
+    /// traced). Only the head joint turns (the game also turns joints 2,
+    /// 11, 4 and 8 by parts of it, mask 0x27: not ported).
+    fn turn_head(&mut self, body: &mut Body, frames: f32) {
+        let to = std::mem::take(&mut self.head_to).clamp(-HEAD_LIMIT, HEAD_LIMIT);
+        let d = to - self.head;
+        let k = 1.0 - (7.0f32 / 8.0).powf(frames.min(10.0));
+        self.head = if d.abs() < 1.0 { to } else { self.head + d * k };
+        body.turn = (self.head != 0.0).then(|| (HEAD_JOINT, Quat::from_rotation_y(self.head * ANGLE)));
+    }
+
     /// Arriving in the middle of an alert: straight to the chase.
     pub fn join_alert(&mut self, last_seen: Option<Vec3>) {
         self.state = State::Chase;
@@ -898,6 +939,8 @@ impl Guard {
         self.darts[i] = self.darts[i].saturating_add(1);
         if self.resist < 0 {
             self.fall_asleep();
+        } else {
+            self.stung = true;
         }
     }
 
@@ -1033,7 +1076,7 @@ fn perceive(g: &Guard, body: &Body, snake: Vec3, height: f32, game: &Game, scale
     }
     // Horizontal: head direction vs direction to the target.
     let dir = to_units(to.x.atan2(to.z));
-    let head = to_units(body.yaw);
+    let head = to_units(body.yaw + g.head * ANGLE);
     if angle_diff(head, dir).abs() > g.vision.half_angle {
         return 0;
     }
@@ -1215,6 +1258,8 @@ pub fn think(
         })
         .unwrap_or_default();
     for (me, mut g, mut body) in &mut guards {
+        g.turn_head(&mut body, dt * 60.0);
+        let stung = std::mem::take(&mut g.stung);
         if let Some(&(_, kind)) = downs.iter().find(|d| d.0 == g.route) {
             info!("test: guard {} down ({kind})", g.route);
             match kind {
@@ -1391,7 +1436,7 @@ pub fn think(
         if player.boxed
             && !snake_dead
             && phase.kind != PhaseKind::Alert
-            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Investigate { .. } | State::Search { .. })
+            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Investigate { .. } | State::Search { .. } | State::Stung { .. })
         {
             let d = snake_pos - body.pos;
             let inside = |r: f32| d.x.abs() <= r && d.z.abs() <= r && d.y.abs() <= 1500.0;
@@ -1492,7 +1537,7 @@ pub fn think(
         // newest he sees and leaves the older ones (`FUN_00230948`,
         // `FUN_00240858`); the next ones then lead him on.
         if g.level < 2
-            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Investigate { .. } | State::Search { .. })
+            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Investigate { .. } | State::Search { .. } | State::Stung { .. })
             && let Ok(mut trail) = crate::footprint::TRAIL.lock()
             && let Some(i) = trail.iter().rposition(|(at, used)| !used && perceive(&g, &body, *at, PRINT_SIGHT, &game, 1.0) == 3)
         {
@@ -1507,7 +1552,7 @@ pub fn think(
         // striking).
         if let Some((_, at)) = heard.filter(|(e, _)| *e == me)
             && g.level < 2
-            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Investigate { .. } | State::Search { .. })
+            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Investigate { .. } | State::Search { .. } | State::Stung { .. })
         {
             info!("guard {} heard a noise at {at:?}", g.route);
             // Heard again while already looking into one (normal state 3,
@@ -1557,6 +1602,16 @@ pub fn think(
             }
             highest = highest.max(i32::from(g.meter));
             continue;
+        }
+        // A dart that left him awake (`FUN_00227520`, stimulus 0x4200000;
+        // in state 7 itself only after its turn, `FUN_0023cb18`).
+        if stung
+            && !matches!(phase.kind, PhaseKind::Alert | PhaseKind::Evasion)
+            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Stung { sub: 2, .. })
+        {
+            info!("guard {} feels a dart", g.route);
+            g.path.clear();
+            g.state = State::Stung { at: snake_pos, sub: 1, timer: 0 };
         }
         match phase.kind {
             PhaseKind::Alert => {
@@ -1652,6 +1707,77 @@ fn motion_length(game: &Game, body: &Body, motion: usize, fallback: u32) -> u32 
         .and_then(|m| game.data.motions.get(m))
         .and_then(|(_, mar)| mar.motions.get(motion))
         .map_or(fallback, |m| m.length.max(1))
+}
+
+/// The turn motions to his right / left (`FUN_0025e7b8`: 0xd for a
+/// positive turn, 0xe for a negative one; past 0x440 the rest is added
+/// to the yaw at once, and at the motion's end he takes the heading).
+const TURN_RIGHT: usize = 0xD;
+const TURN_LEFT: usize = 0xE;
+
+/// Normal state 7 (`FUN_0023cb78`, entered by `FUN_0023cc58` on stimulus
+/// 0x200000, which `FUN_00230c20` sets for body +0xf98 bits 0x8800000000:
+/// the dart handler `FUN_0024f490` sets 0x800000000 for a dart that leaves
+/// him awake). The init aims him at Snake's place then (`FUN_002572a0`,
+/// 0x1ece00) and goes to sub 1 (to 3 / 4 when +0x270 is 1 / 2, set by the
+/// hit reactions in `FUN_00251cc8`: not ported):
+/// - 1 (`FUN_0023c7f0`): on frame 6 a mark (`FUN_00253f50(.., 0xc,
+///   0x8004)`, kind 4: its sprite is not identified, so none is drawn) and
+///   his radio line cut (`FUN_0021d1f8`); from frame 0x3d the turn (action
+///   3, `FUN_0025e7b8`) to that place, then 2;
+/// - 2 (`FUN_0023c890`): the head turns +0x200 on frames 0x3d-0x77 and
+///   -0x200 on 0x79-0xb3, mark kind 5 at 0xa0, done at 0xf0 (sub 5, which
+///   lets `FUN_00227888` put him back on his route, `FUN_00227e00`).
+///
+/// Another such dart in sub 2 starts it again (`FUN_0023cb18`); noises,
+/// the meter and sight still take him out of it (`FUN_00226798`).
+/// Assumed: the idle motion for the action-0 wait and the look about.
+fn stung(g: &mut Guard, body: &mut Body, (at, sub, timer): (Vec3, u8, u32), ticks: u32, game: &Game) {
+    let t = timer + ticks;
+    g.state = match sub {
+        1 if t <= 0x3D => {
+            body.play(g.anim.idle);
+            State::Stung { at, sub, timer: t }
+        }
+        1 => {
+            let to = at - body.pos;
+            let heading = to.x.atan2(to.z);
+            let mut diff = (heading - body.yaw).rem_euclid(TAU);
+            if diff > PI {
+                diff -= TAU;
+            }
+            let motion = if diff > 0.0 { TURN_RIGHT } else { TURN_LEFT };
+            body.play_once(motion);
+            let len = motion_length(game, body, motion, 30);
+            let into = timer.saturating_sub(0x3D);
+            if into + ticks >= len {
+                body.yaw = heading;
+                State::Stung { at, sub: 2, timer: 0 }
+            } else {
+                // The motion carries him round; spread the turn over it.
+                let left = (len - into) as f32;
+                body.yaw = turn_toward(body.yaw, heading, diff.abs() * ticks as f32 / left);
+                State::Stung { at, sub, timer: t }
+            }
+        }
+        _ => {
+            body.play(g.anim.idle);
+            if (0x3D..=0x77).contains(&timer) {
+                g.head_to = 512.0;
+            } else if (0x79..=0xB3).contains(&timer) {
+                g.head_to = -512.0;
+            }
+            if t >= 0xF0 {
+                info!("guard {} looked about after the dart", g.route);
+                if let Some(wp) = waypoint(game, g.route, g.node) {
+                    plan(g, body.pos, Vec3::from(wp.position), game);
+                }
+                State::Return
+            } else {
+                State::Stung { at, sub, timer: t }
+            }
+        }
+    };
 }
 
 /// Normal state 2 (`FUN_00233120`, entered by `FUN_00233330`): a comrade
@@ -1958,8 +2084,7 @@ const BACK_OFF_FRAMES: u32 = 300;
 ///   radio goes away (action 6) and the meter goes to 0x400, which raises
 ///   the alert. HQ's area answer follows (`FUN_0021cb40`).
 ///
-/// Not ported: sub 7's head turns (frames 0x3d-0x77 and 0x79-0xb3, ±0x200),
-/// the arm-wound variants (+0xf16), +0x348 bit 4 (sub 0x14), sub 3's
+/// Not ported: the arm-wound variants (+0xf16), +0x348 bit 4 (sub 0x14), sub 3's
 /// comrade check (`FUN_0021eb20` / `FUN_0021d230` -> 10). The radio
 /// motions are state 2's (as for the hold-up call); the back-off runs
 /// (assumed).
@@ -2050,8 +2175,17 @@ fn call(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, (sub, ti
             }
         }
         6 | 7 => {
-            if sub == 6 {
+            // Snake in sight: face him (both subs); sub 7 otherwise looks
+            // about on frames 0x3d-0x77 (+0x200) and 0x79-0xb3 (-0x200).
+            if sub == 7 && !seen && frames.contains(&0x3D) {
+                info!("guard {} looks about on the radio", g.route);
+            }
+            if sub == 6 || seen {
                 face(body, snake, dt);
+            } else if (0x3D..=0x77).contains(&timer) {
+                g.head_to = 512.0;
+            } else if (0x79..=0xB3).contains(&timer) {
+                g.head_to = -512.0;
             }
             let (ended, away) = radio_talk(g, body, phase, c, line, (timer, t), game);
             if ended {
@@ -2089,7 +2223,8 @@ fn report(g: &Guard, phase: &Phase) -> (u8, u32) {
 fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, boxed: bool, dt: f32, ticks: u32, game: &Game) {
     // Transitions out of patrol/wait/return, in the game's priority order
     // (later checks override earlier ones).
-    if matches!(g.state, State::Patrol | State::Wait(_) | State::Return) {
+    // State 7 keeps these (`FUN_00227888` -> `FUN_00226798`).
+    if matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Stung { .. }) {
         if g.meter > 0 {
             let target = g.last_seen.unwrap_or(snake);
             g.state = State::Investigate { target, sub: 0, timer: 0, asks: true };
@@ -2221,6 +2356,7 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
                 }
             };
         }
+        State::Stung { at, sub, timer } => stung(g, body, (at, sub, timer), ticks, game),
         State::BoxCheck { timer } => {
             // The inspection's actions (`FUN_002413d0`) are not ported: he
             // stops, faces the box, "?", and lifts it on Snake if he is still

@@ -159,6 +159,7 @@ pub fn fly(
                         // The dart's impact (effect 0x86, `FUN_0024f490`).
                         crate::sfx::play(DART_HIT, Some(gb.pos));
                         g.dart(zone(p, gb));
+                        info!("guard {} darted (asleep: {})", g.route, g.asleep());
                         if !was_down && g.asleep() {
                             crate::sfx::play(crate::sfx::GUARD_ASLEEP + g.voice(), Some(gb.pos));
                         }

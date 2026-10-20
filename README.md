@@ -281,6 +281,9 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      with the soldier's radio voice line and HQ's reply; a hold-up let go
      is radioed in too (Caution); a call cut short leaves HQ asking for him;
      a soldier who spots Snake aims, fires, backs off and radios for backup,
-     and the alert begins only when that call ends (HQ answers per area)
+     and the alert begins only when that call ends (HQ answers per area);
+     out of sight on the radio he looks about (the head turn, which his
+     sight follows); a dart that leaves a soldier awake makes him turn
+     toward where Snake was and look about
    - next: the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects), the commandant's walk
