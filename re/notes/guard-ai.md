@@ -493,3 +493,27 @@ the priority rule, the other lines' callers, the 0xe0 sets (what sets body
 flag 0x4000 is not traced), the voice index (+0x284; the port's
 `route % 4` is assumed).
 
+
+Leads for the other radio lines (not ported):
+- Normal state 3 (`FUN_00234410`, entered by `FUN_002345b0` on stimulus
+  0x1, a heard level 5 / 6 / 8 / 9): sub 2 (`FUN_00233b20`) waits 61
+  frames and, on his first hearing (+0x286 == 1) when his group has two or
+  more soldiers (`FUN_0021d530`: count at `FUN_0021f330(+0x138, +0x13a)`
+  +4), says 0xc040013 "What was that sound?" (0xc040014 in Evasion unless
+  +0x348 & 0x80), or 0xc040020 "What's going on!?" when the noise was
+  another soldier's "!" (level 8, +0x340). The port folds these noises
+  into the investigation (state 6), so the line waits for state 3.
+- Discovery (table 0x3f0c20, `re/ghidra/ai_s8_table.c`): sub 0x14
+  (`FUN_00237c90`) goes to 0x1e (`FUN_00237d48`) when `FUN_00256910`
+  says so; 0x1e clears the radio-shot flag (+0xb4 0x10000), says
+  0x1c000006 ("I'm under attack! Stay alert!" in set 0; HQ's reply
+  follows), and at its end sets the caution timer and +0x348 |= 0x10000.
+  Sub 0x15 (`FUN_00237e00`) sets line 0x2c000004 (+0x310) and sub 0xe
+  (`FUN_00237528`); subs 6 / 7 (`FUN_002375d8` / `FUN_00237710`) play
+  +0x310 lines; the discovery "!" (sub 2) and 1, 3, 8, 0x13, 0x16 say
+  0x20008003 (an area line, `FUN_0021c940`: `-x` lists per area, else
+  0x10816004) unless in Evasion.
+- The alert-phase brains (0x23a348, 0x23d420, 0x23f078, 0x244000,
+  0x244e30, 0x3c5fe8) each play a +0x310 line, then 0x18a00005 (set
+  line 5, "I saw him! Send someone over now!", with a click at its end:
+  bit 0x800000).
