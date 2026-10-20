@@ -47,6 +47,8 @@ check close_quarters "life=(8|7)" ge 1 w01a --skip-cutscenes --trace --snake-at=
 MGS2_DOWN=11:s@3 check comrade "radios in a downed comrade" ge 1 w01d --skip-cutscenes --shot-at 22
 # ... with his voice line from the manager's -v table, then HQ's reply.
 MGS2_DOWN=11:s@3 check radio_line "radio line 0x20" ge 2 w01d --skip-cutscenes --shot-at 22
+# Darted mid-report: the line stops and HQ calls for him.
+MGS2_DOWN=11:s@3,18:s@16 check radio_cut "HQ waits for an answer" ge 1 w01d --skip-cutscenes --shot-at 18
 # Snake glimpsed (state 6): the guard turns, pauses and asks who is there;
 # a dart's noise behind him (state 3) brings him over without a word.
 check investigate_line "radio line 0x20" ge 1 w01a --skip-cutscenes --snake-at=6000,0,-2000 --fire-at 3 --shot-at 8

@@ -563,7 +563,15 @@ Leads for the other radio lines (not ported):
   At 1 the slot's bit in +0x178 is set; `FUN_002316b0` then gives every
   other soldier stimulus 0x40000 (its consumer is not found in the
   transition functions). Kinds 4 / 8 / 0x20 come from state 0xe
-  (`FUN_00245348` / `FUN_002454a8`, 600 frames). Not ported.
+  (`FUN_00245348` / `FUN_002454a8`, 600 frames). `FUN_0021d0a8` is also
+  reached from the soldier's damage handling (`FUN_00252550` /
+  `FUN_00252688`, which switch him to brain 4), so a soldier darted or
+  knocked down mid-call opens a slot. Ported (kind 1, the port's two
+  radio calls): the clip stops, HQ says 0x1ca at 600 and the lost-contact
+  clip at 300 (w01d "We've lost contact with Deck-D."); not ported: the
+  follow-up 0x1081400e (its condition `FUN_00221098` reads body +0xf28
+  bit 0x200000000, not traced), the end click (bit 0x800000), the slot's
+  end (stimulus 0x40000), kinds 2 / 4 / 8 / 0x20.
 - State 10 (footprints and blood, `FUN_00240670`) reports only from sub
   0x12 (`FUN_0023fff8`): `FUN_0023ef18(0x10000012, 0x10000)`, an index
   past the w00a table with his voice added (0x1c0 + 0x12 + 0x38 x

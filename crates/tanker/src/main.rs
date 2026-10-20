@@ -2111,6 +2111,11 @@ const SPEECH_SECONDS: f32 = 8.0;
 /// as spoken lines. (The game pans a report from the soldier, bit
 /// 0x4000000; these play unplaced.)
 fn radio_lines(mut game: ResMut<Game>, mut phase: ResMut<Phase>) {
+    if let Some(id) = phase.stop.take()
+        && game.speech.is_some_and(|s| s.0 == id)
+    {
+        game.speech = None;
+    }
     if let Some(id) = phase.say.drain(..).last() {
         info!("radio line {id:#x}");
         game.speech = Some((id, None, SPEECH_SECONDS));

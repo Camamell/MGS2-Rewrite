@@ -160,6 +160,11 @@ pub struct Phase {
     pub radio: Radio,
     /// Voice clips to start (taken by `main::radio_lines`).
     pub say: Vec<u32>,
+    /// A clip to stop: its speaker was cut off.
+    pub stop: Option<u32>,
+    /// The manager's "no answer" slots (+0x17c / +0x19c): (soldier,
+    /// frames left).
+    no_answer: Vec<(usize, i32)>,
 }
 
 /// The soldiers' radio lines, as the enemy manager's init reads them
@@ -182,6 +187,9 @@ pub struct Phase {
 pub struct Radio {
     pub lines: Vec<(u32, u32)>,
     pub replies: Vec<u32>,
+    /// `-y`'s clip after -2 (0x4014a8; w00a "We've lost communication
+    /// with the aft deck.").
+    pub lost: Option<u32>,
 }
 
 /// A soldier's report on the radio (`FUN_0021cdb8(0x1c00000b)`).
@@ -195,6 +203,16 @@ pub const LINE_OVER_THERE: u32 = 0x0C04_001E;
 const LINES_PER_VOICE: u32 = 0x38;
 /// The radio click (`FUN_00114b30(0x20, 0x3f, 99)`).
 const RADIO_CLICK: u32 = 99;
+/// A "no answer" slot's length (frames).
+const NO_ANSWER_FRAMES: i32 = 900;
+/// HQ's lines to a silent soldier: "What's going on? Respond!" (+0x1c0
+/// block, line 0xa) and the lost contact (`-y`'s -2 clip; when no soldier
+/// is still able, `FUN_00221098`, the game says 0x914100 instead of
+/// 0x914000, the same clip without the follow-up 0x1081400e "Carry out an
+/// investigation immediately.", which the port leaves out: its condition,
+/// +0xf28 bit 0x200000000, is not traced).
+const HQ_RESPOND: u32 = 0x1081_400A;
+const HQ_LOST: u32 = 0x0091_4000;
 
 impl Radio {
     pub fn from_script(spawn: &Spawn, script: &mgs2_formats::gcx::Gcx) -> Self {
@@ -207,8 +225,10 @@ impl Radio {
         };
         let v = words(b'v');
         let lines = v.chunks_exact(2).take_while(|p| p[0] >= 0).map(|p| (p[0] as u32, (p[1] / 5).max(0) as u32)).collect();
-        let replies = words(b'y').into_iter().take_while(|&w| w >= 0).map(|w| w as u32).collect();
-        Self { lines, replies }
+        let y = words(b'y');
+        let replies = y.iter().take_while(|&&w| w >= 0).map(|&w| w as u32).collect();
+        let lost = y.iter().position(|&w| w < 0).filter(|&i| y[i] == -2).and_then(|i| y.get(i + 1)).filter(|&&w| w >= 0).map(|&w| w as u32);
+        Self { lines, replies, lost }
     }
 
     /// The clip and length (frames) of `line` in `g`'s voice. The 0xe0
@@ -223,12 +243,52 @@ impl Radio {
 
 impl Phase {
     /// Starts `line` (`FUN_0021cdb8`): queues its clip and the click.
-    fn speak(&mut self, line: u32, g: &Guard) {
-        let Some((id, _)) = self.radio.line(line, g) else { return };
+    /// Returns the clip.
+    fn speak(&mut self, line: u32, g: &Guard) -> Option<u32> {
+        let (id, _) = self.radio.line(line, g)?;
+        self.play_line(line, id);
+        Some(id)
+    }
+
+    fn play_line(&mut self, line: u32, id: u32) {
         if line & 0x4_0000 == 0 {
             crate::sfx::play(RADIO_CLICK, None);
         }
         self.say.push(id);
+    }
+
+    /// A soldier's radio line cut short (`FUN_0021d0a8`): the clip stops
+    /// and, outside an alert, the manager opens a "no answer" slot for him
+    /// (`FUN_0021d860(.., 900, 1)`; one per soldier, eight at most).
+    fn cut(&mut self, id: u32, route: usize) {
+        self.stop = Some(id);
+        if self.kind != PhaseKind::Alert && self.no_answer.len() < 8 && !self.no_answer.iter().any(|s| s.0 == route) {
+            info!("guard {route}: radio cut off, HQ waits for an answer");
+            self.no_answer.push((route, NO_ANSWER_FRAMES));
+        }
+    }
+
+    /// One frame of the slots (`FUN_002211d0`, kind 1): at 600 frames
+    /// left HQ asks (0x1081400a, line 0x1ca of `-v`: "What's going on?
+    /// Respond!"), at 300 it reports the lost contact (0x914000 /
+    /// 0x914100: `-y`'s -2 clip); the slot then runs out.
+    fn no_answer_tick(&mut self) {
+        let mut calls = Vec::new();
+        for s in &mut self.no_answer {
+            match s.1 {
+                600 => calls.push(HQ_RESPOND),
+                300 => calls.push(HQ_LOST),
+                _ => {}
+            }
+            s.1 -= 1;
+        }
+        self.no_answer.retain(|s| s.1 > 0);
+        for c in calls {
+            let id = if c == HQ_LOST { self.radio.lost } else { self.radio.lines.get((c & 0xFFF) as usize + 0x1C0).map(|l| l.0) };
+            if let Some(id) = id {
+                self.play_line(c, id);
+            }
+        }
     }
 
     /// The length (frames) of `line` for `g`, `fallback` when it cannot
@@ -260,6 +320,8 @@ impl Default for Phase {
             blast: 0,
             radio: Radio::default(),
             say: Vec::new(),
+            stop: None,
+            no_answer: Vec::new(),
         }
     }
 }
@@ -553,6 +615,8 @@ pub struct Guard {
     checked: bool,
     /// The radio in his left hand (radio flag 0x2) during a call.
     pub radio_in_hand: bool,
+    /// The radio line he is saying (its clip), until it ends.
+    on_air: Option<u32>,
     /// Seconds spent walking without getting anywhere.
     stuck: f32,
     /// Where he goes in an alert once Snake is out of sight (`-d`).
@@ -659,6 +723,7 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         knocked: false,
         checked: false,
         radio_in_hand: false,
+        on_air: None,
         stuck: 0.0,
         post: post_at,
         tagged: false,
@@ -697,6 +762,7 @@ pub fn patrol(route: usize, vision: f32, anim: Anim) -> Guard {
         knocked: false,
         checked: false,
         radio_in_hand: false,
+        on_air: None,
         stuck: 0.0,
         post: None,
         tagged: false,
@@ -814,6 +880,7 @@ impl Guard {
     /// over).
     pub fn reset(&mut self) {
         self.state = State::Patrol;
+        self.on_air = None;
         self.level = 0;
         self.meter = 0;
         self.tracking = None;
@@ -1081,8 +1148,16 @@ pub fn think(
                 _ => g.fall_asleep(),
             }
         }
-        if !matches!(g.state, State::Comrade { .. }) {
+        if !matches!(g.state, State::Comrade { .. } | State::HoldupCall { .. }) {
             g.radio_in_hand = false;
+        }
+        // His radio line cut short (out of the call before its end:
+        // knocked down, darted, held up; `FUN_0021d0a8`).
+        if let Some(id) = g.on_air
+            && !matches!(g.state, State::Comrade { sub: 0xc, .. } | State::HoldupCall { sub: 7, .. })
+        {
+            g.on_air = None;
+            phase.cut(id, g.route);
         }
         let was_down = g.asleep();
         g.drowse(ticks, difficulty);
@@ -1430,6 +1505,7 @@ pub fn think(
             }
         }
         manager(&mut phase, highest);
+        phase.no_answer_tick();
     }
 }
 
@@ -1649,13 +1725,14 @@ fn radio_out(g: &mut Guard, body: &mut Body, c: Check, t: u32, game: &Game) -> b
 /// (the line just ended, the radio is away).
 fn radio_talk(g: &mut Guard, body: &mut Body, phase: &mut Phase, c: Check, line: u32, (timer, t): (u32, u32), game: &Game) -> (bool, bool) {
     if timer == 0 && t > 0 {
-        phase.speak(line, g);
+        g.on_air = phase.speak(line, g);
     }
     let frames = phase.line_frames(line, g, REPORT_FRAMES);
     if t < frames {
         body.play(c.radio_talk);
         return (false, false);
     }
+    g.on_air = None;
     body.play_once(c.radio_away);
     g.radio_in_hand = t < frames + 62;
     let ended = timer < frames && t >= frames;
