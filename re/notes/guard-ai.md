@@ -487,7 +487,9 @@ waits 61 frames, says 0xc04001d "Is there somebody there?" (0xc04001e
 Ported: the downed-comrade report (voice set `voice()`, set 0 only, line
 0xb) and HQ's first reply, "it was nothing" (0xc000012) when a
 comrade comes round, and the investigation's line (its pause after the
-port's assumed 30-frame turn); they play through the spoken-line player with their
+port's assumed 30-frame turn) when he saw something (state 6); noises
+(state 3) bring the same turn, pause and walk without a line (its first
+pass: +0x286 is still 0); they play through the spoken-line player with their
 subtitles (assumed shown, as the clips carry them), unplaced. Not ported:
 the priority rule, the other lines' callers, the 0xe0 sets (what sets body
 flag 0x4000 is not traced), the voice index (+0x284; the port's
@@ -501,8 +503,13 @@ Leads for the other radio lines (not ported):
   more soldiers (`FUN_0021d530`: count at `FUN_0021f330(+0x138, +0x13a)`
   +4), says 0xc040013 "What was that sound?" (0xc040014 in Evasion unless
   +0x348 & 0x80), or 0xc040020 "What's going on!?" when the noise was
-  another soldier's "!" (level 8, +0x340). The port folds these noises
-  into the investigation (state 6), so the line waits for state 3.
+  another soldier's "!" (level 8, +0x340). +0x286 is cleared at entry
+  (`FUN_002345b0`) and counts noises heard again (`FUN_00234158` in subs
+  5 / 9, `FUN_00234320` in 8, which go to 0xd, `FUN_00233c58`); 0xd goes
+  to 6 (and then 2, the line) only when `FUN_001194e0` finds a nav cell
+  for the noise and `FUN_00233888` > 0, else 7 / 4. So the line is said
+  on a second noise; the port runs state 3 through the investigation
+  without it.
 - Discovery (table 0x3f0c20, `re/ghidra/ai_s8_table.c`): sub 0x14
   (`FUN_00237c90`) goes to 0x1e (`FUN_00237d48`) when `FUN_00256910`
   says so; 0x1e clears the radio-shot flag (+0xb4 0x10000), says

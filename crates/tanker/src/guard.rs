@@ -297,7 +297,10 @@ pub enum State {
     /// Waiting at a route point (frames left; infinite = -1 wait).
     Wait(f32),
     /// Normal 6: go and look (target, sub-state, frame counter).
-    Investigate { target: Vec3, sub: u8, timer: u32 },
+    /// `asks`: normal state 6 (something seen), which says "Is there
+    /// somebody there?"; noises lead to state 3 instead (`FUN_002345b0`),
+    /// silent on its first pass (see `re/notes/guard-ai.md`).
+    Investigate { target: Vec3, sub: u8, timer: u32, asks: bool },
     /// Normal 8: discovery ("!"), frame counter.
     Discovery { timer: u32 },
     /// Alert brain: chase.
@@ -1217,7 +1220,7 @@ pub fn think(
             && body.pos.distance(snake_pos) <= g.vision.distance * sight
             && [snake_height * 1.5, snake_height * 0.15].iter().any(|h| perceive(&g, &body, snake_pos, *h, &game, sight) == 3)
         {
-            g.state = State::Investigate { target: snake_pos, sub: 0, timer: 0 };
+            g.state = State::Investigate { target: snake_pos, sub: 0, timer: 0, asks: true };
         }
         // In the box: unseen while still, only suspicious while moving.
         if player.boxed {
@@ -1299,7 +1302,7 @@ pub fn think(
                 g.last_seen = Some(at);
                 g.state = State::Discovery { timer: 0 };
             } else {
-                g.state = State::Investigate { target: at, sub: 0, timer: 0 };
+                g.state = State::Investigate { target: at, sub: 0, timer: 0, asks: false };
             }
         }
         // Footprints in clear view within his near range: he goes to the
@@ -1638,7 +1641,7 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
     if matches!(g.state, State::Patrol | State::Wait(_) | State::Return) {
         if g.meter > 0 {
             let target = g.last_seen.unwrap_or(snake);
-            g.state = State::Investigate { target, sub: 0, timer: 0 };
+            g.state = State::Investigate { target, sub: 0, timer: 0, asks: true };
         }
         if g.meter >= 2 || g.level == 3 {
             g.state = State::Discovery { timer: 0 };
@@ -1702,7 +1705,7 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
                 State::Wait(left)
             };
         }
-        State::Investigate { target, sub, timer } => {
+        State::Investigate { target, sub, timer, asks } => {
             // Sub-states: 0 glance toward the target, 5 a pause and a
             // line, 1 walk there, 2 look around (sub-state 10: up to 300
             // frames), then return.
@@ -1713,30 +1716,34 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
                     body.play(g.anim.idle);
                     face(body, target, dt);
                     if timer > 30 {
-                        State::Investigate { target, sub: 5, timer: 0 }
+                        State::Investigate { target, sub: 5, timer: 0, asks }
                     } else {
-                        State::Investigate { target, sub, timer }
+                        State::Investigate { target, sub, timer, asks }
                     }
                 }
                 5 => {
                     // `FUN_0023c108`: after 61 frames "Is there somebody
                     // there?" (line 0xc04001d; "Over there?" 0xc04001e in
                     // Evasion), then the walk (sub-state 8 in the game).
+                    // State 3's pause (`FUN_00233b20`) says nothing the
+                    // first time.
                     body.play(g.anim.idle);
                     if timer > 0x3c {
-                        phase.speak(if phase.kind == PhaseKind::Evasion { LINE_OVER_THERE } else { LINE_SOMEBODY }, g);
+                        if asks {
+                            phase.speak(if phase.kind == PhaseKind::Evasion { LINE_OVER_THERE } else { LINE_SOMEBODY }, g);
+                        }
                         plan(g, body.pos, target, game);
-                        State::Investigate { target, sub: 1, timer: 0 }
+                        State::Investigate { target, sub: 1, timer: 0, asks }
                     } else {
-                        State::Investigate { target, sub, timer }
+                        State::Investigate { target, sub, timer, asks }
                     }
                 }
                 1 => {
                     body.play(g.anim.walk);
                     if follow(g, body, WALK_SPEED, 600.0, dt, game) || timer > 600 {
-                        State::Investigate { target, sub: 2, timer: 0 }
+                        State::Investigate { target, sub: 2, timer: 0, asks }
                     } else {
-                        State::Investigate { target, sub, timer }
+                        State::Investigate { target, sub, timer, asks }
                     }
                 }
                 _ => {
@@ -1758,7 +1765,7 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
                         }
                         State::Return
                     } else {
-                        State::Investigate { target, sub, timer }
+                        State::Investigate { target, sub, timer, asks }
                     }
                 }
             };
@@ -1957,7 +1964,7 @@ fn stimulus(g: &mut Guard, body: &Body, at: Vec3, game: &Game) {
         plan(g, body.pos, at, game);
         g.state = State::Search { wait: 0, facing };
     } else {
-        g.state = State::Investigate { target: at, sub: 0, timer: 0 };
+        g.state = State::Investigate { target: at, sub: 0, timer: 0, asks: false };
     }
 }
 
