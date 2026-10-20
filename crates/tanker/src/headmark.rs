@@ -140,8 +140,14 @@ fn update(
             State::Discovery { .. } => Some(Kind::Exclaim),
             State::Investigate { .. } => Some(Kind::Question),
             State::Asleep { .. } => Some(Kind::Sleep),
+            // A downed comrade (`FUN_00253f50(body, 0xc, 0x8000 | kind)`
+            // with no line): "!" before the kick (sub-state 0x12), "?" when
+            // no report is needed (0xf).
+            State::Comrade { sub: 0x12, .. } => Some(Kind::Exclaim),
+            State::Comrade { sub: 0xf, .. } => Some(Kind::Question),
             _ => None,
         };
+        let voiced = matches!(g.state, State::Discovery { .. } | State::Investigate { .. });
         if want != m.kind {
             // The voice that goes with the mark (`FUN_0021c0a0(base, guard)`:
             // base + the guard's voice, together with the mark command
@@ -156,10 +162,10 @@ fn update(
                 Some(Kind::Question) => Some(0x140),
                 _ => None,
             };
-            if let Some(base) = base {
+            if let Some(base) = base.filter(|_| voiced) {
                 crate::guard::say(base, g, b.pos);
             }
-            if want == Some(Kind::Exclaim) {
+            if want == Some(Kind::Exclaim) && voiced {
                 crate::sfx::play(0x53, Some(b.pos));
             }
             m.kind = want;

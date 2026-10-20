@@ -309,11 +309,11 @@ normal-phase transition picks a state per bit (C+0x32c):
 | 0x8000 | a book (`bul_book.c`, the default marker group `DAT_001cccc8`) in view (`FUN_002308b0`) | 9 |
 | 0x10000 | a footprint (`foot_print.c`, type 0x12) or blood (`blood_sp.c`, type 10) marker group in view (`FUN_00230948`) | 10 |
 | 0x4000000 | Snake within the 250 x 1500 x 250 bump box (`FUN_00230c20`) | |
-| 0x40 / 0x2000000, 0x2000, 0x4000, 0x20000, 0x40000, 0x200000, 0x400000 | 0x230a48, 0x230b40, 0x230dd8, 0x2311f0, 0x2316b0, 0x230c20, 0x231418 | various |
+| 0x40 | a comrade down in sight (`FUN_00230a48`; 0x2000000 instead under +0x350 bit 0x8000000) | 2, `FUN_00233120` (below) |
+| 0x2000, 0x4000, 0x20000, 0x40000, 0x200000, 0x400000 | 0x230b40, 0x230dd8, 0x2311f0, 0x2316b0, 0x230c20, 0x231418 | various |
 
 Level 8 is the soldier's own "!" call (`FUN_00237128`), so nearby soldiers
-hear a discovery. Marker groups register through `FUN_00117798`. Which bit
-is a downed body is not identified yet.
+hear a discovery. Marker groups register through `FUN_00117798`.
 
 Footprints (`foot_print.c`): leaving a type 0 / 2 named area (`0x839ecc` /
 `0x97cb18`; w01a, w01b, w01e have `0x839ecc` at the doors in from the
@@ -400,4 +400,45 @@ about x, y, z (order of the multiplies not decoded: VU macro code).
 struck by 0x800000004801e damage sets flag 0x10000 and plays the
 `FUN_002b9ca8` effect (a shot radio; what 0x10000 stops in the soldier,
 probably his radio call, is not traced). Ported: the belt place only.
-Leads: who sets 0x2 / 0x4 (his radio calls) in `cmd_f7f777`.
+The hand flags come from the radio motions (body action functions):
+`FUN_0025ebc0` (action 4, motion 0x23 radio out; 0x31 with the left arm
+wounded, +0xf16 & 3 == 2) sets 0x2 (0x4 for the other motion) at frame 28
+(7 with `DAT_0017f48c` bit 1) and signals +0xf58 = 3 at the motion's end;
+`FUN_0025eda0` loops 0x1b (0x32) while he talks, ending after 600 frames
+or when action 5 sets its counter +0xfb4 to 600; `FUN_0025f068` puts it
+away (0x1c / 0x33, flag cleared at frame 62). Ported (left hand only).
+
+## A comrade down (normal state 2, `FUN_00233120`)
+
+Stimulus 0x40 (`FUN_00230a48`): `FUN_0021e998` finds a soldier in the
+manager's list at +0x7c (count +0xdc, only cleared in w00a's decomp: the
+writer is not visible; the port takes the soldiers lying down) whom he
+sees at level 3 within his near range. `FUN_00233330` targets him (+0x2f4)
+and starts sub-state 5 when he is down (+0xf98 bit 0x4000, or
+0x4000000000000, or +0xfb0 bit 4) and not already seen to, else 0. The
+sub-states (+0x330, timer +0x338) and their body actions (+0xfdc, table
+`FUN_00231948`: 1 motion 6, 2 7, 3 the "!", 4 radio out, 5 radio away, 6
+motion 10, 7 0x5b, 8 0x4c, 9 0x2f):
+
+| Sub | Function | What |
+|---|---|---|
+| 5 | `FUN_002325e8` | mark kind 4, faces him, 61 frames |
+| 6 | `FUN_00232660` | runs to him (pace +0x254 = 3) to 0x513 mm; knocked out (+0xffa 2) -> 0x10, asleep -> 0x12, 0x4000000000000 -> 0x17, else 8; a second soldier on the same comrade within 2 m -> 9 / 8 |
+| 0x10 | `FUN_00232a60` | waits 91 frames for him to come round (then 0x15 in Infiltration, else 8), else 7 |
+| 7 | `FUN_00232b20` | action 8: kneels and shakes him (hit 0x1001000000000000 on frame 22, `FUN_00254580`), then 8 (0x15 if `FUN_002527d0`) |
+| 0x12 | `FUN_00232938` | "!", action 9 at frame 60 (the kick); after it his down timer +0xf1a = 20; Evasion: done; else the report |
+| 0x17 | `FUN_00232e60` | mark kind 5, 181 frames, target +0x34c bit 4, then 8 |
+| 8 | `FUN_00232cb0` | looks at him to frame 181, done |
+| 0x15 | `FUN_00232c08` | line 0xc000012, done |
+| 10 / 0xc | `FUN_00231d08` / `FUN_00231d88` | the radio: action 4, then line +0x310 (0x1c00000b); at its end action 5 and, for this report, `FUN_0021ee90(-h)` (the caution timer, manager +0x24, which turns Infiltration into Caution); done when the radio is away |
+| 0xb / 0xd | `FUN_00231f20` / `FUN_00231fb8` | radio shot (+0xb4 bit 0x10000) or `DAT_0017f48c` bit 0x10: no call (action 6), back to the route |
+| 0xf | `FUN_00232128` | the report when the caution timer is still over 3/4 of `-h` or in Evasion (`FUN_00252708`): a "?" for 121 frames |
+| 0-4, 9, 0x18 | | a comrade already seen to; another soldier nearby; can't see him from beside him (line 0x144) |
+
+The report's entry is `FUN_00231c28(line, mask)`; the line's length comes
+from table 0x400ca8 (`FUN_0021c608`, filled at load), 0xf0 frames when the
+line cannot play. Ported in `guard::comrade` (sub-states 5, 6, 7, 8, 0xc,
+0xf, 0x10, 0x12, 0x15, 0x17); assumed: 0x4000000000000 = dead, the shake
+wakes him, the lines unmapped (0xf0 / 0x3c frames). So only a sleeper's
+kick leads to a call and Caution; a knocked-out or dead comrade does not.
+`MGS2_DOWN=route:s|k|d@seconds` downs a soldier for testing (w01d r11 / r18).

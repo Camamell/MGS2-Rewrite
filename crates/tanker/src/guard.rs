@@ -53,15 +53,45 @@ pub const MANAGER_ACTOR: u32 = 0xDDF5CA;
 /// (+0xb4): 0x2 the left hand (joint 10, place 0x1f3e00), 0x4 the right
 /// hand (joint 6, 0x1f3e20), else the belt (joint 0, 0x1f3e40 / 0x1f3e50:
 /// offset in mm, then turns in 4096ths about x, y, z by `FUN_001253f8`).
-/// Only the belt is used: the moves to the hand (his radio calls) are not
-/// ported. The order of the three turns is assumed (`EulerRot::XYZ`).
+/// The belt and the left hand are used (flag 0x2 is set by the radio
+/// motions during a call, `FUN_0025ebc0` / `FUN_0025f068`); the right
+/// hand (wounded left arm) is not. The order of the three turns is assumed
+/// (`EulerRot::XYZ`).
 pub mod radio {
     use bevy::math::{EulerRot, Quat, Vec3};
+    use bevy::prelude::*;
+
     pub const JOINT: usize = 0;
     pub const OFFSET: Vec3 = Vec3::new(-120.0, 25.0, -97.5);
     pub fn turn() -> Quat {
-        let a = |n: f32| n / 4096.0 * std::f32::consts::TAU;
-        Quat::from_euler(EulerRot::XYZ, a(4028.0), a(3777.0), a(2048.0))
+        euler(4028, 3777, 2048)
+    }
+    /// The left hand: joint 10, 0x1f3e00 / 0x1f3e10.
+    pub const HAND_JOINT: usize = 10;
+    pub const HAND_OFFSET: Vec3 = Vec3::new(-5.0, -77.5, -67.5);
+    pub fn hand_turn() -> Quat {
+        euler(993, 193, -1038)
+    }
+    fn euler(x: i16, y: i16, z: i16) -> Quat {
+        let a = |n: i16| f32::from(n) / 4096.0 * std::f32::consts::TAU;
+        Quat::from_euler(EulerRot::XYZ, a(x), a(y), a(z))
+    }
+
+    /// Marks a soldier's radio model.
+    #[derive(Component)]
+    pub struct Radio;
+
+    /// Hangs each radio on the belt or in the hand by its owner's flag.
+    pub fn place(guards: Query<&super::Guard>, mut radios: Query<&mut crate::body::Held, With<Radio>>) {
+        for mut h in &mut radios {
+            let Ok(g) = guards.get(h.owner) else { continue };
+            let (object, offset) = if g.radio_in_hand { (HAND_JOINT, HAND_OFFSET) } else { (JOINT, OFFSET) };
+            if h.object != object {
+                h.object = object;
+                h.offset = offset;
+                h.grip = if g.radio_in_hand { hand_turn() } else { turn() };
+            }
+        }
     }
 }
 
@@ -192,8 +222,10 @@ pub enum State {
     /// Hit by a round and still alive: knocked down (motion 0x7b) and
     /// getting up again (frames so far).
     Hurt { timer: f32 },
-    /// Saw a comrade down: goes over and wakes him (raising caution).
-    Rouse { sleeper: Entity, at: Vec3 },
+    /// Normal 2 (stimulus 0x40, `FUN_00233120`): a comrade down in sight;
+    /// `sub` is the game's sub-state (+0x330), `timer` its frames (+0x338).
+    /// See [`comrade`].
+    Comrade { target: Entity, at: Vec3, sub: u8, timer: u32 },
     /// Held up at gunpoint: hands raised (motion 8). `loose` counts frames
     /// without a gun on him; `shake` counts frames with Snake aiming from
     /// the front (dog tags at [`TAG_FRAMES`]).
@@ -225,15 +257,37 @@ pub struct Anim {
     /// Getting up after sleeping (motion, frames): when the sleep runs
     /// out, and when a comrade wakes him (`None`: straight up).
     pub get_up: Option<((usize, f32), (usize, f32))>,
+    /// Seeing to a comrade who is down ([`comrade`]); `None`: he only goes
+    /// over and looks.
+    pub check: Option<Check>,
+}
+
+/// The motions of seeing to a downed comrade and calling it in (the
+/// action table `FUN_00231948` and the radio's motion functions).
+#[derive(Clone, Copy, Debug)]
+pub struct Check {
+    /// Action 8 (`FUN_00231828`, 0x4c): kneels and shakes a knocked-out
+    /// comrade, the shake landing on frame 22.
+    pub shake: usize,
+    /// Action 9 (`FUN_0025eaf0`, 0x2f): kicks a sleeper awake.
+    pub kick: usize,
+    /// Action 4 (`FUN_0025ebc0`): takes the radio out (0x23; the radio is
+    /// in his left hand from frame 28), then `FUN_0025eda0` talks (0x1b,
+    /// looped, at most 600 frames) and action 5 / `FUN_0025f068` puts it
+    /// away (0x1c; back on the belt at frame 62). The wounded-arm variants
+    /// (0x31 / 0x32 / 0x33, radio in the right hand) are not used.
+    pub radio_out: usize,
+    pub radio_talk: usize,
+    pub radio_away: usize,
 }
 
 impl Anim {
     /// Gurlukovich soldiers, `gbs.mar`.
-    pub const SOLDIER: Anim = Anim { idle: motion::IDLE, walk: motion::WALK, run: motion::RUN, aim: motion::AIM, hands_up: 8, fall: sleep::FALL, lie: sleep::LIE, exclaim: motion::EXCLAIM, look: Some(motion::LOOK), knocked: Some((hurt::FALL, hurt::GET_UP)), get_up: Some(((sleep::GET_UP, 95.0), (sleep::ROUSED, 175.0))) };
+    pub const SOLDIER: Anim = Anim { idle: motion::IDLE, walk: motion::WALK, run: motion::RUN, aim: motion::AIM, hands_up: 8, fall: sleep::FALL, lie: sleep::LIE, exclaim: motion::EXCLAIM, look: Some(motion::LOOK), knocked: Some((hurt::FALL, hurt::GET_UP)), get_up: Some(((sleep::GET_UP, 95.0), (sleep::ROUSED, 175.0))), check: Some(Check { shake: 76, kick: 47, radio_out: 35, radio_talk: 27, radio_away: 28 }) };
     /// US Marines, `ushold.mar`: 39 and 40 cover 1332 and 4057 mm/s, the
     /// soldiers' walk and run; 46 hands up, 151 falls forward, 152 lies.
     /// No rifle-raised motion was found, so they aim from the idle pose.
-    pub const MARINE: Anim = Anim { idle: 0, walk: 39, run: 40, aim: 0, hands_up: 46, fall: 151, lie: 152, exclaim: 0, look: None, knocked: None, get_up: None };
+    pub const MARINE: Anim = Anim { idle: 0, walk: 39, run: 40, aim: 0, hands_up: 46, fall: 151, lie: 152, exclaim: 0, look: None, knocked: None, get_up: None, check: None };
 }
 /// A held-up guard turns on Snake after this long without a gun on him.
 const HOLDUP_LOOSE: f32 = 120.0;
@@ -388,6 +442,12 @@ pub struct Guard {
     darts: [u8; 3],
     /// Woken by a comrade (gets up with the other motion).
     roused: bool,
+    /// Down from a blow rather than the darts (+0xffa 2, not 1).
+    knocked: bool,
+    /// A body already seen to (+0x34c bit 4, `FUN_00232e60`).
+    checked: bool,
+    /// The radio in his left hand (radio flag 0x2) during a call.
+    pub radio_in_hand: bool,
     /// Seconds spent walking without getting anywhere.
     stuck: f32,
     /// Where he goes in an alert once Snake is out of sight (`-d`).
@@ -491,6 +551,9 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         resist: RESIST,
         darts: [0; 3],
         roused: false,
+        knocked: false,
+        checked: false,
+        radio_in_hand: false,
         stuck: 0.0,
         post: post_at,
         tagged: false,
@@ -526,6 +589,9 @@ pub fn patrol(route: usize, vision: f32, anim: Anim) -> Guard {
         resist: RESIST,
         darts: [0; 3],
         roused: false,
+        knocked: false,
+        checked: false,
+        radio_in_hand: false,
         stuck: 0.0,
         post: None,
         tagged: false,
@@ -568,6 +634,7 @@ impl Guard {
     pub fn kill(&mut self) {
         if !self.dead() {
             self.state = State::Dead { timer: 0.0 };
+            self.radio_in_hand = false;
             self.path.clear();
         }
     }
@@ -612,6 +679,8 @@ impl Guard {
 
     fn fall_asleep(&mut self) {
         self.state = State::Asleep { timer: 0.0, wake: SLEEP_FRAMES };
+        self.knocked = false;
+        self.radio_in_hand = false;
         self.path.clear();
     }
 
@@ -621,6 +690,8 @@ impl Guard {
         // The random 0..63 frames, from his route and node.
         let extra = ((self.route * 37 + self.node * 11) % 64) as f32;
         self.state = State::Asleep { timer: 0.0, wake: KNOCKOUT_FRAMES + extra };
+        self.knocked = true;
+        self.radio_in_hand = false;
         self.path.clear();
     }
 
@@ -825,17 +896,31 @@ pub fn think(
     *clock += time.delta_secs().min(0.05) * 60.0;
     let ticks = clock.floor() as u32;
     *clock -= ticks as f32;
-    // Comrades lying on the floor (only after they have fallen).
-    let sleepers: Vec<(Entity, Vec3)> = guards
+    // Comrades lying on the floor (only after they have fallen), and how.
+    // (The game's list behind `FUN_0021e998`, manager +0x7c, is filled
+    // where the decomp does not show; taken here as the soldiers down.)
+    let sleepers: Vec<(Entity, Vec3, Down)> = guards
         .iter()
-        .filter(|(_, g, _)| match g.state {
-            State::Asleep { timer, .. } => timer >= sleep::FALL_FRAMES,
-            State::Dead { timer } => timer >= sleep::FALL_FRAMES,
-            _ => false,
+        .filter_map(|(e, g, b)| match g.state {
+            State::Asleep { timer, wake } if timer >= sleep::FALL_FRAMES && timer < wake => {
+                Some((e, b.pos, if g.knocked { Down::KnockedOut } else { Down::Asleep }))
+            }
+            State::Dead { timer } if timer >= sleep::FALL_FRAMES && !g.checked => Some((e, b.pos, Down::Dead)),
+            _ => None,
         })
-        .map(|(e, _, b)| (e, b.pos))
+        .collect();
+    // Comrades someone is already seeing to (the game sends one soldier and
+    // has a second who finds him there within 2 m stand back,
+    // `FUN_00231ac0`; here the others leave him to it).
+    let attended: Vec<Entity> = guards
+        .iter()
+        .filter_map(|(_, g, _)| match g.state {
+            State::Comrade { target, .. } => Some(target),
+            _ => None,
+        })
         .collect();
     let mut woken = Vec::new();
+    let mut seen_to = Vec::new();
     let dt = time.delta_secs().min(0.05);
     let Ok((snake_body, player)) = snake.single() else { return };
     let snake_pos = snake_body.pos;
@@ -866,7 +951,34 @@ pub fn think(
 
     let shot = gunshot.0.take();
     let difficulty = game.banks.b16(crate::gcl::DIFFICULTY);
+    // MGS2_DOWN=route:s|k|d@seconds,..: that soldier falls asleep, is
+    // knocked out or dies then (testing).
+    let downs: Vec<(usize, char)> = std::env::var("MGS2_DOWN")
+        .ok()
+        .map(|v| {
+            v.split(',')
+                .filter_map(|e| {
+                    let (who, at) = e.split_once('@')?;
+                    let (route, kind) = who.split_once(':')?;
+                    let at: f32 = at.parse().ok()?;
+                    let now = time.elapsed_secs();
+                    (now >= at && now - dt < at).then_some((route.parse().ok()?, kind.chars().next()?))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     for (me, mut g, mut body) in &mut guards {
+        if let Some(&(_, kind)) = downs.iter().find(|d| d.0 == g.route) {
+            info!("test: guard {} down ({kind})", g.route);
+            match kind {
+                'k' => g.knock_out(),
+                'd' => g.kill(),
+                _ => g.fall_asleep(),
+            }
+        }
+        if !matches!(g.state, State::Comrade { .. }) {
+            g.radio_in_hand = false;
+        }
         let was_down = g.asleep();
         g.drowse(ticks, difficulty);
         if !was_down && g.asleep() {
@@ -920,6 +1032,7 @@ pub fn think(
                 g.state = State::Asleep { timer: timer + frames, wake };
             } else {
                 g.roused = false;
+                g.knocked = false;
                 g.last_seen = None;
                 g.stamina = g.max_stamina;
                 g.resist = RESIST;
@@ -1044,34 +1157,38 @@ pub fn think(
         for _ in 0..ticks {
             update_meter(&mut g, phase.kind);
         }
-        // A comrade down in sight: go and wake him; the alarm goes to
-        // caution.
+        // A comrade down in sight within his near range (stimulus 0x40,
+        // `FUN_00230a48` / `FUN_0021e998`; not in an alert, which runs
+        // `FUN_00231380` instead): normal state 2 (`FUN_00233330`).
         if phase.kind != PhaseKind::Alert
             && g.level < 3
             && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Investigate { .. })
         {
-            let seen = sleepers.iter().find(|(e, p)| *e != me && perceive(&g, &body, *p, 400.0, &game, 1.0) == 3);
-            if let Some(&(sleeper, at)) = seen {
-                plan(&mut g, body.pos, at, &game);
-                g.state = State::Rouse { sleeper, at };
-                if phase.kind == PhaseKind::Infiltration {
-                    phase.caution = phase.caution_time;
-                    phase.set(PhaseKind::Caution);
-                }
+            let seen = sleepers.iter().find(|(e, p, _)| {
+                *e != me && !attended.contains(e) && p.distance(body.pos) < g.vision.distance && perceive(&g, &body, *p, 400.0, &game, 1.0) == 3
+            });
+            if let Some(&(target, at, _)) = seen {
+                g.path.clear();
+                g.state = State::Comrade { target, at, sub: 5, timer: 0 };
             }
         }
-        if let State::Rouse { sleeper, at } = g.state {
+        if let State::Comrade { target, at, sub, timer } = g.state {
             if g.level == 3 {
+                g.radio_in_hand = false;
                 g.state = State::Discovery { timer: 0 };
             } else {
-                body.play(g.anim.run);
-                if follow(&mut g, &mut body, RUN_SPEED, 700.0, dt, &game) {
-                    face(&mut body, at, dt);
-                    woken.push(sleeper);
-                    if let Some(wp) = waypoint(&game, g.route, g.node) {
-                        plan(&mut g, body.pos, Vec3::from(wp.position), &game);
+                let down = sleepers.iter().find(|s| s.0 == target).map(|s| s.2);
+                match comrade(&mut g, &mut body, &phase, (target, at, sub, timer), down, dt, ticks, &game) {
+                    Some(Seen::Kick) => woken.push((target, 20.0)),
+                    Some(Seen::Shake) => woken.push((target, 0.0)),
+                    Some(Seen::Body) => seen_to.push(target),
+                    Some(Seen::Report) => {
+                        // `FUN_0021ee90(-h)`: the caution timer, which the
+                        // manager turns into Caution.
+                        info!("guard {} radios in a downed comrade", g.route);
+                        phase.caution = phase.caution_time;
                     }
-                    g.state = State::Return;
+                    None => {}
                 }
                 highest = highest.max(i32::from(g.meter));
                 continue;
@@ -1164,14 +1281,22 @@ pub fn think(
         highest = highest.max(i32::from(g.meter));
     }
 
-    // Kicked awake: up at once.
-    for e in woken {
+    // Kicked awake: up in 20 frames (`FUN_00232938` sets his down timer
+    // +0xf1a to 0x14); shaken: up at once (the shake is a hit of type
+    // 0x1001000000000000 on him, `FUN_00254580`; that it wakes him is
+    // assumed).
+    for (e, left) in woken {
         if let Ok((_, mut g, _)) = guards.get_mut(e)
             && let State::Asleep { timer, wake } = g.state
             && timer < wake
         {
             g.roused = true;
-            g.state = State::Asleep { timer: wake, wake };
+            g.state = State::Asleep { timer: timer.max(wake - left), wake };
+        }
+    }
+    for e in seen_to {
+        if let Ok((_, mut g, _)) = guards.get_mut(e) {
+            g.checked = true;
         }
     }
 
@@ -1185,6 +1310,222 @@ pub fn think(
             }
         }
         manager(&mut phase, highest);
+    }
+}
+
+/// How a comrade is down: +0xffa 1 (the darts), 2 (a blow: stamina
+/// gone), or dead (taken as the +0xf98 bit 0x4000000000000 the state
+/// machine tests last; not confirmed).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Down {
+    Asleep,
+    KnockedOut,
+    Dead,
+}
+
+/// What seeing to a comrade does outside the soldier.
+enum Seen {
+    /// Kicked: he wakes 20 frames later.
+    Kick,
+    /// Shaken: he wakes.
+    Shake,
+    /// A body seen to (+0x34c bit 4): no one comes for it again.
+    Body,
+    /// The radio report: the caution timer runs.
+    Report,
+}
+
+/// Frames the radio report takes: its speech line's length
+/// (`FUN_0021cdb8(0x1c00000b)` reads table 0x400ca8, filled at load), or
+/// 0xf0 when the line cannot play, which the port always uses (the line
+/// is not mapped to a sound yet).
+const REPORT_FRAMES: u32 = 0xF0;
+/// The same fallback (0x3c) for the "back on his feet" line 0xc000012.
+const COMRADE_UP_FRAMES: u32 = 0x3C;
+/// He stops this close to the comrade (0x513 mm, `FUN_00232660`).
+const COMRADE_REACH: f32 = 1299.0;
+
+fn motion_length(game: &Game, body: &Body, motion: usize, fallback: u32) -> u32 {
+    body.motions
+        .and_then(|m| game.data.motions.get(m))
+        .and_then(|(_, mar)| mar.motions.get(motion))
+        .map_or(fallback, |m| m.length.max(1))
+}
+
+/// Normal state 2 (`FUN_00233120`, entered by `FUN_00233330`): a comrade
+/// down in sight. Sub-states (+0x330) as in the game:
+/// - 5 (`FUN_002325e8`, mark kind 4): faces him for 61 frames;
+/// - 6 (`FUN_00232660`): runs to him (pace +0x254 = 3), to 1300 mm; then
+///   knocked out -> 0x10, asleep -> 0x12, dead -> 0x17, up again -> 8;
+/// - 0x10 (`FUN_00232a60`): waits up to 91 frames for him to come round
+///   (then, in Infiltration, 0x15: a line, 0xc000012), else 7;
+/// - 7 (`FUN_00232b20`): kneels and shakes him (action 8), then 8;
+/// - 0x12 (`FUN_00232938`, "!"): at frame 60 kicks him (action 9); he
+///   wakes 20 frames later; in Evasion that is all, else the report;
+/// - 0x17 (`FUN_00232e60`, mark kind 5): looks the body over for 181
+///   frames and marks it seen to, then 8;
+/// - 8 (`FUN_00232cb0`): keeps looking at him until frame 181;
+/// - the report (`FUN_00231c28(0x1c00000b, 0x40)`): with the caution
+///   timer still over 3/4 of `-h` or in Evasion (`FUN_00252708`) only a
+///   "?" for 121 frames (0xf, `FUN_00232128`); else 10 (`FUN_00231d08`,
+///   action 4) takes the radio out, 0xc (`FUN_00231d88`) talks and at the
+///   line's end sets the caution timer to `-h` (`FUN_0021ee90`) and puts
+///   the radio away (action 5), and the state ends when that motion does.
+///
+/// Not ported: sub-states 0-4 (a comrade already seen to or up again:
+/// "!", line 0x14c, a look; `FUN_002321b8`..`FUN_00232398`), 9 (another
+/// soldier nearby who heard, `FUN_00252820`), 0x18 (he cannot see the
+/// comrade from beside him: looks around, line 0x144), 0xb / 0xd (no
+/// report when his radio is shot, +0xb4 bit 0x10000, or with
+/// `DAT_0017f48c` bit 0x10), and the marks of kinds 4 and 5 (sprites not
+/// identified).
+#[allow(clippy::too_many_arguments)]
+fn comrade(g: &mut Guard, body: &mut Body, phase: &Phase, (target, at, sub, timer): (Entity, Vec3, u8, u32), down: Option<Down>, dt: f32, ticks: u32, game: &Game) -> Option<Seen> {
+    let t = timer.saturating_add(ticks);
+    let reached = |n: u32| timer < n && t >= n;
+    let check = g.anim.check;
+    let mut out = None;
+    // (sub-state, timer) to go on with; None ends the state.
+    let mut next = Some((sub, t));
+    match sub {
+        5 => {
+            body.play(g.anim.idle);
+            face(body, at, dt);
+            if t > 0x3c {
+                plan(g, body.pos, at, game);
+                next = Some((6, 0));
+            }
+        }
+        6 => {
+            body.play(g.anim.run);
+            let arrived = body.pos.xz().distance(at.xz()) <= COMRADE_REACH || follow(g, body, RUN_SPEED, COMRADE_REACH, dt, game);
+            if arrived || g.stuck > 2.0 {
+                g.path.clear();
+                next = Some((
+                    match down {
+                        Some(Down::KnockedOut) => 0x10,
+                        Some(Down::Asleep) => 0x12,
+                        Some(Down::Dead) => 0x17,
+                        None => 8,
+                    },
+                    0,
+                ));
+            }
+        }
+        0x10 => {
+            body.play(g.anim.idle);
+            face(body, at, dt);
+            if down.is_none() {
+                next = Some((if phase.kind == PhaseKind::Infiltration { 0x15 } else { 8 }, 0));
+            } else if t >= 0x5b {
+                next = Some((if check.is_some() { 7 } else { 8 }, 0));
+            }
+        }
+        0x15 => {
+            body.play(g.anim.idle);
+            if t > COMRADE_UP_FRAMES {
+                next = None;
+            }
+        }
+        7 => {
+            let shake = check.map_or(g.anim.idle, |c| c.shake);
+            body.play_once(shake);
+            face(body, at, dt);
+            if reached(22) && down.is_some() {
+                out = Some(Seen::Shake);
+            }
+            if t >= motion_length(game, body, shake, 89) {
+                next = Some((8, 0));
+            }
+        }
+        0x12 => {
+            face(body, at, dt);
+            match check.filter(|_| t >= 0x3c) {
+                Some(c) => {
+                    body.play_once(c.kick);
+                    if t >= 0x3c + motion_length(game, body, c.kick, 240) {
+                        if down == Some(Down::Asleep) {
+                            out = Some(Seen::Kick);
+                        }
+                        next = if phase.kind == PhaseKind::Evasion { None } else { Some(report(g, phase)) };
+                    }
+                }
+                None => {
+                    body.play(g.anim.idle);
+                    if t >= 0x3c {
+                        next = Some((8, 0));
+                    }
+                }
+            }
+        }
+        0x17 => {
+            body.play(g.anim.idle);
+            face(body, at, dt);
+            if t > 0xb4 {
+                out = Some(Seen::Body);
+                next = Some((8, 0));
+            }
+        }
+        8 => {
+            body.play(g.anim.idle);
+            if t < 0x78 {
+                face(body, at, dt);
+            }
+            if t > 0xb4 {
+                next = None;
+            }
+        }
+        0xf => {
+            body.play(g.anim.idle);
+            if t > 0x78 {
+                next = None;
+            }
+        }
+        10 => {
+            let Some(c) = check else { return None };
+            body.play_once(c.radio_out);
+            g.radio_in_hand = t >= 28;
+            if t >= motion_length(game, body, c.radio_out, 99) {
+                next = Some((0xc, 0));
+            }
+        }
+        0xc => {
+            let Some(c) = check else { return None };
+            if t < REPORT_FRAMES {
+                body.play(c.radio_talk);
+            } else {
+                body.play_once(c.radio_away);
+                g.radio_in_hand = t < REPORT_FRAMES + 62;
+                if reached(REPORT_FRAMES) {
+                    out = Some(Seen::Report);
+                }
+                if t >= REPORT_FRAMES + motion_length(game, body, c.radio_away, 129) {
+                    next = None;
+                }
+            }
+        }
+        _ => next = None,
+    }
+    match next {
+        Some((sub, timer)) => g.state = State::Comrade { target, at, sub, timer },
+        None => {
+            // The end (0x11): back to the route (`FUN_00227e00`).
+            g.radio_in_hand = false;
+            if let Some(wp) = waypoint(game, g.route, g.node) {
+                plan(g, body.pos, Vec3::from(wp.position), game);
+            }
+            g.state = State::Return;
+        }
+    }
+    out
+}
+
+/// `FUN_00231c28` for the downed-comrade report: the sub-state it goes to.
+fn report(g: &Guard, phase: &Phase) -> (u8, u32) {
+    if phase.kind == PhaseKind::Evasion || phase.caution > phase.caution_time / 4 * 3 || g.anim.check.is_none() {
+        (0xf, 0)
+    } else {
+        (10, 0)
     }
 }
 
@@ -1365,7 +1706,7 @@ fn normal_brain(g: &mut Guard, body: &mut Body, snake: Vec3, boxed: bool, dt: f3
             }
         }
         State::Chase | State::Search { .. } => g.state = State::Return,
-        State::Asleep { .. } | State::Dead { .. } | State::Rouse { .. } | State::HeldUp { .. } | State::Hurt { .. } => {}
+        State::Asleep { .. } | State::Dead { .. } | State::Comrade { .. } | State::HeldUp { .. } | State::Hurt { .. } => {}
     }
 }
 
@@ -1551,6 +1892,11 @@ fn manager(p: &mut Phase, highest_guard_meter: i32) {
     p.meter = (p.meter - 16).max(0).max(highest_guard_meter);
     match p.kind {
         PhaseKind::Infiltration | PhaseKind::Caution => {
+            // A caution timer set from outside (a radio report) turns
+            // Infiltration into Caution (`FUN_00220818`, phase 0).
+            if p.kind == PhaseKind::Infiltration && p.caution >= 1 {
+                p.set(PhaseKind::Caution);
+            }
             if p.kind == PhaseKind::Caution {
                 p.caution -= 1;
                 if p.caution < 1 {
@@ -1637,6 +1983,7 @@ pub fn trace(
             State::Investigate { sub, timer, .. } => format!("Investigate{sub}/{timer}"),
             State::Discovery { timer } => format!("Discovery/{timer}"),
             State::Wait(w) => format!("Wait{w:.1}"),
+            State::Comrade { sub, timer, .. } => format!("Comrade{sub:#x}/{timer}"),
             s => format!("{s:?}"),
         };
         eprint!(" r{} ({:.0},{:.0},{:.0}) {} L{} m{} |", g.route, b.pos.x, b.pos.y, b.pos.z, st, g.level, g.meter);

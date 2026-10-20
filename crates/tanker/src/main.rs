@@ -1342,6 +1342,7 @@ fn main() -> Result<()> {
         app.insert_resource(c);
     }
     app.add_systems(Update, body::hold.after(body::skin).before(player::follow_camera));
+    app.add_systems(Update, guard::radio::place.after(guard::think).before(body::hold));
     app.add_systems(Update, (body::add_shadows, body::update_shadows.after(body::skin)));
     app.add_systems(Update, boss_defeat.after(olga::think).run_if(codec::idle).run_if(demo::idle));
     app.add_systems(Update, death_events);
@@ -1497,11 +1498,12 @@ fn spawn_level(
         None => error!("Snake's model (sna_def) not found"),
     }
     let radio = model_index(data, "rad");
+    let mut radios = Vec::new();
     for (g, model, motions, pos, gun) in cast.guards {
         let e = spawn(&mut commands, model, Body::new(pos, 0.0, model, motions));
         commands.entity(e).insert(g);
         weapons.extend(gun.map(|m| (e, m, false, body::rifle_grip(), body::RIGHT_HAND, Vec3::ZERO)));
-        weapons.extend(radio.map(|m| (e, m, false, guard::radio::turn(), guard::radio::JOINT, guard::radio::OFFSET)));
+        radios.extend(radio.map(|m| (e, m)));
     }
     for (model, motions, pos, yaw, motion, name) in cast.posed {
         let mut b = Body::new(pos, yaw, model, motions);
@@ -1536,6 +1538,11 @@ fn spawn_level(
         // Snake's M9 shows only with the M9 in hand.
         let weapon = when_aiming.then_some(0);
         commands.entity(e).insert(body::Held { owner, object, when_aiming, grip, offset, weapon });
+    }
+    for (owner, model) in radios {
+        let e = scene::spawn_model(&mut commands, &data.models[model].1, data, &mut cache, &mut meshes, &mut images, &mut materials, unlit, LevelEntity);
+        let held = body::Held { owner, object: guard::radio::JOINT, when_aiming: false, grip: guard::radio::turn(), offset: guard::radio::OFFSET, weapon: None };
+        commands.entity(e).insert((held, guard::radio::Radio));
     }
     if let Some((owner, m)) = usp_model {
         let e = scene::spawn_model(&mut commands, &data.models[m].1, data, &mut cache, &mut meshes, &mut images, &mut materials, unlit, LevelEntity);
