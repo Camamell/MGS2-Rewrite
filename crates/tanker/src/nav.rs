@@ -123,6 +123,23 @@ impl Nav {
         path
     }
 
+    /// The node linked to `from`'s that lies most nearly away from
+    /// `threat` (`FUN_00253c38`: the bearing to the threat + 0x800, then
+    /// the node's links; the game's choice among them is approximated by
+    /// the best-aligned link ahead).
+    pub fn away(&self, from: Vec3, threat: Vec3) -> Option<Vec3> {
+        let a = self.node_at(from)?;
+        let dir = Vec2::new(from.x - threat.x, from.z - threat.z).normalize_or_zero();
+        self.nodes[a]
+            .links
+            .iter()
+            .map(|&j| self.nodes[j].pos)
+            .map(|p| (p, Vec2::new(p.x - from.x, p.z - from.z).normalize_or_zero().dot(dir)))
+            .filter(|(_, d)| *d > 0.0)
+            .max_by(|x, y| x.1.total_cmp(&y.1))
+            .map(|(p, _)| p)
+    }
+
     /// Nodes within `radius` of `around` (for searching).
     pub fn nodes_near(&self, around: Vec3, radius: f32) -> Vec<usize> {
         (0..self.nodes.len()).filter(|i| self.nodes[*i].pos.distance(around) < radius).collect()

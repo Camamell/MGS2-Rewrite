@@ -515,12 +515,9 @@ Leads for the other radio lines (not ported):
   (`FUN_00237c90`) goes to 0x1e (`FUN_00237d48`) when `FUN_00256910`
   says so; 0x1e clears the radio-shot flag (+0xb4 0x10000), says
   0x1c000006 ("I'm under attack! Stay alert!" in set 0; HQ's reply
-  follows), and at its end sets the caution timer and +0x348 |= 0x10000.
-  Sub 0x15 (`FUN_00237e00`) sets line 0x2c000004 (+0x310) and sub 0xe
-  (`FUN_00237528`); subs 6 / 7 (`FUN_002375d8` / `FUN_00237710`) play
-  +0x310 lines; the discovery "!" (sub 2) and 1, 3, 8, 0x13, 0x16 say
-  0x20008003 (an area line, `FUN_0021c940`: `-x` lists per area, else
-  0x10816004) unless in Evasion.
+  follows), and at its end sets the caution timer and +0x348 |= 0x10000
+  (not ported). The call for backup is ported (`guard::call`, see
+  "Discovery call" below).
 - The alert-phase brains (0x23a348, 0x23d420, 0x23f078, 0x244000,
   0x244e30, 0x3c5fe8) each play a +0x310 line, then 0x18a00005 (set
   line 5, "I saw him! Send someone over now!", with a click at its end:
@@ -576,3 +573,66 @@ Leads for the other radio lines (not ported):
   0x12 (`FUN_0023fff8`): `FUN_0023ef18(0x10000012, 0x10000)`, an index
   past the w00a table with his voice added (0x1c0 + 0x12 + 0x38 x
   voice), so what it plays is unclear.
+
+## Discovery call (`guard::call`)
+
+The "!" does not raise the alert by itself: in the discovery table
+(0x3f0c20) the meter goes to 0x400 (`FUN_00236f30`, which the manager
+turns into Alert) only when a radio call ends, or straight after a line
+0x20008003 ("Encountered the enemy, requesting backup.", no radio) on
+the paths gated by controller +0x350 bit 0x10000 or body flag
+0x200000000 (`FUN_002527d0`: body +0xf28 & 0x2002200000000 ==
+0x200000000). Neither applies in the Tanker: +0x350 is the soldier's
+`-s` option (`FUN_002233e8`: `FUN_00152a30('s')` -> guard+0x2820), which
+is 34 / 10 / 2 in w00a / w00c / w02a and absent elsewhere; +0xf2c bit 2
+(= +0xf28 bit 0x200000000) is never stored (a scan of the w00a resident
+and the ELF for stores to +0xf28 / +0xf2c finds only `FUN_00247d10`,
+called with 0x12000 and 1, and the troopers' / `FUN_0025b0f0`'s
+constants). So (sub-states):
+
+- 2 (`FUN_00237128`): the "!" (action 2), then 8 with effect 300 + voice;
+  Snake within 1000 mm after 7 frames cuts it short.
+- 8 (`FUN_002381e8`): aim (action 1); on frame 5 with Snake not seen
+  (+0x18e != 3) 0x15; from frame 7 9 (0x15 once +0x2a0 > 30).
+- 9 (`FUN_00238008`): every 4th frame action 9 and +0x2a0 += 1 (taken as
+  a round: 31 of them lead to 0x12, `FUN_00238120`, action 10, which
+  zeroes +0x2a0 and goes back to 8: a reload), or from frame 7 a 1-in-3
+  chance (`FUN_0016f600() % 3`) of 0x15.
+- 0x15 (`FUN_00237e00`): `FUN_00257508(FUN_00253c38(..))` targets the nav
+  cell linked to his own in the direction away from Snake (bearing +
+  0x800); `FUN_00256988` runs it and, on arrival or a failed way, 0xe
+  with +0x310 = 0x2c000004 ("It's the enemy! I need help!" in set 0).
+- 3 (`FUN_00237918`, a shot heard): mark and effect 0x53, 0x1f frames,
+  then action 2 facing the noise; then 0xe with 0x2c000000 ("Possible
+  hostile sighted. Send backup.", 0x2c000004 under DAT_001f39b0 bit 0)
+  unless `FUN_0021eb20(.., 8, ..)` finds something within +0x24c and
+  `FUN_0021d230()` < 2 (-> 10; not traced, not ported).
+- 0xe (`FUN_00237528`): action 5 (radio out) until +0xf58 == 3, then 6
+  (Snake seen) or 7; 0xf when the radio was shot (+0xb4 0x10000) or
+  DAT_0017f48c bit 4.
+- 6 / 7 (`FUN_002375d8` / `FUN_00237710`): say +0x310; 7 turns the head
+  +0x200 on frames 0x3d-0x77 and -0x200 on 0x79-0xb3; cut short by the
+  radio shot -> `FUN_0021d0a8` and 0xf. At the line's end action 6 and
+  `FUN_00236f30` (meter 0x400); +0xf58 == 1 -> sub 0.
+
+`FUN_0021cb40` follows 0x2c000000 / 2 / 4 and 0x20008003 with an area
+line (`FUN_0021c940`): `FUN_0021c670` tests sixteen trap names (0x3a30ec
+.. 0x3a30f5 for `-x` entries 0-9, 0x461dd7 / 8 for 10 / 11, 0x461dd9 ..
+dc again for 8-11; each only when its entry has clips) with
+`FUN_00148a98(0x1ece00, name)` (0x1ece00 taken as Snake's position) and
+plays `0x11000000 | area * 4 + rand % count`: clip `area * 5 + 1 + n` of
+0x4014b0, the manager's `-x` (`FUN_00221970` option 0x78: clips, -2
+between areas, -1 at the end; w01a: two areas, "Understood. Search team,
+head to port side!"...). No area: 0x10816004, line 0x1c4 of `-v` (w00a
+"Acknowledged. Assault team, check it out.").
+
+Ported: subs 2, 8, 9, 0x12, 0x15, 3, 0xe, 6, 7 and the area answer
+(played at the line's end; the click as for other lines). Assumed: the
+back-off runs and gives up after 300 frames; the nav link best aligned
+with "away" stands for `FUN_00253c38`'s pick; the rounds use the alert's
+bullet and sound; when the alert begins the caller switches to the chase
+(the game finishes the radio-away action first). A caller darted or
+knocked down mid-line raises no alert: the line is cut (`FUN_0021d0a8`)
+and HQ calls for him. Not ported: the radio shot / jammed (0xf), sub 7's
+head turns, the arm-wound variants, sub 3's comrade check, sub 0x14 /
+0x1e, the Marines (no radio motions: their "!" still raises the alert).

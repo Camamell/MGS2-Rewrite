@@ -20,3 +20,4 @@
 /re/iop/
 /re/ghidra-iop/
 target-*/
+.run.lock

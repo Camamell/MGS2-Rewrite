@@ -55,8 +55,13 @@ check investigate_line "radio line 0x20" ge 1 w01a --skip-cutscenes --snake-at=6
 check noise_quiet "radio line 0x20" eq 0 w01a --skip-cutscenes --snake-at=9000,0,4100 --snake-dir=0 --fire-at 2 --shot-at 8
 # A hold-up let go (empty M9): Snake walks off, the guard radios it in.
 MGS2_WALK_DIR=2048 MGS2_GIVE=1/1:0 check holdup_call "radios in the hold-up" ge 1 w01a --skip-cutscenes --snake-at=6000,0,2500 --snake-dir=0 --fire-at 1 --aim-for 6 --walk-from 7.6 --auto-walk 3 --shot-at 16
-# A guard empties his magazine at an invulnerable Snake and reloads.
-MGS2_GOD=1 check reload "reloads" ge 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 14
+# Discovery: the "!", a burst, the radio call for backup and HQ's area
+# answer; darted mid-call, he raises no alert and HQ calls for him.
+MGS2_GOD=1 check discovery_call "radios for backup|HQ answers" ge 2 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 18
+MGS2_GOD=1 MGS2_DOWN=3:s@10 check discovery_cut "radio cut off|radios for backup" eq 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 16
+# A guard empties his magazine at an invulnerable Snake and reloads (the
+# alert starts once his call for backup ends).
+MGS2_GOD=1 check reload "reloads" ge 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 22
 # Items: a bandage stops the bleeding; cold medicine ends the sneezing.
 MGS2_LIFE=25 MGS2_GIVE=0/5:1 MGS2_KEYS=N@2 check bandage "bandage used" ge 1 w01a --skip-cutscenes --shot-at 3
 MGS2_COLD=120 MGS2_GIVE=0/4:1 MGS2_KEYS=N@4 check cold "cold medicine used" ge 1 w01a --skip-cutscenes --shot-at 6

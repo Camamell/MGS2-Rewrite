@@ -190,7 +190,34 @@ pub struct Radio {
     /// `-y`'s clip after -2 (0x4014a8; w00a "We've lost communication
     /// with the aft deck.").
     pub lost: Option<u32>,
+    /// `-x`: HQ's answers per area (0x4014b0: a count and up to four
+    /// clips each; the data lists clips, -2 between areas, -1 at the end).
+    pub areas: Vec<Vec<u32>>,
 }
+
+/// The areas' trap names, in the order `FUN_0021c670` tests them, with the
+/// `-x` entry each one answers from (the last four reuse entries 8-11).
+const AREA_TRAPS: [(u32, usize); 16] = [
+    (0x3A30EC, 0),
+    (0x3A30ED, 1),
+    (0x3A30EE, 2),
+    (0x3A30EF, 3),
+    (0x3A30F0, 4),
+    (0x3A30F1, 5),
+    (0x3A30F2, 6),
+    (0x3A30F3, 7),
+    (0x3A30F4, 8),
+    (0x3A30F5, 9),
+    (0x461DD7, 10),
+    (0x461DD8, 11),
+    (0x461DD9, 8),
+    (0x461DDA, 9),
+    (0x461DDB, 10),
+    (0x461DDC, 11),
+];
+/// HQ's answer when Snake is in none of the areas (0x10816004: line 0x1c4,
+/// w00a "Acknowledged. Assault team, check it out.").
+const HQ_CHECK_IT_OUT: u32 = 0x1081_6004;
 
 /// A soldier's report on the radio (`FUN_0021cdb8(0x1c00000b)`).
 pub const LINE_REPORT: u32 = 0x1C00_000B;
@@ -199,6 +226,11 @@ pub const LINE_ALL_CLEAR: u32 = 0x0C00_0012;
 /// "Is there somebody there?" / "Over there?" (investigation, state 6).
 pub const LINE_SOMEBODY: u32 = 0x0C04_001D;
 pub const LINE_OVER_THERE: u32 = 0x0C04_001E;
+/// The discovery's calls for backup: "It's the enemy! I need help!"
+/// (0x2c000004, after the "!") and "Possible hostile sighted. Send
+/// backup." (0x2c000000, after a shot heard).
+pub const LINE_ENEMY: u32 = 0x2C00_0004;
+pub const LINE_SIGHTED: u32 = 0x2C00_0000;
 /// Lines per voice in the `-v` table.
 const LINES_PER_VOICE: u32 = 0x38;
 /// The radio click (`FUN_00114b30(0x20, 0x3f, 99)`).
@@ -228,7 +260,14 @@ impl Radio {
         let y = words(b'y');
         let replies = y.iter().take_while(|&&w| w >= 0).map(|&w| w as u32).collect();
         let lost = y.iter().position(|&w| w < 0).filter(|&i| y[i] == -2).and_then(|i| y.get(i + 1)).filter(|&&w| w >= 0).map(|&w| w as u32);
-        Self { lines, replies, lost }
+        let mut areas = vec![Vec::new()];
+        for &w in words(b'x').iter().take_while(|&&w| w != -1) {
+            match w {
+                -2 => areas.push(Vec::new()),
+                w => areas.last_mut().unwrap().push(w as u32),
+            }
+        }
+        Self { lines, replies, lost, areas }
     }
 
     /// The clip and length (frames) of `line` in `g`'s voice. The 0xe0
@@ -303,6 +342,31 @@ impl Phase {
         if let Some(&id) = self.radio.replies.first() {
             crate::sfx::play(RADIO_CLICK, None);
             self.say.push(id);
+        }
+    }
+
+    /// HQ's answer to a call for backup (`FUN_0021cb40` queues
+    /// `FUN_0021c940` after 0x2c000000 / 2 / 4 and 0x20008003): one of the
+    /// `-x` clips of the first area whose trap holds Snake
+    /// (`FUN_0021c670`; `FUN_00148a98` at 0x1ece00, taken as Snake's
+    /// position), picked at random (`pick`), else line 0x1c4. Played at
+    /// once, with the click.
+    fn area_line(&mut self, snake: Vec3, game: &Game, pick: u32) {
+        let p = snake + Vec3::Y * 10.0;
+        let area = game.data.collision.as_ref().and_then(|h| {
+            AREA_TRAPS.iter().enumerate().find_map(|(k, &(name, entry))| {
+                let listed = self.radio.areas.get(k).is_some_and(|a| !a.is_empty());
+                let inside = h.traps.iter().any(|t| t.name & 0x00FF_FFFF == name && (0..3).all(|i| t.min[i] <= p[i] && p[i] < t.max[i]));
+                (listed && inside).then_some(entry)
+            })
+        });
+        let clip = match area.and_then(|a| self.radio.areas.get(a)).filter(|a| !a.is_empty()) {
+            Some(clips) => Some(clips[pick as usize % clips.len()]),
+            None => self.radio.lines.get((HQ_CHECK_IT_OUT & 0xFFF) as usize + 0x1C0).map(|l| l.0),
+        };
+        info!("HQ answers the call (area {area:?})");
+        if let Some(id) = clip {
+            self.play_line(HQ_CHECK_IT_OUT, id);
         }
     }
 }
@@ -390,6 +454,10 @@ pub enum State {
     /// Let go of a hold-up: he calls it in (see [`holdup_call`]). `to`:
     /// where he turns (his target heading +0xf54, last set toward Snake).
     HoldupCall { sub: u8, timer: u32, to: Vec3 },
+    /// After the discovery "!": the call for backup (see [`call`]); `sub`
+    /// is the discovery table's sub-state (+0x330), `timer` its frames,
+    /// `line` the call it will make (+0x310), `to` where he backs off to.
+    Call { sub: u8, timer: u32, line: u32, to: Option<Vec3> },
     /// Normal 11: walked into Snake's box and looks it over
     /// (`FUN_00242448`), frames so far.
     BoxCheck { timer: u32 },
@@ -1148,13 +1216,13 @@ pub fn think(
                 _ => g.fall_asleep(),
             }
         }
-        if !matches!(g.state, State::Comrade { .. } | State::HoldupCall { .. }) {
+        if !matches!(g.state, State::Comrade { .. } | State::HoldupCall { .. } | State::Call { .. }) {
             g.radio_in_hand = false;
         }
         // His radio line cut short (out of the call before its end:
         // knocked down, darted, held up; `FUN_0021d0a8`).
         if let Some(id) = g.on_air
-            && !matches!(g.state, State::Comrade { sub: 0xc, .. } | State::HoldupCall { sub: 7, .. })
+            && !matches!(g.state, State::Comrade { sub: 0xc, .. } | State::HoldupCall { sub: 7, .. } | State::Call { sub: 6 | 7, .. })
         {
             g.on_air = None;
             phase.cut(id, g.route);
@@ -1400,7 +1468,15 @@ pub fn think(
             // `FUN_00238f68`).
             if range >= GUNSHOT_RANGE {
                 g.last_seen = Some(at);
-                g.state = State::Discovery { timer: 0 };
+                // Its sub-state 3 (`FUN_00237918`): no "!" line, a turn,
+                // then the call ([`call`]).
+                g.path.clear();
+                g.state = if g.anim.check.is_some() {
+                    crate::sfx::play(0x53, Some(body.pos));
+                    State::Call { sub: 3, timer: 0, line: LINE_SIGHTED, to: Some(at) }
+                } else {
+                    State::Discovery { timer: 0 }
+                };
             } else {
                 g.state = State::Investigate { target: at, sub: 0, timer: 0, asks: false };
             }
@@ -1450,6 +1526,24 @@ pub fn think(
             }
         }
 
+        // The discovery's call for backup (any phase but Alert, whose brain
+        // replaces the discovery).
+        if let State::Call { sub, timer, line, to } = g.state
+            && phase.kind != PhaseKind::Alert
+        {
+            let c = call(&mut g, &mut body, &mut phase, snake_pos, (sub, timer, line, to), dt, ticks, &game, &mut rng);
+            if c.fired {
+                let muzzle = body.pos + Vec3::Y * MUZZLE + body.forward() * 400.0;
+                let at = snake_pos + Vec3::Y * (snake_height * 0.6);
+                bullet::fire(&mut commands, &mut rng, muzzle, at);
+                crate::sfx::play(crate::sfx::USP, Some(body.pos));
+            }
+            if c.alert {
+                g.meter = METER_MAX;
+            }
+            highest = highest.max(i32::from(g.meter));
+            continue;
+        }
         match phase.kind {
             PhaseKind::Alert => {
                 if alert_brain(&mut g, &mut body, snake_pos, snake_dead, dt, ticks, &game, &mut rng) {
@@ -1816,6 +1910,157 @@ fn holdup_call(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, (
     reported
 }
 
+/// What a frame of [`call`] did.
+#[derive(Default)]
+struct Called {
+    /// A round fired at Snake.
+    fired: bool,
+    /// The call's line ended: the meter goes to 0x400 (`FUN_00236f30`).
+    alert: bool,
+}
+
+/// How long the back-off may take before he calls anyway (frames; not
+/// from the game: `FUN_00256988` ends it on arrival or when the way
+/// fails).
+const BACK_OFF_FRAMES: u32 = 300;
+
+/// The discovery after its "!" (w00a table 0x3f0c20). In the Tanker no
+/// soldier has `-s` bit 0x10000, and body flag 0x200000000
+/// (`FUN_002527d0`) is never set (w00a and the ELF only pass 0x12000 and
+/// 1 to `FUN_00247d10`), so every discovery ends in a radio call:
+/// - 8 (`FUN_002381e8`, aim): with Snake out of sight on frame 5, sub
+///   0x15; from frame 7, 9 (0x15 after 30 rounds);
+/// - 9 (`FUN_00238008`): every 4th frame a round (action 9; +0x2a0 counts
+///   them), or from frame 7 a 1-in-3 chance of 0x15; after 31 rounds 0x12
+///   (`FUN_00238120`, action 10: the reload, then 8);
+/// - 0x15 (`FUN_00237e00`): backs off to the nav cell away from Snake
+///   (`FUN_00253c38` / `FUN_00256988`), then 0xe with line 0x2c000004;
+/// - 3 (`FUN_00237918`, a shot heard, entered here instead of the "!"):
+///   0x1f frames, then action 2 (the "!" motion) facing the noise, then 0xe
+///   with 0x2c000000 (0x2c000004 under DAT_001f39b0 bit 0, not traced);
+/// - 0xe (`FUN_00237528`): the radio out (action 5), then 6 with Snake in
+///   sight, else 7 (0xf when the radio was shot or jammed: not ported);
+/// - 6 / 7 (`FUN_002375d8` / `FUN_00237710`): the line; at its end the
+///   radio goes away (action 6) and the meter goes to 0x400, which raises
+///   the alert. HQ's area answer follows (`FUN_0021cb40`).
+///
+/// Not ported: sub 7's head turns (frames 0x3d-0x77 and 0x79-0xb3, ±0x200),
+/// the arm-wound variants (+0xf16), +0x348 bit 4 (sub 0x14), sub 3's
+/// comrade check (`FUN_0021eb20` / `FUN_0021d230` -> 10). The radio
+/// motions are state 2's (as for the hold-up call); the back-off runs
+/// (assumed).
+#[allow(clippy::too_many_arguments)]
+fn call(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, (sub, timer, line, to): (u8, u32, u32, Option<Vec3>), dt: f32, ticks: u32, game: &Game, rng: &mut Rng) -> Called {
+    let mut out = Called::default();
+    let Some(c) = g.anim.check else {
+        g.meter = METER_MAX;
+        g.state = State::Discovery { timer: EXCLAIM_DONE };
+        return out;
+    };
+    let t = timer.saturating_add(ticks);
+    // Frames this step covers (the game's per-frame checks).
+    let frames = timer..t.max(timer + 1);
+    let seen = g.level == 3;
+    let mut next = (sub, t, line, to);
+    match sub {
+        8 => {
+            body.play(g.anim.aim);
+            face(body, snake, dt);
+            if frames.contains(&5) && !seen {
+                next = (0x15, 0, line, None);
+            } else if t >= 7 {
+                next = (if g.attack.shots > 30 { 0x15 } else { 9 }, 0, line, None);
+            }
+        }
+        9 => {
+            body.play(g.anim.aim);
+            face(body, snake, dt);
+            if g.attack.shots >= MAGAZINE {
+                next = (0x12, 0, line, None);
+            } else if let Some(f) = frames.clone().find(|f| f % 4 == 0) {
+                if f >= 7 && rng.next().is_multiple_of(3) {
+                    next = (0x15, 0, line, None);
+                } else {
+                    g.attack.shots += 1;
+                    out.fired = true;
+                }
+            }
+        }
+        0x12 => {
+            body.play_once(RELOAD_MOTION);
+            face(body, snake, dt);
+            if t >= motion_length(game, body, RELOAD_MOTION, RELOAD_FRAMES as u32) {
+                info!("guard {} reloads", g.route);
+                g.attack.shots = 0;
+                next = (8, 0, line, None);
+            }
+        }
+        0x15 => {
+            let to = to.or_else(|| game.nav.as_ref().and_then(|n| n.away(body.pos, snake)));
+            let arrived = match to {
+                Some(p) => {
+                    if g.path.is_empty() || timer == 0 {
+                        plan(g, body.pos, p, game);
+                    }
+                    let done = follow(g, body, RUN_SPEED, 300.0, dt, game);
+                    body.play(if done { g.anim.idle } else { g.anim.run });
+                    done
+                }
+                None => true,
+            };
+            next = if arrived || t >= BACK_OFF_FRAMES {
+                g.path.clear();
+                (0xe, 0, LINE_ENEMY, None)
+            } else {
+                (0x15, t, line, to)
+            };
+        }
+        3 => {
+            let at = to.unwrap_or(snake);
+            face(body, at, dt);
+            if t < 0x1F {
+                body.play(g.anim.idle);
+            } else {
+                body.play_once(g.anim.exclaim);
+                if t >= 0x1F + motion_length(game, body, g.anim.exclaim, EXCLAIM_FRAMES) {
+                    next = (0xe, 0, LINE_SIGHTED, None);
+                }
+            }
+        }
+        0xe => {
+            if seen {
+                face(body, snake, dt);
+            }
+            if radio_out(g, body, c, t, game) {
+                next = (if seen { 6 } else { 7 }, 0, line, None);
+            }
+        }
+        6 | 7 => {
+            if sub == 6 {
+                face(body, snake, dt);
+            }
+            let (ended, away) = radio_talk(g, body, phase, c, line, (timer, t), game);
+            if ended {
+                info!("guard {} radios for backup", g.route);
+                out.alert = true;
+                phase.area_line(snake, game, rng.next());
+            }
+            if away {
+                g.radio_in_hand = false;
+                if let Some(wp) = waypoint(game, g.route, g.node) {
+                    plan(g, body.pos, Vec3::from(wp.position), game);
+                }
+                g.state = State::Return;
+                return out;
+            }
+        }
+        _ => next = (8, 0, line, None),
+    }
+    let (sub, timer, line, to) = next;
+    g.state = State::Call { sub, timer, line, to };
+    out
+}
+
 /// `FUN_00231c28` for the downed-comrade report: the sub-state it goes to.
 fn report(g: &Guard, phase: &Phase) -> (u8, u32) {
     if phase.kind == PhaseKind::Evasion || phase.caution > phase.caution_time / 4 * 3 || g.anim.check.is_none() {
@@ -1986,8 +2231,9 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
             };
         }
         State::Discovery { timer } => {
-            // "!": face Snake while the reaction plays, then the meter goes
-            // to 0x400, which raises the alert through the manager.
+            // "!" (discovery sub-state 2, `FUN_00237128`): face Snake while
+            // the reaction plays, then aim and call it in (sub 8, [`call`]),
+            // whose end raises the meter to 0x400 and so the alert.
             body.play_once(g.anim.exclaim);
             face(body, snake, dt);
             let length = body
@@ -2007,6 +2253,12 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
                 if before < length {
                     crate::sfx::play(0x12C + g.voice(), Some(body.pos));
                 }
+                // Soldiers without the radio motions (the Marines) raise
+                // the alert at once, as before.
+                if g.anim.check.is_some() {
+                    g.state = State::Call { sub: 8, timer: 0, line: LINE_ENEMY, to: None };
+                    return;
+                }
                 g.meter = METER_MAX;
             }
             g.state = State::Discovery { timer };
@@ -2019,7 +2271,7 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
             }
         }
         State::Chase | State::Search { .. } => g.state = State::Return,
-        State::Asleep { .. } | State::Dead { .. } | State::Comrade { .. } | State::HeldUp { .. } | State::HoldupCall { .. } | State::Hurt { .. } => {}
+        State::Asleep { .. } | State::Dead { .. } | State::Comrade { .. } | State::HeldUp { .. } | State::HoldupCall { .. } | State::Call { .. } | State::Hurt { .. } => {}
     }
 }
 
@@ -2297,6 +2549,7 @@ pub fn trace(
             State::Discovery { timer } => format!("Discovery/{timer}"),
             State::Wait(w) => format!("Wait{w:.1}"),
             State::Comrade { sub, timer, .. } => format!("Comrade{sub:#x}/{timer}"),
+            State::Call { sub, timer, .. } => format!("Call{sub:#x}/{timer}"),
             s => format!("{s:?}"),
         };
         eprint!(" r{} ({:.0},{:.0},{:.0}) {} L{} m{} |", g.route, b.pos.x, b.pos.y, b.pos.z, st, g.level, g.meter);
@@ -2310,7 +2563,7 @@ pub fn draw(game: Res<Game>, guards: Query<(&Guard, &Body)>, mut gizmos: Gizmos)
     for (g, b) in &guards {
         let eye = (b.pos + Vec3::Y * EYE) * SCALE;
         let colour = match (&g.state, g.level) {
-            (State::Chase | State::Discovery { .. }, _) | (_, 3) => Color::srgb(1.0, 0.1, 0.1),
+            (State::Chase | State::Discovery { .. } | State::Call { .. }, _) | (_, 3) => Color::srgb(1.0, 0.1, 0.1),
             (State::Investigate { .. } | State::Search { .. }, _) | (_, 2) => Color::srgb(1.0, 0.8, 0.1),
             _ => Color::srgba(0.3, 0.8, 1.0, 0.7),
         };

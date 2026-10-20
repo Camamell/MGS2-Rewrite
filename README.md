@@ -279,6 +279,8 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      close quarters; texture blend modes; the soldiers' radios; a downed comrade seen to
      (shaken, kicked awake, a body looked over) and radioed in (Caution),
      with the soldier's radio voice line and HQ's reply; a hold-up let go
-     is radioed in too (Caution); a call cut short leaves HQ asking for him
+     is radioed in too (Caution); a call cut short leaves HQ asking for him;
+     a soldier who spots Snake aims, fires, backs off and radios for backup,
+     and the alert begins only when that call ends (HQ answers per area)
    - next: the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects), the commandant's walk

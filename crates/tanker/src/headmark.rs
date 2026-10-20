@@ -146,6 +146,9 @@ fn update(
             State::Comrade { sub: 0x12, .. } => Some(Kind::Exclaim),
             State::Comrade { sub: 0xf, .. } => Some(Kind::Question),
             State::HoldupCall { sub: 0x11, .. } => Some(Kind::Exclaim),
+            // A shot heard (discovery sub 3, `FUN_00237918`: the mark and
+            // effect 0x53, no line; the effect plays as it starts).
+            State::Call { sub: 3, .. } => Some(Kind::Exclaim),
             State::HoldupCall { sub: 10, .. } => Some(Kind::Question),
             _ => None,
         };
