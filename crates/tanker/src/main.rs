@@ -258,6 +258,9 @@ pub struct Game {
     pub crowd_procs: Vec<Option<u32>>,
     /// The crowd's `-p` points (`crowd::points`).
     pub crowd_points: Vec<(Vec3, f32, f32)>,
+    /// Breakable lights (`brk_spotlgt.c`): (name, centre mm, proc run when
+    /// shot, broken).
+    pub brk_lights: Vec<(u32, Vec3, Option<u32>, bool)>,
     /// Events 0-2 that have run (bit per event), until a restart.
     pub crowd_fired: u8,
     /// The crowd actor's name (its messages turn the Marines' heads).
@@ -523,6 +526,55 @@ const ORGA_OBJ: u32 = 0x4FB2CA;
 /// `#de0402`: a model attached to another actor's joint.
 const ATTACHMENT: u32 = 0xDE0402;
 
+/// `brk_spotlgt.c` actor, and the bit marking a light's broken model in
+/// its prop name.
+const BRK_LIGHT: u32 = 0x365DEE;
+const BROKEN_FLAG: u32 = 0x8000_0000;
+
+/// Lights shot or told to break (message 0), and mended (1 / 5): swap the
+/// lit and broken models; a shot runs the light's proc with its name.
+fn break_lights(
+    mut commands: Commands,
+    session: Res<Session>,
+    mut game: ResMut<Game>,
+    mut props: Query<(&PropName, &mut Visibility)>,
+    level: LevelRoots,
+    bullets: Query<Entity, With<bullet::Bullet>>,
+    mut started: Local<bool>,
+) {
+    if !*started {
+        *started = true;
+        for (n, mut v) in &mut props {
+            if n.0 & BROKEN_FLAG != 0 && game.brk_lights.iter().any(|l| l.0 == n.0 & !BROKEN_FLAG) {
+                *v = Visibility::Hidden;
+            }
+        }
+    }
+    let shots: Vec<u32> = bullet::LIGHT_HITS.lock().map(|mut q| std::mem::take(&mut *q)).unwrap_or_default();
+    for name in shots {
+        let Some(i) = game.brk_lights.iter().position(|l| l.0 == name && !l.3) else { continue };
+        game.brk_lights[i].3 = true;
+        set_light(&mut props, name, true);
+        crate::sfx::play(GLASS_BREAK, Some(game.brk_lights[i].1));
+        if let Some(p) = game.brk_lights[i].2 {
+            info!("light {name:06x} shot: running {p:#x}");
+            script_event(&mut commands, &session, &mut game, |vm| vm.call_proc(p, &[name as i32]), &level, &bullets);
+        }
+    }
+}
+
+/// The breakable lights' glass sound (assumed: the game's is not traced).
+const GLASS_BREAK: u32 = 0x2C;
+
+fn set_light(props: &mut Query<(&PropName, &mut Visibility)>, name: u32, broken: bool) {
+    for (n, mut v) in props.iter_mut() {
+        if n.0 & !BROKEN_FLAG == name {
+            let show = (n.0 & BROKEN_FLAG != 0) == broken;
+            *v = if show { Visibility::Inherited } else { Visibility::Hidden };
+        }
+    }
+}
+
 /// `putmodel.c` actor.
 const PUTMODEL: u32 = 0x72F23C;
 
@@ -712,6 +764,7 @@ fn prepare(
     let mut thunder_spec = None;
     let mut crowd_procs = Vec::new();
     let mut crowd_points = Vec::new();
+    let mut brk_lights = Vec::new();
     let mut crowd_name = None;
     let mut cameras = script_cam::Cameras::default();
     let mut codec_reqs = Vec::new();
@@ -810,6 +863,35 @@ fn prepare(
             let a = |i: usize| v(b'r', i) / 4096.0 * std::f32::consts::TAU;
             let rot = Quat::from_euler(EulerRot::YXZ, a(1), a(0), a(2));
             attached.push((owner, model, v(b'z', 0) as usize, Vec3::new(v(b'x', 0), v(b'x', 1), v(b'x', 2)), rot));
+        }
+        // `brk_spotlgt.c` (`#365dee <name> -m lit broken [..] -t x y z r d -p
+        // x y z [-r ..] -b proc -l lt2 -f ..`, `FUN_00258010`): a light
+        // fitting drawn lit, swapped for its broken model by message 0 or a
+        // shot (back by 1 / 5; 2 / 3 hide / show it, `FUN_00257dd8`).
+        for s in vm.spawns.iter().filter(|s| s.kind == BRK_LIGHT) {
+            let name = s.args.first().and_then(|v| v.int()).map_or(0, |n| n as u32 & 0x00FF_FFFF);
+            let models: Vec<usize> = s
+                .opt(b'm')
+                .unwrap_or(&[])
+                .iter()
+                .filter_map(|v| v.int())
+                .filter_map(|h| data.models.iter().position(|(m, _)| *m & 0x00FF_FFFF == h as u32 & 0x00FF_FFFF))
+                .collect();
+            let v = |l: u8, i: usize| s.opt_int(l, i).unwrap_or(0) as f32;
+            let a = |i: usize| v(b'r', i) / 4096.0 * std::f32::consts::TAU;
+            let transform = Transform::from_translation(Vec3::new(v(b'p', 0), v(b'p', 1), v(b'p', 2)) * SCALE).with_rotation(Quat::from_euler(EulerRot::YXZ, a(1), a(0), a(2)));
+            let lt2 = match s.opt(b'l').and_then(|l| l.first()) {
+                Some(gcl::Val::Str(n)) => Some(str_code(n.as_bytes())),
+                _ => None,
+            };
+            for (k, m) in models.iter().take(2).enumerate() {
+                props.push(Prop { model: *m, transform, no_fog: false, lt2, name: if k == 0 { name } else { name | BROKEN_FLAG }, beam: false });
+            }
+            let proc = match s.opt(b'b').and_then(|v| v.first()) {
+                Some(gcl::Val::Proc(p)) => Some(*p),
+                _ => None,
+            };
+            brk_lights.push((name, Vec3::new(v(b't', 0), v(b't', 1), v(b't', 2)), proc, false));
         }
         let crates: Vec<Prop> = vm.spawns.iter().filter(|s| s.kind == ORGA_OBJ).flat_map(|s| orga_objects(s, &data)).collect();
         // The crates stop Snake: a wall round each model's bounds (an
@@ -965,6 +1047,7 @@ fn prepare(
         crowd_alarm: false,
         crowd_procs,
         crowd_points,
+        brk_lights,
         crowd_fired: 0,
         crowd_name,
         crowd_head: crowd::Head::default(),
@@ -1248,7 +1331,7 @@ fn main() -> Result<()> {
         .add_systems(Startup, photo::setup_hud)
         .add_systems(
             Update,
-            (photo::control.before(player::control), photo::view.after(player::follow_camera), codec_followup.after(codec::input), speech, holds_timer, guard_drops.after(guard::think), new_items.after(guard_drops), prop_messages, reinforcements.after(guard::think), snake_vars, crowd_watch.after(snake_vars), crowd_points.after(snake_vars), crowd_heads, hold_posed, beams, crowd_hear.after(guard::think))
+            (photo::control.before(player::control), photo::view.after(player::follow_camera), codec_followup.after(codec::input), speech, holds_timer, guard_drops.after(guard::think), new_items.after(guard_drops), prop_messages, reinforcements.after(guard::think), snake_vars, crowd_watch.after(snake_vars), crowd_points.after(snake_vars), crowd_heads, hold_posed, beams, break_lights, crowd_hear.after(guard::think))
                 .run_if(codec::idle)
                 .run_if(demo::idle),
         )
@@ -2127,6 +2210,27 @@ fn prop_messages(
         return;
     }
     for (target, code, args) in std::mem::take(&mut game.prop_messages) {
+        // A breakable light: 0 broken, 1 / 5 lit, 2 / 3 hide / show.
+        if let Some(i) = game.brk_lights.iter().position(|l| l.0 == target) {
+            let broken = match code {
+                0 => Some(true),
+                1 | 5 => Some(false),
+                _ => None,
+            };
+            if let Some(b) = broken {
+                game.brk_lights[i].3 = b;
+            }
+            let state = game.brk_lights[i].3;
+            for (_, n, _, mut v) in props.iter_mut().filter(|p| p.1.0 & !BROKEN_FLAG == target) {
+                let mine = (n.0 & BROKEN_FLAG != 0) == state;
+                *v = match code {
+                    2 => Visibility::Hidden,
+                    _ if mine => Visibility::Inherited,
+                    _ => Visibility::Hidden,
+                };
+            }
+            continue;
+        }
         // A `putmodel.c` model, message 6 n: play its motion n once.
         if code == 6
             && let Some(n) = args.first()

@@ -130,6 +130,16 @@ pub fn fly(
         let surface = game.collision.as_ref().and_then(|c| c.ray_normal(b.pos, next));
         let wall = surface.map(|s| s.0);
         let end = wall.map_or(next, |t| b.pos.lerp(next, t));
+        // Snake's shots break the lights they pass through (`brk_spotlgt.c`).
+        if b.dart
+            && let Some(name) = game.brk_lights.iter().find(|l| !l.3 && segment_distance(b.pos, end, l.1) < LIGHT_HIT).map(|l| l.0)
+        {
+            if let Ok(mut q) = LIGHT_HITS.lock() {
+                q.push(name);
+            }
+            commands.entity(e).despawn();
+            continue 'bullets;
+        }
         if b.dart {
             for (gb, mut g) in &mut guards {
                 if g.dead() {
@@ -212,4 +222,15 @@ pub fn draw(bullets: Query<&Bullet>, mut gizmos: Gizmos) {
         let colour = if b.dart { Color::srgb(0.5, 0.9, 1.0) } else { Color::srgb(1.0, 0.9, 0.5) };
         gizmos.line(p, p - b.dir * 0.6, colour);
     }
+}
+
+/// Lights shot this frame (actor names), for `main::break_lights`.
+pub static LIGHT_HITS: std::sync::Mutex<Vec<u32>> = std::sync::Mutex::new(Vec::new());
+/// How near a round must pass a light's centre to break it (mm; assumed).
+const LIGHT_HIT: f32 = 250.0;
+
+fn segment_distance(a: Vec3, b: Vec3, p: Vec3) -> f32 {
+    let ab = b - a;
+    let t = if ab.length_squared() > 0.0 { ((p - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0) } else { 0.0 };
+    (a + ab * t).distance(p)
 }
