@@ -706,3 +706,13 @@ stimulus 0x4200000 to state 5, the same `FUN_0023cb78` (then
 (state 4 sub 6 `FUN_0022ac58`, state 3 `FUN_0022ace8`, state 4 sub 10
 `FUN_0022ab38`: head +0x200 on frames 1-0x3b, -0x200 on 0x3d-0x77, until
 0xb5) is a head turn; the port had turned the body and now turns the head.
+
+Lead (not ported): at a route point the walker (`FUN_00224d20`) sets the
+body heading +0xf54 to the point's direction (runtime route +0xc04) and,
+by the point's flags (+0xc08): none of 5 / 10 / 0x300 -> the head yaw
++0xf66 = +0xc04 (bit 0x800); 0x300 -> a look at the point +0x400 +
+index*16 with pitch (bits 0x10200); 10 -> the same point with bit 0x400;
+5 not read yet. Action 0xd (`FUN_00224618`, +0xc00) only sets bit 0x800.
+How the hzx point (flags at +0x18, look point at +12..+20) becomes
++0xc00..+0xc08 is not traced (the copy near `FUN_002595e0`); the port turns
+the body to the look point instead.
