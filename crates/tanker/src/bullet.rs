@@ -132,7 +132,7 @@ pub fn fly(
         let end = wall.map_or(next, |t| b.pos.lerp(next, t));
         // Snake's shots break the lights they pass through (`brk_spotlgt.c`).
         if b.dart
-            && let Some(name) = game.brk_lights.iter().find(|l| !l.3 && segment_distance(b.pos, end, l.1) < LIGHT_HIT).map(|l| l.0)
+            && let Some(name) = game.brk_lights.iter().find(|l| !l.3 && segment_distance(b.pos, next, l.1) < LIGHT_HIT && b.pos.distance(l.1) <= b.pos.distance(end) + 500.0).map(|l| l.0)
         {
             if let Ok(mut q) = LIGHT_HITS.lock() {
                 q.push(name);

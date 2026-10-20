@@ -72,7 +72,7 @@ too.
 | R | equip / unequip a ration (revives Snake at zero life) |
 | N | use a bandage (stops the bleeding), else cold medicine (cures a cold: with one Snake sneezes when he keeps still, and guards hear it; no Tanker script gives him one) |
 | T | thermal goggles on / off (once Snake has them; the look is assumed) |
-| X (hold) | first-person view: A/D turn, W/S look up / down |
+| X (hold) | first-person view: A/D turn, W/S look up / down; F aims and fires where he looks (shoot out the w03 corridor lamps) |
 | (walk into a wall) | back to the wall: sidestep along it (keep going at its end to peek round the corner), Space knocks (draws guards within 4 m), step away to leave |
 | G | throw a stun grenade (or chaff when out of stuns): stuns guards within 5 m of the blast; chaff jams the radar for 8 s |
 | B | put on / take off the cardboard box (once Snake has one): guards ignore it while it keeps still, unless one walks right into it |

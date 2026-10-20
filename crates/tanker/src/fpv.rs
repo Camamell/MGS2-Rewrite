@@ -17,6 +17,13 @@ pub struct FirstPerson {
     pitch: f32,
 }
 
+impl FirstPerson {
+    /// Where he looks (unit vector).
+    pub fn dir(&self) -> Vec3 {
+        Vec3::new(self.yaw.sin() * self.pitch.cos(), self.pitch.sin(), self.yaw.cos() * self.pitch.cos())
+    }
+}
+
 pub fn plugin(app: &mut App) {
     app.init_resource::<FirstPerson>().add_systems(
         Update,
@@ -40,7 +47,8 @@ fn control(
     let want = (keys.pressed(KeyCode::KeyX) || std::env::var_os("MGS2_FPV_TEST").is_some()) && !photo.active && !cutscene.active() && !p.dead();
     if want && !fp.active {
         fp.yaw = body.yaw;
-        fp.pitch = 0.0;
+        // MGS2_FPV_PITCH=degrees: start looking up / down (testing).
+        fp.pitch = std::env::var("MGS2_FPV_PITCH").ok().and_then(|v| v.parse::<f32>().ok()).map_or(0.0, f32::to_radians);
     }
     fp.active = want;
     if !want {

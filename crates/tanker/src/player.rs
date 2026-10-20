@@ -240,6 +240,7 @@ pub fn control(
     cam: Query<&Transform, With<FollowCam>>,
     stick: Option<Res<crate::pad::Stick>>,
     mut q: Query<(&mut Player, &mut Body)>,
+    fp: Res<crate::fpv::FirstPerson>,
 ) {
     let Ok((mut p, mut body)) = q.single_mut() else { return };
     // A soldier's rifle butt (`guard.rs` close quarters).
@@ -283,10 +284,14 @@ pub fn control(
         }
         return;
     }
+    // In first person he stands still but can aim and fire where he looks.
+    let fpv = fp.active;
     if p.busy > 0.0 {
         p.busy -= dt;
         p.speed = 0.0;
-        return;
+        if !fpv {
+            return;
+        }
     }
 
     // Hanging from a ledge under a railing.
@@ -365,7 +370,7 @@ pub fn control(
         p.aiming = true;
         p.speed = 0.0;
         // Aim where he faces; A/D turn (the camera may swing on its own).
-        for (k, s) in [(KeyCode::KeyA, 1.0), (KeyCode::KeyD, -1.0)] {
+        for (k, s) in [(KeyCode::KeyA, 1.0), (KeyCode::KeyD, -1.0)].into_iter().filter(|_| !fpv) {
             if keys.pressed(k) {
                 body.yaw += s * AIM_TURN * dt;
             }
@@ -378,8 +383,14 @@ pub fn control(
         let ammo = inv.counts.entry(if usp { crate::items::USP_AMMO } else { crate::items::M9_AMMO }).or_default();
         if *ammo > 0 {
             *ammo -= 1;
-            let f = body.forward();
-            let muzzle = body.pos + Vec3::Y * MUZZLE + f * 400.0;
+            let (f, muzzle) = if fpv {
+                // From his eyes, along the look.
+                let d = fp.dir();
+                (d, body.pos + Vec3::Y * p.height() * 0.92 + d * 300.0)
+            } else {
+                let f = body.forward();
+                (f, body.pos + Vec3::Y * MUZZLE + f * 400.0)
+            };
             if usp {
                 crate::bullet::fire_round(&mut commands, muzzle, f);
                 crate::sfx::play(crate::sfx::USP, Some(body.pos));
@@ -398,6 +409,9 @@ pub fn control(
         } else {
             crate::sfx::play(crate::sfx::EMPTY, Some(body.pos));
         }
+    }
+    if fpv {
+        return;
     }
 
     let mut input = Vec2::ZERO;
