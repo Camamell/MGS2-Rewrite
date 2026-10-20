@@ -439,6 +439,49 @@ The report's entry is `FUN_00231c28(line, mask)`; the line's length comes
 from table 0x400ca8 (`FUN_0021c608`, filled at load), 0xf0 frames when the
 line cannot play. Ported in `guard::comrade` (sub-states 5, 6, 7, 8, 0xc,
 0xf, 0x10, 0x12, 0x15, 0x17); assumed: 0x4000000000000 = dead, the shake
-wakes him, the lines unmapped (0xf0 / 0x3c frames). So only a sleeper's
+wakes him; the lines now play (see "Radio lines" below). So only a sleeper's
 kick leads to a call and Caution; a knocked-out or dead comrade does not.
 `MGS2_DOWN=route:s|k|d@seconds` downs a soldier for testing (w01d r11 / r18).
+
+## Radio lines (`FUN_0021cdb8`, the enemy manager's `-v` / `-y`)
+
+The manager's init (w00a `FUN_00221970`) reads two data blocks
+(`-v str[15] -y str[17]` in w00a; `gcx_res` example dumps them):
+
+- `-v`: pairs (VOX clip `0x20000000 + sector`, length in 1/300 s) up to a
+  negative id -> 0x401648 (clip) and 0x400ca8 (length / 5 = frames). w00a
+  has 464 entries: 8 sets of 0x38 lines (voices 0-3, then 4-7 with other
+  wordings) plus 16. Set 0 from 0: "Possible hostile sighted. Send
+  backup.", ..., 0xb "It's him, everyone stay on guard.", 0xf
+  "Acknowledged.", 0x12 "The situation is normal.", 0x13-0x16 noises and
+  footsteps, 0x19-0x1c footprints and blood, 0x23-0x26 the box, 0x27-0x37
+  hold-up and challenge lines ("Hold it!", "Why are you unarmed?").
+- `-y`: HQ's replies up to a negative word (w00a 0x20005978, 0x20006b4e:
+  "Understood."), then -2 and a clip for 0x4014a8 (w00a 0x2000769a "We've
+  lost communication with the aft deck."), -3 and one for 0x401638.
+
+`FUN_0021cdb8(line, controller)`: index `line & 0xfff` (+0x1c0 with bit
+0x10000); with a soldier and without bits 0x21000, + 0x38 x controller
++0x284 (his voice) + 0xe0 if body +0xf2c & 0x4000. Length: bit 0x8000000
+the table's, 0x20000 / 0x1000 other tables (0x401e48 / 0x401f08, options
+`f` / `j`), else 0xf0. Clip: bit 0x1000000 0x4014b4 (option `x`, the
+area lines of `FUN_0021c670`), 0x2000000 the `-y` replies (0 -> 0x401d5c),
+0x100000 0x4014a8, 0x400000 0x401638, else the `-v` clip. The top nibble
+is a priority: a line does not cut one of equal or higher priority.
+Unless bit 0x40000 effect 99 (the radio click, `FUN_00114b30(0x20, 0x3f,
+99)`) plays; bit 0x4000000 pans the stream from the soldier.
+`FUN_0021cb40` queues follow-ups for when the line's frames run out: the
+report 0x1c00000b (also 0x1c000006..8, 0x1c00000d and a few others)
+-> `0x2000000 | n`, HQ's reply n (manager message 3, `FUN_0021f760`; 0
+by default); 0x1c000009 / 0xa -> line 0xc00000e, then the reply (or
+0x1081400f once the manager's count +0x814 reaches +0x816); 0x2c00000x
+and 0x20008003 -> an area line (`FUN_0021c940`).
+
+Ported: the downed-comrade report (voice set `voice()`, set 0 only, line
+0xb) and HQ's first reply, and "it was nothing" (0xc000012) when a
+comrade comes round; they play through the spoken-line player with their
+subtitles (assumed shown, as the clips carry them), unplaced. Not ported:
+the priority rule, the other lines' callers, the 0xe0 sets (what sets body
+flag 0x4000 is not traced), the voice index (+0x284; the port's
+`route % 4` is assumed).
+

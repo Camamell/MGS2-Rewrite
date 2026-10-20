@@ -156,6 +156,92 @@ pub struct Phase {
     /// Frames until an explosion (noise 11) raises the meter
     /// (`FUN_0021ff20`: 60 frames, then `FUN_00220008` feeds 0x400).
     blast: u32,
+    /// The manager's spoken radio lines (`-v`, `-y`).
+    pub radio: Radio,
+    /// Voice clips to start (taken by `main::radio_lines`).
+    pub say: Vec<u32>,
+}
+
+/// The soldiers' radio lines, as the enemy manager's init reads them
+/// (w00a `FUN_00221970`'s options `v` and `y`, both `str[n]` data blocks of
+/// little-endian words):
+/// - `-v`: (voice clip `0x20000000 + sector`, length in 1/300 s) pairs up
+///   to a negative id, kept at 0x401648 / 0x400ca8 (length / 5 = frames);
+/// - `-y`: HQ's replies (0x4015f0) up to a negative word; -2 then a clip
+///   for 0x4014a8, -3 then one for 0x401638.
+///
+/// `FUN_0021cdb8(line, soldier)` plays line `line & 0xfff` of the soldier's
+/// set: + 0x38 per voice (controller +0x284), + 0xe0 for soldiers with body
+/// flag +0xf2c & 0x4000 (w00a's table has 8 sets of 0x38: voices 4-7 say
+/// the same lines in other words); with bit 0x8000000 the length is the
+/// table's, else 0xf0 frames. Unless bit 0x40000, effect 99 (the radio
+/// click) plays first; bit 0x4000000 pans it from the soldier. A report
+/// (0x1c00000b, `FUN_0021cb40`) queues HQ's reply `0x2000000 | n` (n =
+/// manager message 3, default 0) for when it ends.
+#[derive(Clone, Debug, Default)]
+pub struct Radio {
+    pub lines: Vec<(u32, u32)>,
+    pub replies: Vec<u32>,
+}
+
+/// A soldier's report on the radio (`FUN_0021cdb8(0x1c00000b)`).
+pub const LINE_REPORT: u32 = 0x1C00_000B;
+/// "It was nothing" (0xc000012, a comrade up again in Infiltration).
+pub const LINE_ALL_CLEAR: u32 = 0x0C00_0012;
+/// Lines per voice in the `-v` table.
+const LINES_PER_VOICE: u32 = 0x38;
+/// The radio click (`FUN_00114b30(0x20, 0x3f, 99)`).
+const RADIO_CLICK: u32 = 99;
+
+impl Radio {
+    pub fn from_script(spawn: &Spawn, script: &mgs2_formats::gcx::Gcx) -> Self {
+        let words = |letter| -> Vec<i32> {
+            spawn
+                .opt_int(letter, 0)
+                .and_then(|n| script.resources.get(n as usize))
+                .map(|r| r.chunks_exact(4).map(|w| i32::from_le_bytes(w.try_into().unwrap())).collect())
+                .unwrap_or_default()
+        };
+        let v = words(b'v');
+        let lines = v.chunks_exact(2).take_while(|p| p[0] >= 0).map(|p| (p[0] as u32, (p[1] / 5).max(0) as u32)).collect();
+        let replies = words(b'y').into_iter().take_while(|&w| w >= 0).map(|w| w as u32).collect();
+        Self { lines, replies }
+    }
+
+    /// The clip and length (frames) of `line` in `g`'s voice. The 0xe0
+    /// sets (body flag 0x4000) are not used: what sets that flag is not
+    /// traced.
+    fn line(&self, line: u32, g: &Guard) -> Option<(u32, u32)> {
+        let i = (line & 0xFFF) + g.voice() * LINES_PER_VOICE;
+        let (id, frames) = *self.lines.get(i as usize)?;
+        Some((id, if line & 0x0800_0000 != 0 { frames } else { 0xF0 }))
+    }
+}
+
+impl Phase {
+    /// Starts `line` (`FUN_0021cdb8`): queues its clip and the click.
+    fn speak(&mut self, line: u32, g: &Guard) {
+        let Some((id, _)) = self.radio.line(line, g) else { return };
+        if line & 0x4_0000 == 0 {
+            crate::sfx::play(RADIO_CLICK, None);
+        }
+        self.say.push(id);
+    }
+
+    /// The length (frames) of `line` for `g`, `fallback` when it cannot
+    /// play (the caller's value for `FUN_0021cdb8` < 0).
+    fn line_frames(&self, line: u32, g: &Guard, fallback: u32) -> u32 {
+        self.radio.line(line, g).map_or(fallback, |l| l.1)
+    }
+
+    /// HQ's reply to a report (`0x2000000 | n`, 0xf0 frames; the click
+    /// plays first).
+    fn reply(&mut self) {
+        if let Some(&id) = self.radio.replies.first() {
+            crate::sfx::play(RADIO_CLICK, None);
+            self.say.push(id);
+        }
+    }
 }
 
 impl Default for Phase {
@@ -169,15 +255,18 @@ impl Default for Phase {
             last_seen: None,
             changed: false,
             blast: 0,
+            radio: Radio::default(),
+            say: Vec::new(),
         }
     }
 }
 
 impl Phase {
-    pub fn from_manager(s: Option<&Spawn>) -> Self {
+    pub fn from_manager(s: Option<&Spawn>, script: &mgs2_formats::gcx::Gcx) -> Self {
         let mut p = Self::default();
         if let Some(s) = s {
             p.caution_time = s.opt_int(b'h', 0).unwrap_or(0xE10);
+            p.radio = Radio::from_script(s, script);
         }
         p
     }
@@ -1178,7 +1267,7 @@ pub fn think(
                 g.state = State::Discovery { timer: 0 };
             } else {
                 let down = sleepers.iter().find(|s| s.0 == target).map(|s| s.2);
-                match comrade(&mut g, &mut body, &phase, (target, at, sub, timer), down, dt, ticks, &game) {
+                match comrade(&mut g, &mut body, &mut phase, (target, at, sub, timer), down, dt, ticks, &game) {
                     Some(Seen::Kick) => woken.push((target, 20.0)),
                     Some(Seen::Shake) => woken.push((target, 0.0)),
                     Some(Seen::Body) => seen_to.push(target),
@@ -1335,12 +1424,10 @@ enum Seen {
     Report,
 }
 
-/// Frames the radio report takes: its speech line's length
-/// (`FUN_0021cdb8(0x1c00000b)` reads table 0x400ca8, filled at load), or
-/// 0xf0 when the line cannot play, which the port always uses (the line
-/// is not mapped to a sound yet).
+/// Frames the radio report takes when its line cannot play (else the
+/// line's length from the manager's `-v` table, see `Radio`).
 const REPORT_FRAMES: u32 = 0xF0;
-/// The same fallback (0x3c) for the "back on his feet" line 0xc000012.
+/// The same fallback (0x3c) for the "it was nothing" line 0xc000012.
 const COMRADE_UP_FRAMES: u32 = 0x3C;
 /// He stops this close to the comrade (0x513 mm, `FUN_00232660`).
 const COMRADE_REACH: f32 = 1299.0;
@@ -1380,7 +1467,7 @@ fn motion_length(game: &Game, body: &Body, motion: usize, fallback: u32) -> u32 
 /// `DAT_0017f48c` bit 0x10), and the marks of kinds 4 and 5 (sprites not
 /// identified).
 #[allow(clippy::too_many_arguments)]
-fn comrade(g: &mut Guard, body: &mut Body, phase: &Phase, (target, at, sub, timer): (Entity, Vec3, u8, u32), down: Option<Down>, dt: f32, ticks: u32, game: &Game) -> Option<Seen> {
+fn comrade(g: &mut Guard, body: &mut Body, phase: &mut Phase, (target, at, sub, timer): (Entity, Vec3, u8, u32), down: Option<Down>, dt: f32, ticks: u32, game: &Game) -> Option<Seen> {
     let t = timer.saturating_add(ticks);
     let reached = |n: u32| timer < n && t >= n;
     let check = g.anim.check;
@@ -1422,8 +1509,12 @@ fn comrade(g: &mut Guard, body: &mut Body, phase: &Phase, (target, at, sub, time
             }
         }
         0x15 => {
+            // `FUN_00232c08`: the line on the first frame.
             body.play(g.anim.idle);
-            if t > COMRADE_UP_FRAMES {
+            if timer == 0 && t > 0 {
+                phase.speak(LINE_ALL_CLEAR, g);
+            }
+            if t > phase.line_frames(LINE_ALL_CLEAR, g, COMRADE_UP_FRAMES) {
                 next = None;
             }
         }
@@ -1491,15 +1582,22 @@ fn comrade(g: &mut Guard, body: &mut Body, phase: &Phase, (target, at, sub, time
         }
         0xc => {
             let Some(c) = check else { return None };
-            if t < REPORT_FRAMES {
+            // `FUN_00231d88`: the report on the first frame; at its end
+            // the radio goes away, the caution timer runs and HQ answers.
+            if timer == 0 && t > 0 {
+                phase.speak(LINE_REPORT, g);
+            }
+            let frames = phase.line_frames(LINE_REPORT, g, REPORT_FRAMES);
+            if t < frames {
                 body.play(c.radio_talk);
             } else {
                 body.play_once(c.radio_away);
-                g.radio_in_hand = t < REPORT_FRAMES + 62;
-                if reached(REPORT_FRAMES) {
+                g.radio_in_hand = t < frames + 62;
+                if reached(frames) {
                     out = Some(Seen::Report);
+                    phase.reply();
                 }
-                if t >= REPORT_FRAMES + motion_length(game, body, c.radio_away, 129) {
+                if t >= frames + motion_length(game, body, c.radio_away, 129) {
                     next = None;
                 }
             }

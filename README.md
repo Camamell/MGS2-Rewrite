@@ -277,6 +277,7 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      (the IOP driver ported); the Marines' formation (variants, idles,
      drills, head turns, its sight and events); footprints and blood;
      close quarters; texture blend modes; the soldiers' radios; a downed comrade seen to
-     (shaken, kicked awake, a body looked over) and radioed in (Caution)
-   - next: the radio report's voice line, the troopers' own brain, Olga's sequence selector
+     (shaken, kicked awake, a body looked over) and radioed in (Caution),
+     with the soldier's radio voice line and HQ's reply
+   - next: the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects), the commandant's walk

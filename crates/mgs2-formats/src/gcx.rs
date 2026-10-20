@@ -29,6 +29,10 @@ pub struct Gcx {
     pub procs: Vec<Proc>,
     pub main: Vec<Stmt>,
     pub strings: Vec<String>,
+    /// The same resources as raw bytes, from each entry's start to the next
+    /// entry's (data blocks such as the enemy manager's `-v` table are
+    /// little-endian words, read through `FUN_001529f0`).
+    pub resources: Vec<Vec<u8>>,
 }
 
 #[derive(Clone, Debug)]
@@ -289,8 +293,21 @@ pub fn parse(data: &[u8]) -> Result<Gcx> {
 
     let res = (main_at + 4 + main_size + 15) & !15;
     let mut strings = Vec::new();
+    let mut resources = Vec::new();
     if res + 12 <= data.len() {
         let (idx, base) = (res + c.u32(res + 4)? as usize, res + c.u32(res + 8)? as usize);
+        let mut starts = Vec::new();
+        let mut i = idx;
+        while i + 4 <= base && i + 4 <= data.len() {
+            starts.push(base + (c.u32(i)? & 0x7FFF_FFFF) as usize);
+            i += 4;
+        }
+        let mut sorted = starts.clone();
+        sorted.sort_unstable();
+        for &s in &starts {
+            let end = sorted.iter().copied().find(|&e| e > s).unwrap_or(data.len()).min(data.len());
+            resources.push(data.get(s..end).unwrap_or_default().to_vec());
+        }
         let mut i = idx;
         while i + 4 <= base && i + 4 <= data.len() {
             let s = base + (c.u32(i)? & 0x7FFF_FFFF) as usize;
@@ -300,5 +317,5 @@ pub fn parse(data: &[u8]) -> Result<Gcx> {
             i += 4;
         }
     }
-    Ok(Gcx { timestamp, procs, main, strings })
+    Ok(Gcx { timestamp, procs, main, strings, resources })
 }

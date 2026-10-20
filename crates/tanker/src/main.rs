@@ -829,7 +829,7 @@ fn prepare(
         radar_turn = vm.spawns.iter().find(|s| s.kind == radar::RADAR_ACTOR).map(radar::angle);
         thunder_spec = vm.spawns.iter().find(|s| s.kind == thunder::THUNDER_ACTOR).map(thunder::from_spawn);
         let manager = vm.spawns.iter().find(|s| s.kind == guard::MANAGER_ACTOR);
-        phase = Phase::from_manager(manager);
+        phase = Phase::from_manager(manager, script);
         on_alert = manager.and_then(|s| match s.opt(b'a')?.first()? {
             gcl::Val::Proc(p) => Some(*p),
             _ => None,
@@ -1337,7 +1337,8 @@ fn main() -> Result<()> {
         )
         .add_systems(Update, photo::hud)
         .add_systems(Update, (rain::setup, rain::fall).chain().after(demo::animate))
-        .add_systems(Update, chapter_end.run_if(demo::idle));
+        .add_systems(Update, chapter_end.run_if(demo::idle))
+        .add_systems(Update, radio_lines.after(guard::think).before(speech));
     if let Some(c) = codec_data {
         app.insert_resource(c);
     }
@@ -2106,6 +2107,16 @@ fn traps(
 /// How long a spoken line (`#7aa13a`) lasts when its clip cannot be read.
 const SPEECH_SECONDS: f32 = 8.0;
 
+/// Soldiers' radio lines (`guard::Radio`): played, with their subtitles,
+/// as spoken lines. (The game pans a report from the soldier, bit
+/// 0x4000000; these play unplaced.)
+fn radio_lines(mut game: ResMut<Game>, mut phase: ResMut<Phase>) {
+    if let Some(id) = phase.say.drain(..).last() {
+        info!("radio line {id:#x}");
+        game.speech = Some((id, None, SPEECH_SECONDS));
+    }
+}
+
 /// The subtitles of the spoken line playing, and its audio.
 #[derive(Component)]
 struct SpeechPart;
@@ -2821,9 +2832,9 @@ fn game_over(
         p.life = life;
     }
     (body.pos, body.yaw) = game.snake_start;
-    let caution_time = phase.caution_time;
+    let (caution_time, radio) = (phase.caution_time, std::mem::take(&mut phase.radio));
     *phase = Phase::default();
-    phase.caution_time = caution_time;
+    (phase.caution_time, phase.radio) = (caution_time, radio);
     for mut g in &mut guards {
         g.reset();
     }
