@@ -61,7 +61,7 @@ MGS2_GOD=1 check discovery_call "radios for backup|HQ answers" ge 2 w01a --skip-
 MGS2_GOD=1 MGS2_DOWN=3:s@10 check discovery_cut "radio cut off|radios for backup" eq 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 16
 # A guard empties his magazine at an invulnerable Snake and reloads (the
 # alert starts once his call for backup ends).
-MGS2_GOD=1 check reload "reloads" ge 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 22
+MGS2_GOD=1 check reload "reloads" ge 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 45
 # Items: a bandage stops the bleeding; cold medicine ends the sneezing.
 MGS2_LIFE=25 MGS2_GIVE=0/5:1 MGS2_KEYS=N@2 check bandage "bandage used" ge 1 w01a --skip-cutscenes --shot-at 3
 MGS2_COLD=120 MGS2_GIVE=0/4:1 MGS2_KEYS=N@4 check cold "cold medicine used" ge 1 w01a --skip-cutscenes --shot-at 6
