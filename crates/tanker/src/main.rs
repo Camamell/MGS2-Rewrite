@@ -1458,6 +1458,12 @@ fn spawn_level(
         let e = scene::spawn_model(&mut commands, &data.models[m].1, data, &mut cache, &mut meshes, &mut images, &mut materials, unlit, LevelEntity);
         commands.entity(e).insert(body::Held { owner, object: body::RIGHT_HAND, when_aiming: true, grip: body::pistol_grip(), offset: Vec3::ZERO, weapon: Some(1) });
     }
+    if !cache.missing.is_empty() {
+        let mut m = cache.missing.clone();
+        m.sort_unstable();
+        m.dedup();
+        warn!("{}: {} textures not found (drawn magenta): {:06x?}", data.name, m.len(), m);
+    }
 }
 
 /// The door Snake can open from where he stands, if any.
