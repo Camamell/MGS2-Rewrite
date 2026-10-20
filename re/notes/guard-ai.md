@@ -486,7 +486,8 @@ waits 61 frames, says 0xc04001d "Is there somebody there?" (0xc04001e
 
 Ported: the downed-comrade report (voice set `voice()`, set 0 only, line
 0xb) and HQ's first reply, "it was nothing" (0xc000012) when a
-comrade comes round, and the investigation's line (its pause after the
+comrade comes round, a let-go hold-up's report (0x1c000007), and the
+investigation's line (its pause after the
 port's assumed 30-frame turn) when he saw something (state 6); noises
 (state 3) bring the same turn, pause and walk without a line (its first
 pass: +0x286 is still 0); they play through the spoken-line player with their
@@ -524,3 +525,24 @@ Leads for the other radio lines (not ported):
   0x244e30, 0x3c5fe8) each play a +0x310 line, then 0x18a00005 (set
   line 5, "I saw him! Send someone over now!", with a click at its end:
   bit 0x800000).
+- The hold-up let go (ported, `guard::holdup_call`): `FUN_002541c8` is
+  "covered": Snake within 0x9c5 mm, aiming (DAT_001ecd40 & 0x800) and
+  facing the guard within 0x200 (bearing vs facing over 0x5ff). Uncovered
+  for 0x79 frames in sub 4 (`FUN_0023af20`, action 5; covered again ->
+  sub 3 with effect 0x50) he goes to 0x11 (`FUN_0023a778`: "!", 9 frames
+  facing Snake) and reports `FUN_0023a1e8(0x1c000007, 0x200)` ("The enemy
+  is attacking!" in set 0; "We have an enemy onboard." in voice 3): sub 10
+  ("?", 121 frames) when the caution timer is over 3/4 or in Evasion, else
+  5 (radio out, action 6, until +0xf58 == 3) and 7 (`FUN_0023a348`: the
+  line, then action 7 and the caution timer; HQ replies), then 0xe. Subs
+  0xc, 0x10 / 0xb, 0x12 and 0x14 reach the same report. Seeing Snake at
+  level 3 meanwhile sets +0x274 = 0x12 (the port: discovery). The port
+  keeps turning him toward Snake's place through the call (assumed: the
+  target heading +0xf54 is not cleared), so a Snake who stays is seen.
+- The hold-up (normal state 5, `FUN_0023b580`): sub 3 (`FUN_0023ade8`,
+  action 4, up to 100 frames) goes to 0x15 when +0x350 has bit
+  0x20000000, `FUN_0023aad8` < 2 and body +0xf16 == 0, with +0x340 < 3
+  (else 0x16, else 0xd). Sub 0x15 (`FUN_0023b300`, action 0xf) says
+  0xc040034 "Are you going to shoot me?" on its first entry and
+  0xc040035 "If you're gonna do it, then do it..." on its third
+  (+0x340 counts entries). What sets +0x350 bit 0x20000000 is not traced.

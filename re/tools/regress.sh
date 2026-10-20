@@ -51,6 +51,8 @@ MGS2_DOWN=11:s@3 check radio_line "radio line 0x20" ge 2 w01d --skip-cutscenes -
 # a dart's noise behind him (state 3) brings him over without a word.
 check investigate_line "radio line 0x20" ge 1 w01a --skip-cutscenes --snake-at=6000,0,-2000 --fire-at 3 --shot-at 8
 check noise_quiet "radio line 0x20" eq 0 w01a --skip-cutscenes --snake-at=9000,0,4100 --snake-dir=0 --fire-at 2 --shot-at 8
+# A hold-up let go (empty M9): Snake walks off, the guard radios it in.
+MGS2_WALK_DIR=2048 MGS2_GIVE=1/1:0 check holdup_call "radios in the hold-up" ge 1 w01a --skip-cutscenes --snake-at=6000,0,2500 --snake-dir=0 --fire-at 1 --aim-for 6 --walk-from 7.6 --auto-walk 3 --shot-at 16
 # A guard empties his magazine at an invulnerable Snake and reloads.
 MGS2_GOD=1 check reload "reloads" ge 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 14
 # Items: a bandage stops the bleeding; cold medicine ends the sneezing.

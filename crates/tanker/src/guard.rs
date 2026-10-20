@@ -325,6 +325,9 @@ pub enum State {
     /// without a gun on him; `shake` counts frames with Snake aiming from
     /// the front (dog tags at [`TAG_FRAMES`]).
     HeldUp { loose: f32, shake: f32 },
+    /// Let go of a hold-up: he calls it in (see [`holdup_call`]). `to`:
+    /// where he turns (his target heading +0xf54, last set toward Snake).
+    HoldupCall { sub: u8, timer: u32, to: Vec3 },
     /// Normal 11: walked into Snake's box and looks it over
     /// (`FUN_00242448`), frames so far.
     BoxCheck { timer: u32 },
@@ -384,8 +387,15 @@ impl Anim {
     /// No rifle-raised motion was found, so they aim from the idle pose.
     pub const MARINE: Anim = Anim { idle: 0, walk: 39, run: 40, aim: 0, hands_up: 46, fall: 151, lie: 152, exclaim: 0, look: None, knocked: None, get_up: None, check: None };
 }
-/// A held-up guard turns on Snake after this long without a gun on him.
-const HOLDUP_LOOSE: f32 = 120.0;
+/// A held-up guard calls it in after this long without a gun on him
+/// (`FUN_0023af20`: 0x79 frames).
+const HOLDUP_LOOSE: f32 = 121.0;
+/// Snake's facing within this of the guard covers him (`FUN_002541c8`:
+/// the angle between the guard's bearing to Snake and Snake's facing over
+/// 0x5ff of 0x800).
+const HOLDUP_ANGLE: f32 = 0x200 as f32 * ANGLE;
+/// The hold-up's report (`FUN_0023a1e8(.., 0x1c000007, 0x200)`).
+pub const LINE_HOLDUP: u32 = 0x1C00_0007;
 /// A soldier's drop list: `-q` / `-a` (proc, chance) pairs.
 fn drop_list(s: &Spawn, letter: u8) -> Vec<(u32, i32)> {
     s.opt(letter)
@@ -1161,7 +1171,7 @@ pub fn think(
         let covered = player.aiming
             && to_guard.length() < HOLDUP_RANGE
             && (body.pos.y - snake_pos.y).abs() < 1000.0
-            && to_guard.normalize_or_zero().angle_to(Vec2::new(snake_fwd.x, snake_fwd.z)).abs() < 0.5;
+            && to_guard.normalize_or_zero().angle_to(Vec2::new(snake_fwd.x, snake_fwd.z)).abs() <= HOLDUP_ANGLE;
         if let State::HeldUp { loose, shake } = g.state {
             let frames = dt * 60.0;
             g.level = 0;
@@ -1189,7 +1199,7 @@ pub fn think(
                 State::HeldUp { loose: 0.0, shake }
             } else if loose + frames > HOLDUP_LOOSE {
                 g.last_seen = Some(snake_pos);
-                State::Discovery { timer: 0 }
+                State::HoldupCall { sub: 0x11, timer: 0, to: snake_pos }
             } else {
                 State::HeldUp { loose: loose + frames, shake }
             };
@@ -1265,6 +1275,21 @@ pub fn think(
             if let Some(&(target, at, _)) = seen {
                 g.path.clear();
                 g.state = State::Comrade { target, at, sub: 5, timer: 0 };
+            }
+        }
+        if let State::HoldupCall { sub, timer, to } = g.state {
+            if g.level == 3 {
+                // `FUN_0023b580` after its sub-state: seen, he leaves the
+                // state (+0x274 = 0x12; taken as discovery).
+                g.radio_in_hand = false;
+                g.state = State::Discovery { timer: 0 };
+            } else {
+                if holdup_call(&mut g, &mut body, &mut phase, snake_pos, (sub, timer, to), dt, ticks, &game) {
+                    info!("guard {} radios in the hold-up", g.route);
+                    phase.caution = phase.caution_time;
+                }
+                highest = highest.max(i32::from(g.meter));
+                continue;
             }
         }
         if let State::Comrade { target, at, sub, timer } = g.state {
@@ -1580,32 +1605,19 @@ fn comrade(g: &mut Guard, body: &mut Body, phase: &mut Phase, (target, at, sub, 
         }
         10 => {
             let Some(c) = check else { return None };
-            body.play_once(c.radio_out);
-            g.radio_in_hand = t >= 28;
-            if t >= motion_length(game, body, c.radio_out, 99) {
+            if radio_out(g, body, c, t, game) {
                 next = Some((0xc, 0));
             }
         }
         0xc => {
+            // `FUN_00231d88`: the report; at its end the caution timer.
             let Some(c) = check else { return None };
-            // `FUN_00231d88`: the report on the first frame; at its end
-            // the radio goes away, the caution timer runs and HQ answers.
-            if timer == 0 && t > 0 {
-                phase.speak(LINE_REPORT, g);
+            let (ended, away) = radio_talk(g, body, phase, c, LINE_REPORT, (timer, t), game);
+            if ended {
+                out = Some(Seen::Report);
             }
-            let frames = phase.line_frames(LINE_REPORT, g, REPORT_FRAMES);
-            if t < frames {
-                body.play(c.radio_talk);
-            } else {
-                body.play_once(c.radio_away);
-                g.radio_in_hand = t < frames + 62;
-                if reached(frames) {
-                    out = Some(Seen::Report);
-                    phase.reply();
-                }
-                if t >= frames + motion_length(game, body, c.radio_away, 129) {
-                    next = None;
-                }
+            if away {
+                next = None;
             }
         }
         _ => next = None,
@@ -1622,6 +1634,109 @@ fn comrade(g: &mut Guard, body: &mut Body, phase: &mut Phase, (target, at, sub, 
         }
     }
     out
+}
+
+/// Takes the radio out (action 4, `FUN_0025ebc0`): true once it is out.
+fn radio_out(g: &mut Guard, body: &mut Body, c: Check, t: u32, game: &Game) -> bool {
+    body.play_once(c.radio_out);
+    g.radio_in_hand = t >= 28;
+    t >= motion_length(game, body, c.radio_out, 99)
+}
+
+/// Talks into the radio: `line` on the first frame (`FUN_0021cdb8`), then,
+/// once its frames are up, puts the radio away; HQ answers a report.
+/// `(timer, t)` are the frame counts before and after this step. Returns
+/// (the line just ended, the radio is away).
+fn radio_talk(g: &mut Guard, body: &mut Body, phase: &mut Phase, c: Check, line: u32, (timer, t): (u32, u32), game: &Game) -> (bool, bool) {
+    if timer == 0 && t > 0 {
+        phase.speak(line, g);
+    }
+    let frames = phase.line_frames(line, g, REPORT_FRAMES);
+    if t < frames {
+        body.play(c.radio_talk);
+        return (false, false);
+    }
+    body.play_once(c.radio_away);
+    g.radio_in_hand = t < frames + 62;
+    let ended = timer < frames && t >= frames;
+    if ended && has_reply(line) {
+        phase.reply();
+    }
+    (ended, t >= frames + motion_length(game, body, c.radio_away, 129))
+}
+
+/// Lines that `FUN_0021cb40` follows with HQ's reply.
+fn has_reply(line: u32) -> bool {
+    matches!(line, 0x1C00_0006..=0x1C00_0008 | 0x1C00_000B | 0x1C00_000D)
+}
+
+/// A hold-up let go (normal state 5, `FUN_0023b580`); sub-states (+0x330)
+/// as in the game:
+/// - 0x11 (`FUN_0023a778`, entered from 4 after 0x79 frames uncovered,
+///   `FUN_0023af20`): "!", faces Snake for 9 frames, then the report
+///   `FUN_0023a1e8(0x1c000007, 0x200)`:
+/// - with the caution timer over 3/4 of `-h` or in Evasion
+///   (`FUN_00252708`): 10 (`FUN_0023a6e8`), "?" for 121 frames;
+/// - else 5 (`FUN_0023a2c8`, action 6) takes the radio out and 7
+///   (`FUN_0023a348`) says the line, at whose end the caution timer runs
+///   (0x200 passes `FUN_0023a1c8`) and the radio goes away (action 7);
+/// - 0xe: done, back to the route.
+///
+/// Not ported: sub 8 (with both arms hurt, +0xf16 & 3 == 3, or +0x348
+/// bit 4: he walks off first), 6 (the radio shot), 7 without the radio
+/// (`FUN_002527d0`, action 9). State 5's actions 6 / 7 are taken as the
+/// radio motions of state 2's 4 / 5 (sub 5 waits for +0xf58 == 3, the
+/// radio-out motion's end signal). Returns true when the report ends.
+#[allow(clippy::too_many_arguments)]
+fn holdup_call(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, (sub, timer, to): (u8, u32, Vec3), dt: f32, ticks: u32, game: &Game) -> bool {
+    let t = timer.saturating_add(ticks);
+    // The body keeps turning to its target heading (assumed for the
+    // radio actions too: nothing here clears +0xf54).
+    let to = if sub == 0x11 { snake } else { to };
+    face(body, to, dt);
+    let mut reported = false;
+    let mut next = Some((sub, t));
+    match sub {
+        0x11 => {
+            body.play(g.anim.idle);
+            if t >= 9 {
+                let quiet = phase.kind == PhaseKind::Evasion || phase.caution > phase.caution_time / 4 * 3 || g.anim.check.is_none();
+                next = Some((if quiet { 10 } else { 5 }, 0));
+            }
+        }
+        10 => {
+            body.play(g.anim.idle);
+            if t > 0x78 {
+                next = None;
+            }
+        }
+        5 => {
+            let Some(c) = g.anim.check else { return false };
+            if radio_out(g, body, c, t, game) {
+                next = Some((7, 0));
+            }
+        }
+        7 => {
+            let Some(c) = g.anim.check else { return false };
+            let (ended, away) = radio_talk(g, body, phase, c, LINE_HOLDUP, (timer, t), game);
+            reported = ended;
+            if away {
+                next = None;
+            }
+        }
+        _ => next = None,
+    }
+    match next {
+        Some((sub, timer)) => g.state = State::HoldupCall { sub, timer, to },
+        None => {
+            g.radio_in_hand = false;
+            if let Some(wp) = waypoint(game, g.route, g.node) {
+                plan(g, body.pos, Vec3::from(wp.position), game);
+            }
+            g.state = State::Return;
+        }
+    }
+    reported
 }
 
 /// `FUN_00231c28` for the downed-comrade report: the sub-state it goes to.
@@ -1827,7 +1942,7 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
             }
         }
         State::Chase | State::Search { .. } => g.state = State::Return,
-        State::Asleep { .. } | State::Dead { .. } | State::Comrade { .. } | State::HeldUp { .. } | State::Hurt { .. } => {}
+        State::Asleep { .. } | State::Dead { .. } | State::Comrade { .. } | State::HeldUp { .. } | State::HoldupCall { .. } | State::Hurt { .. } => {}
     }
 }
 

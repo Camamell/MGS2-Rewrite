@@ -145,6 +145,8 @@ fn update(
             // no report is needed (0xf).
             State::Comrade { sub: 0x12, .. } => Some(Kind::Exclaim),
             State::Comrade { sub: 0xf, .. } => Some(Kind::Question),
+            State::HoldupCall { sub: 0x11, .. } => Some(Kind::Exclaim),
+            State::HoldupCall { sub: 10, .. } => Some(Kind::Question),
             _ => None,
         };
         let voiced = matches!(g.state, State::Discovery { .. } | State::Investigate { .. });
