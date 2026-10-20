@@ -1259,7 +1259,7 @@ pub fn think(
         .unwrap_or_default();
     for (me, mut g, mut body) in &mut guards {
         g.turn_head(&mut body, dt * 60.0);
-        let stung = std::mem::take(&mut g.stung);
+        let darted = std::mem::take(&mut g.stung);
         if let Some(&(_, kind)) = downs.iter().find(|d| d.0 == g.route) {
             info!("test: guard {} down ({kind})", g.route);
             match kind {
@@ -1604,10 +1604,11 @@ pub fn think(
             continue;
         }
         // A dart that left him awake (`FUN_00227520`, stimulus 0x4200000;
-        // in state 7 itself only after its turn, `FUN_0023cb18`).
-        if stung
-            && !matches!(phase.kind, PhaseKind::Alert | PhaseKind::Evasion)
-            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Stung { sub: 2, .. })
+        // Evasion's `FUN_0022c168` too, its state 5; in state 7 itself only
+        // after its turn, `FUN_0023cb18`).
+        if darted
+            && phase.kind != PhaseKind::Alert
+            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Search { .. } | State::Stung { sub: 2, .. })
         {
             info!("guard {} feels a dart", g.route);
             g.path.clear();
@@ -1630,6 +1631,14 @@ pub fn think(
                 }
                 if matches!(g.state, State::Discovery { .. }) {
                     normal_brain(&mut g, &mut body, &mut phase, snake_pos, player.boxed, dt, ticks, &game);
+                } else if let State::Stung { at, sub, timer } = g.state {
+                    // Evasion state 5 (the same `FUN_0023cb78`); its end
+                    // goes back to the search.
+                    stung(&mut g, &mut body, (at, sub, timer), ticks, &game);
+                    if g.state == State::Return {
+                        g.path.clear();
+                        g.state = State::Search { wait: 0, facing: body.yaw };
+                    }
                 } else {
                     evasion_brain(&mut g, &mut body, &phase, dt, ticks, &game);
                 }
@@ -2570,17 +2579,18 @@ fn evasion_brain(g: &mut Guard, body: &mut Body, phase: &Phase, dt: f32, ticks: 
         return;
     };
     if wait > 0 {
-        // Looking around where he stopped (`FUN_0022adc0` sub-state 6):
+        // Looking around where he stopped (`FUN_0022adc0` sub-state 6,
+        // `FUN_0022ac58`): the head (+0xf66, see [`Guard::turn_head`])
         // 0x200 (45 degrees) to one side for frames 1..59, to the other
-        // for 61..119, of 180.
+        // for 61..119, of 180; the body keeps its facing.
         body.play(g.anim.idle);
         let seen = LOOK_FRAMES.saturating_sub(wait);
-        let aim = match seen {
-            1..=59 => facing + 0x200 as f32 * ANGLE,
-            61..=119 => facing - 0x200 as f32 * ANGLE,
-            _ => facing,
+        g.head_to = match seen {
+            1..=59 => 512.0,
+            61..=119 => -512.0,
+            _ => 0.0,
         };
-        body.yaw = turn_toward(body.yaw, aim, TURN_RATE * dt);
+        body.yaw = turn_toward(body.yaw, facing, TURN_RATE * dt);
         let left = wait.saturating_sub(ticks);
         g.state = State::Search { wait: left, facing };
         if left == 0 {

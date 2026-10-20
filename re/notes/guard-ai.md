@@ -691,3 +691,18 @@ was saying is cut, as for any state change). Not ported:
 the marks (kinds 4 / 5: `FUN_002c3590` -> `FUN_002c5ae8`, sprites not
 identified), subs 3 / 4, the effect 0x86. Assumed:
 idle motion while he waits and looks.
+
+Lead (not ported): a round that hits him also sets +0xf98 bit
+0x8000000000 (`FUN_0024a1e8`; also `FUN_002493e8`, `FUN_00250d68`), which
+`FUN_00230c20` turns into the same stimulus 0x200000, and the hit
+reactions (`FUN_00251cc8`) set +0x270 = 1 / 2 for state 7's subs 3 / 4.
+So a soldier hit while unaware may look round rather than know Snake's
+place at once (the port sets the meter full, assumed). Where the bit is
+cleared is not traced (no plain store to +0xf98 found by grep).
+
+Evasion (`FUN_0022C670`): its transitions (`FUN_0022c168`) also take
+stimulus 0x4200000 to state 5, the same `FUN_0023cb78` (then
+`FUN_0022c3a0`); ported (back to the search after it). Its stop-and-look
+(state 4 sub 6 `FUN_0022ac58`, state 3 `FUN_0022ace8`, state 4 sub 10
+`FUN_0022ab38`: head +0x200 on frames 1-0x3b, -0x200 on 0x3d-0x77, until
+0xb5) is a head turn; the port had turned the body and now turns the head.
