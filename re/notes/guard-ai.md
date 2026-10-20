@@ -581,10 +581,17 @@ Leads for the other radio lines (not ported):
   follow-up 0x1081400e (its condition `FUN_00221098` reads body +0xf28
   bit 0x200000000, not traced), the end click (bit 0x800000), the slot's
   end (stimulus 0x40000), kinds 2 / 4 / 8 / 0x20.
-- State 10 (footprints and blood, `FUN_00240670`) reports only from sub
-  0x12 (`FUN_0023fff8`): `FUN_0023ef18(0x10000012, 0x10000)`, an index
-  past the w00a table with his voice added (0x1c0 + 0x12 + 0x38 x
-  voice), so what it plays is unclear.
+- State 10 (footprints and blood, `FUN_00240670`, init `FUN_00240858`)
+  reports only from sub 0x12 (`FUN_0023fff8`, reached from sub 5
+  `FUN_0023f970` when the marker's flags, copied to +0x310, have bit 8):
+  `FUN_0023ef18(0x10000012, 0x10000)`, line 0x12 of his voice ("The
+  situation is normal." in set 0; the 0x10000 is the mask, not a line
+  bit), with the same radio / dead-radio / in-person subs (10, 0xc, 0xb,
+  0xd, 0xe = `FUN_0023f340`: 0x18a00005). But the markers' flags never
+  have bit 8 (or 0x20, its other branch): footprints are registered with
+  0x100 (`foot_print.c` `FUN_0032ca60` -> `FUN_001179e0(.., 0x100)`), blood
+  with 0x400 / 0x800 by Snake's state bits (`blood_sp.c` `FUN_00314dd0`).
+  So in the Tanker that report cannot happen; not ported.
 
 ## Discovery call (`guard::call`)
 
