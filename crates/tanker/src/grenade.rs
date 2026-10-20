@@ -9,7 +9,8 @@
 //! once so the whole fuse runs in flight), the stun's reach (5 m, half the
 //! blast's 10000, with a clear line), how long a stunned guard stays down
 //! (half a dart's sleep) and the white flash when Snake is close.
-//! `MGS2_GRENADE_AT=seconds` throws a stun grenade then (testing).
+//! `MGS2_GRENADE_AT=seconds` throws a stun grenade then (testing; `12c`
+//! throws chaff at 12 s).
 
 use bevy::prelude::*;
 
@@ -53,11 +54,16 @@ fn throw(
     player: Query<(&Body, &Player)>,
 ) {
     let Ok((b, p)) = player.single() else { return };
-    // MGS2_GRENADE_AT=seconds: throw a stun grenade then (testing).
-    let test = std::env::var("MGS2_GRENADE_AT").ok().and_then(|v| v.parse::<f32>().ok()).is_some_and(|t| !*tested && time.elapsed_secs() >= t);
+    // MGS2_GRENADE_AT=seconds[c]: throw a stun (chaff) grenade then (testing).
+    let at = std::env::var("MGS2_GRENADE_AT").unwrap_or_default();
+    let chaff = at.ends_with('c');
+    let test = at.trim_end_matches('c').parse::<f32>().ok().is_some_and(|t| !*tested && time.elapsed_secs() >= t);
     if test {
         *tested = true;
-        *inv.counts.entry(STUN).or_default() += 1;
+        if chaff {
+            inv.counts.remove(&STUN);
+        }
+        *inv.counts.entry(if chaff { CHAFF } else { STUN }).or_default() += 1;
     }
     if !(keys.just_pressed(KeyCode::KeyG) || test) || p.dead() || p.boxed || p.hang.is_some() {
         return;

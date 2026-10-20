@@ -284,6 +284,8 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      and the alert begins only when that call ends (HQ answers per area);
      out of sight on the radio he looks about (the head turn, which his
      sight follows); a dart that leaves a soldier awake makes him turn
-     toward where Snake was and look about; the Evasion search looks about with the head
-   - next: the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
+     toward where Snake was and look about; the Evasion search looks about with the head;
+     chaff jams the soldiers' radios: a caller shakes his dead radio, runs to
+     the manager's report point and reports in person (Caution, not Alert)
+   - next: shooting a soldier's radio (`radio.c`'s hit box), the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects), the commandant's walk

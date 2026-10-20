@@ -716,3 +716,49 @@ index*16 with pitch (bits 0x10200); 10 -> the same point with bit 0x400;
 How the hzx point (flags at +0x18, look point at +12..+20) becomes
 +0xc00..+0xc08 is not traced (the copy near `FUN_002595e0`); the port turns
 the body to the look point instead.
+
+## A dead radio: chaff, and the report in person
+
+`DAT_0017f48c` bit 0x10 is set by the chaff particles (`bomb_chaff.c`,
+`FUN_003d6af8` creates one, counting them in `DAT_001fc3d8`; the first one
+sets the bit in `FUN_003d62e0`, the last one's exit `FUN_003d6090` clears
+it). Every radio call checks it together with the soldier's own shot
+radio (+0xb4 bit 0x10000, set by `radio.c`'s hit box, `FUN_00265f50`):
+
+| State | Radio out, jammed | Jammed mid-line | Dead radio | Run | In person |
+|---|---|---|---|---|---|
+| 2, a comrade (`FUN_00231d08` / `FUN_00231d88`) | 10 -> 0xb | 0xc -> `FUN_0021d0a8`, 0xb | 0xb `FUN_00231f20` (action 6) | 0xd `FUN_00231fb8` | 0xe `FUN_00232050`: 0x18a00005 |
+| 5, a hold-up let go (`FUN_0023a2c8` / `FUN_0023a348`) | 5 -> 6 | 7 -> 6 | 6 `FUN_0023a4e0` (action 8) | 8 `FUN_0023a578` | 9 `FUN_0023a610`: 0x18a00005 |
+| 8, discovery (`FUN_00237528` / `FUN_002375d8` / `FUN_00237710`) | 0xe -> 0xf | 6 / 7 -> `FUN_0021d0a8`, 0xf | 0xf `FUN_00237898` (action 7), then 8 | 0x14 `FUN_00237c90` | 0x1e `FUN_00237d48`: 0x1c000006 |
+
+The dead-radio action (state 2's table `FUN_00231948` case 6 and the
+discovery's `FUN_00236d60` case 7 are both `FUN_0025ef08`) plays gbs
+motion 10 (120 frames; 0x30 with the left arm hurt) with the radio still
+in hand, then `FUN_0025f068` puts it away; +0xf58 == 1 ends the sub-state.
+On its frame 0x73 the sub-state sets +0x348 bit 4 (the radio known dead):
+`FUN_00231c28` / `FUN_0023a1e8` then skip the radio, and the discovery's
+8 / 9 go to 0x14 instead of the back-off 0x15 (8 from frame 7, without
+firing). +0x348 is cleared when the state ends.
+
+The run: `FUN_00257388` sets the walker's target from `FUN_0021eeb0`, the
+manager's `-c` point (option 0x63: up to eight `x y z "#name"` entries at
+0x3fea80 / 0x3feb00 via `FUN_0022e4b8`; the index 0x3fea74 is only set to
+0 by init), the default the ELF's (0, 0, 0, 1) at 0x190a30; gait +0xf5a = 7
+(route action 0x25, taken as the run). Tanker `-c` points: w00a (-8750, 0,
+-2000), w00c (-10750, 12000, -13250), w01a (6000, 0, -13000), w01b (0, 0,
+-13000), w01c (200, 9000, -14925), w01d (-3650, 6000, -13900), w01f (0, 0,
+-7000), w02a (12500, 0, -15500), w03a (14000, -5000, -97000), w03b (14000,
+-5000, -70000); the holds (w04a-c), w00b and w01e have no manager `-c`. On arrival
+(`FUN_00256910` != 0) the line is said without the radio: 0x18a00005 "I saw
+him! Send someone over now!" or 0x1c000006 "I'm under attack! Stay alert!"
+(which HQ answers); at its end the caution timer (`FUN_0021ee90(-h)`) and
+the state ends (state 8: +0x348 bit 0x10000 -> `FUN_00227b90`). So a
+jammed discovery raises Caution, not Alert. Both in-person subs also clear
+the shot-radio flag and call `FUN_00255978` (not traced).
+
+Ported (`radio_fails`, `run_to_report`, `say_in_person`; chaff = the
+port's `Jam` timer). Assumed: the run's reach (500 mm) and a 30 s cap,
+the hold-up's action 8 as motion 10. Not ported: the shot radio, 0x14's
+close-range 0x20 (Snake within 1 m), 0xf's 0x18 (+0x348 bit 0x2000), the
+runner's +0x348 bit 0x100 (it puts him in the manager's list of soldiers
+to see to, `FUN_0021e998`). Test: `MGS2_GRENADE_AT=<s>c` throws chaff.

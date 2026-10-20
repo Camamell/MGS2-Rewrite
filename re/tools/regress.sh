@@ -59,6 +59,10 @@ MGS2_WALK_DIR=2048 MGS2_GIVE=1/1:0 check holdup_call "radios in the hold-up" ge 
 # answer; darted mid-call, he raises no alert and HQ calls for him.
 MGS2_GOD=1 check discovery_call "radios for backup|HQ answers" ge 2 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 18
 MGS2_GOD=1 MGS2_DOWN=3:s@10 check discovery_cut "radio cut off|radios for backup" eq 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 16
+# Chaff jams the radio: the caller shakes it, runs to the manager's -c
+# point and reports in person (Caution, no alert); the comrade report too.
+MGS2_GOD=1 MGS2_GRENADE_AT=4c check discovery_jammed "reported Snake in person" ge 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 26
+MGS2_DOWN=11:s@3 MGS2_GRENADE_AT=8c check comrade_jammed "Comrade0xd/" ge 1 w01d --skip-cutscenes --trace --shot-at 21
 # Out of sight on the radio he looks about (sub 7: +-0x200 head turns).
 MGS2_GOD=1 check radio_look "looks about on the radio" ge 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 12
 # Darted from beyond earshot and still awake: he turns to look (state 7).
