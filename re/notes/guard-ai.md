@@ -546,3 +546,25 @@ Leads for the other radio lines (not ported):
   0xc040034 "Are you going to shoot me?" on its first entry and
   0xc040035 "If you're gonna do it, then do it..." on its third
   (+0x340 counts entries). What sets +0x350 bit 0x20000000 is not traced.
+- A radio line cut short (`FUN_0021d0a8(soldier)`: called when the
+  speaker is interrupted, e.g. from the hold-up's init `FUN_0023b8a8`):
+  unless the line had bit 0x8000 or 0x40000 (no click), the manager opens
+  a "no answer" slot (`FUN_0021d860(name, place, room, 900, 1)`; 0xe10 and
+  kind 2 under +0x350 bit 0x2000000; not with manager `-s` bits 0x600 or
+  during Alert). Eight slots at manager +0x17c (name), +0x19c (frames
+  left), +0x250 (kind); `FUN_002211d0` counts them down: kind 1 at 600
+  says 0x1081400a ("What's going on? Respond!", the 0x1c0 block of `-v`
+  is HQ's: 0x1c6 "Why are you late with your status report?", 0x1c8
+  "Report your status.", 0x1cd "Hey! You're sleeping?", 0x1ce "Carry out
+  an investigation immediately."), at 300 0x914000 (`-y`'s -2 clip, w00a
+  "We've lost communication with the aft deck.", followed by 0x1081400e)
+  when `FUN_00221098` finds a soldier still able, else 0x914100; kind 2
+  first checks at 900 / 600 whether the soldier answers (0x10814006).
+  At 1 the slot's bit in +0x178 is set; `FUN_002316b0` then gives every
+  other soldier stimulus 0x40000 (its consumer is not found in the
+  transition functions). Kinds 4 / 8 / 0x20 come from state 0xe
+  (`FUN_00245348` / `FUN_002454a8`, 600 frames). Not ported.
+- State 10 (footprints and blood, `FUN_00240670`) reports only from sub
+  0x12 (`FUN_0023fff8`): `FUN_0023ef18(0x10000012, 0x10000)`, an index
+  past the w00a table with his voice added (0x1c0 + 0x12 + 0x38 x
+  voice), so what it plays is unclear.
