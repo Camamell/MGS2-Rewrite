@@ -638,15 +638,20 @@ between areas, -1 at the end; w01a: two areas, "Understood. Search team,
 head to port side!"...). No area: 0x10816004, line 0x1c4 of `-v` (w00a
 "Acknowledged. Assault team, check it out.").
 
-Ported: subs 2, 8, 9, 0x12, 0x15, 3, 0xe, 6, 7 and the area answer
+Sub 0x13 (`FUN_00237ef8`, from 8 when Snake is seen within 1000 mm
+(+0x188) before frame 7, no leg wound (+0xf16 & 0xc) and DAT_001ecd40 &
+0x620 clear): action 8 = `FUN_0025f810` (the alert's rifle butt, motion
+0x55; 0xb with the right arm hurt), then 0x15 (0x14 with the radio dead).
+
+Ported: subs 2, 8, 9, 0x12, 0x13, 0x15, 3, 0xe, 6, 7 and the area answer
 (played at the line's end; the click as for other lines). Assumed: the
 back-off runs and gives up after 300 frames; the nav link best aligned
 with "away" stands for `FUN_00253c38`'s pick; the rounds use the alert's
 bullet and sound; when the alert begins the caller switches to the chase
 (the game finishes the radio-away action first). A caller darted or
 knocked down mid-line raises no alert: the line is cut (`FUN_0021d0a8`)
-and HQ calls for him. Not ported: the radio shot / jammed (0xf), the arm-wound variants, sub 3's comrade check, sub 0x14 /
-0x1e, the Marines (no radio motions: their "!" still raises the alert).
+and HQ calls for him. Not ported: the arm-wound variants, 0x13's Snake-state test
+(DAT_001ecd40 & 0x620), sub 3's comrade check, the Marines (no radio motions: their "!" still raises the alert).
 
 ## Head look (`FUN_00254f..` draw, `FUN_00111f40` / `FUN_00112448`)
 

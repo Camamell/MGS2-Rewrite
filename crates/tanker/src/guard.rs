@@ -2262,7 +2262,10 @@ const BACK_OFF_FRAMES: u32 = 300;
 /// (`FUN_002527d0`) is never set (w00a and the ELF only pass 0x12000 and
 /// 1 to `FUN_00247d10`), so every discovery ends in a radio call:
 /// - 8 (`FUN_002381e8`, aim): with Snake out of sight on frame 5, sub
-///   0x15; from frame 7, 9 (0x15 after 30 rounds);
+///   0x15; Snake seen within 1 m before frame 7, 0x13; from frame 7, 9
+///   (0x15 after 30 rounds);
+/// - 0x13 (`FUN_00237ef8`): the rifle butt (action 8, `FUN_0025f810`,
+///   motion 0x55), then 0x15;
 /// - 9 (`FUN_00238008`): every 4th frame a round (action 9; +0x2a0 counts
 ///   them), or from frame 7 a 1-in-3 chance of 0x15; after 31 rounds 0x12
 ///   (`FUN_00238120`, action 10: the reload, then 8);
@@ -2311,8 +2314,35 @@ fn call(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, (sub, ti
             let away = if g.radio_dead { 0x14 } else { 0x15 };
             if frames.contains(&5) && !seen {
                 next = (away, 0, line, None);
+            } else if timer < 7 && seen && body.pos.distance(snake) < STRIKE_RANGE {
+                // Snake within 1 m on its first 7 frames: the rifle butt.
+                next = (0x13, 0, line, None);
             } else if t >= 7 {
                 next = (if g.radio_dead { 0x14 } else if g.attack.shots > 30 { 0x15 } else { 9 }, 0, line, None);
+            }
+        }
+        0x13 => {
+            // `FUN_00237ef8`: action 8 (`FUN_0025f810`, the alert's strike,
+            // motion 0x55), then the back-off 0x15 (0x14 with the radio
+            // dead). The hit as in the alert brain's strike.
+            body.play_once(STRIKE_MOTION);
+            face(body, snake, dt);
+            if timer == 0 {
+                g.attack.strike = Some((0.0, false));
+            }
+            if let Some((_, false)) = g.attack.strike
+                && frames.clone().any(|f| (2..=6).contains(&f))
+            {
+                let to = snake - body.pos;
+                if to.length() < STRIKE_REACH && to.normalize_or_zero().dot(body.forward()) > 0.5 {
+                    info!("guard {} strikes with the rifle butt", g.route);
+                    g.attack.strike = Some((t as f32, true));
+                    STRIKES.fetch_add(STRIKE_DAMAGE, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
+            if t >= motion_length(game, body, STRIKE_MOTION, 40) {
+                g.attack.strike = None;
+                next = (if g.radio_dead { 0x14 } else { 0x15 }, 0, line, None);
             }
         }
         9 => {
