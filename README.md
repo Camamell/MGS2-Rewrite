@@ -297,6 +297,11 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      or look left and right, and wait for a script signal or a radio line
      as the point says; reaching a point can run a script event; on Deck 2
      (w03a / w03b) the alert's "atcomm" brings in the four defenders, whom
-     the scripts send to other routes (they run the watcher's brain for now)
-   - next: the defenders' own brain (`defender.c`), the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
+     the scripts send to other routes; in the alert they run to atcomm's
+     defence points (the first free one nearer the front than Snake), hold
+     them facing Snake and fire when they see him, fall back or move up as
+     he does, and give up the point for the chase once Snake is as near
+     the front as they are
+   - next: the rest of the defenders' alert (their attack from the point,
+     a downed defender's return, atcomm's modes, w03b's held alert), the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects), the commandant's walk

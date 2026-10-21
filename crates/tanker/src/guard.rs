@@ -40,10 +40,63 @@ use crate::gcl::Spawn;
 use crate::player::{HEIGHT, Player, RADIUS, STEP_UP};
 
 pub const GUARD_ACTOR: u32 = 0xF7F777;
-/// The Deck-2 soldiers (w03a / w03b, `defender.c` `cmd_3259e5`): their own
-/// brain (`FUN_00272e68`, `FUN_0038b4f0` / `FUN_00392af8`) is not ported;
-/// they run the watcher's (assumed), and take a new route by message 3.
+/// The Deck-2 soldiers (w03a / w03b, `defender.c` `cmd_3259e5`): outside an
+/// alert they run the watcher's brain (`FUN_0038b4f0` / `FUN_00392af8`;
+/// the port's own, assumed the same) and take a new route by message 3;
+/// in an alert they hold atcomm's defence points (see [`defend`]).
 pub const DEFENDER_ACTOR: u32 = 0x3259E5;
+/// "atcomm" (`atcomm.c` `cmd_c7280a`), which creates the defenders.
+pub const ATCOMM_ACTOR: u32 = 0xC7280A;
+
+/// atcomm's defence (init `FUN_00272b48` / `FUN_00272308`): the points its
+/// defenders hold in an alert and what they defend.
+#[derive(Clone, Debug, Default)]
+pub struct Atcomm {
+    /// `-d`: up to 16 points, x y z n (n not read here).
+    pub points: Vec<Vec3>,
+    /// `-f` (+0x4a0): the place defended.
+    pub front: Vec3,
+    /// Path length from the front to each point (+0x450, at most 9 000 000).
+    pub dist: Vec<f32>,
+    /// `-t` 1 (+0x51c): the defenders put at their points at once and the
+    /// phase held at Alert (w03b; not ported).
+    pub at_once: bool,
+}
+
+/// How far the front's path length to Snake is counted (+0x4b4, each
+/// frame in `FUN_00272820`).
+const FRONT_REACH: f32 = 120_000.0;
+
+impl Atcomm {
+    pub fn from_spawn(s: &Spawn, nav: Option<&crate::nav::Nav>) -> Option<Self> {
+        let v = |letter, i| s.opt_int(letter, i).unwrap_or(0) as f32;
+        let n = s.opt(b'd').map_or(0, |d| (d.len() / 4).min(16));
+        let points: Vec<Vec3> = (0..n).map(|i| Vec3::new(v(b'd', 4 * i), v(b'd', 4 * i + 1), v(b'd', 4 * i + 2))).collect();
+        s.opt(b'f')?;
+        let front = Vec3::new(v(b'f', 0), v(b'f', 1), v(b'f', 2));
+        let dist = points.iter().map(|&p| nav.map_or(front.distance(p), |nav| nav.path_length(front, p, 9_000_000.0))).collect();
+        Some(Atcomm { points, front, dist, at_once: s.opt_int(b't', 0) == Some(1) })
+    }
+}
+
+/// A defender's part in the defence (his unit, soldier +0x430).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Defend {
+    /// `-t` (+0x330f) 2 or 3: a point of his own, held (w03b; not ported).
+    pub fixed: bool,
+    /// Has joined this alert's defence (`FUN_00272ed0`).
+    joined: bool,
+    /// The point he holds (+0xb) and whether he is at it (sub-state 9
+    /// stance 4) rather than on his way (sub-state 10, stances 0x13 / 0x14).
+    point: Option<usize>,
+    holding: bool,
+    /// Frames in the stance (+0x338).
+    frames: u32,
+    /// Has left the defence for the chase this alert (+0x12 bit 0x10).
+    chase: bool,
+    /// Where he stands holding it (the point, or where walls stopped him).
+    spot: Vec3,
+}
 /// A reinforcement trooper (`cmd_cc9a07`), created by the squad actor
 /// `0x5bb4d4` that the manager's `-a` proc makes when the alert starts.
 pub const TROOPER_ACTOR: u32 = 0xCC9A07;
@@ -782,6 +835,7 @@ pub struct Guard {
     pub name: i32,
     /// A `defender.c` soldier (see [`DEFENDER_ACTOR`]).
     pub defender: bool,
+    pub defend: Defend,
     /// His head turned from his facing (4096ths): now, and where a state
     /// points it this frame (body +0xf66 under controller +0x354 bit 0x800).
     /// See [`Guard::turn_head`].
@@ -898,6 +952,7 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         dropped: [0, 0],
         name: s.args.first().and_then(crate::gcl::Val::int).unwrap_or(0),
         defender: s.kind == DEFENDER_ACTOR,
+        defend: Defend { fixed: s.opt_int(b't', 0).is_some_and(|t| t >= 2), ..Default::default() },
         head: 0.0,
         head_to: 0.0,
         stung: false,
@@ -948,6 +1003,7 @@ pub fn patrol(route: usize, vision: f32, anim: Anim) -> Guard {
         dropped: [0, 0],
         name: 0,
         defender: false,
+        defend: Defend::default(),
         head: 0.0,
         head_to: 0.0,
         stung: false,
@@ -1210,6 +1266,13 @@ fn follow(g: &mut Guard, body: &mut Body, speed: f32, reach: f32, dt: f32, game:
             continue;
         }
         body.yaw = turn_toward(body.yaw, flat.x.atan2(flat.y), TURN_RATE * dt);
+        // A waypoint more than 45 degrees off is turned to on the spot (at
+        // a run the turn, 645 mm across, is wider than the waypoint's
+        // reach: he would circle it). Not the game's.
+        let fwd = body.forward();
+        if Vec2::new(fwd.x, fwd.z).dot(flat.normalize_or_zero()) < std::f32::consts::FRAC_1_SQRT_2 {
+            return false;
+        }
         let step = (speed * dt).min(flat.length());
         let mut p = body.pos + body.forward() * step;
         if let Some(col) = &game.collision {
@@ -1479,11 +1542,26 @@ pub fn think(
     let changed = std::mem::take(&mut phase.changed);
     let mut highest = 0i32;
     // MGS2_ALERT_AT=seconds: the meter full once then (testing; for stages
-    // whose soldiers come only with the alert).
-    if !*forced && std::env::var("MGS2_ALERT_AT").ok().and_then(|s| s.parse::<f32>().ok()).is_some_and(|t| time.elapsed_secs() >= t) {
-        *forced = true;
-        highest = i32::from(METER_MAX);
+    // whose soldiers come only with the alert); `start-end` keeps it full
+    // until `end`.
+    if let Some((from, until)) = std::env::var("MGS2_ALERT_AT").ok().and_then(|s| {
+        let (a, b) = s.split_once('-').unwrap_or((&s, ""));
+        let a = a.parse::<f32>().ok()?;
+        Some((a, b.parse::<f32>().unwrap_or(a)))
+    }) {
+        let now = time.elapsed_secs();
+        if now >= from && (!*forced || now <= until) {
+            *forced = true;
+            highest = i32::from(METER_MAX);
+        }
     }
+
+    // atcomm's defence: Snake's path length from the front (+0x4b4) and
+    // the points the defenders hold.
+    let snake_far = game.atcomm.as_ref().map_or(FRONT_REACH, |at| {
+        game.nav.as_ref().map_or(at.front.distance(snake_pos), |nav| nav.path_length(at.front, snake_pos, FRONT_REACH))
+    });
+    let mut taken: std::collections::HashSet<usize> = guards.iter().filter(|(_, g, _)| !g.asleep() && !g.dead()).filter_map(|(_, g, _)| g.defend.point).collect();
 
     let shot = gunshot.0.take();
     let difficulty = game.banks.b16(crate::gcl::DIFFICULTY);
@@ -1877,9 +1955,18 @@ pub fn think(
             g.path.clear();
             g.state = State::Stung { at: snake_pos, sub: 1, timer: 0 };
         }
+        // The defence is for the alert only (the phase's other brains,
+        // `FUN_002735b0`, leave the unit alone; taken to start afresh).
+        if g.defend.joined && phase.kind != PhaseKind::Alert {
+            if let Some(i) = g.defend.point {
+                taken.remove(&i);
+            }
+            g.defend = Defend { fixed: g.defend.fixed, ..Default::default() };
+        }
         match phase.kind {
             PhaseKind::Alert => {
-                if alert_brain(&mut g, &mut body, snake_pos, snake_dead, dt, ticks, &game, &mut rng) {
+                let goal = if g.defender { defend(&mut g, &body, &game, snake_far, &mut taken, ticks) } else { None };
+                if alert_brain(&mut g, &mut body, snake_pos, snake_dead, goal, dt, ticks, &game, &mut rng) {
                     let muzzle = body.pos + Vec3::Y * MUZZLE + body.forward() * 400.0;
                     let at = snake_pos + Vec3::Y * (snake_height * 0.6);
                     bullet::fire(&mut commands, &mut rng, muzzle, at);
@@ -2983,11 +3070,113 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
 /// `FUN_00229D30`: chase, and shoot when Snake is in sight. Returns true
 /// when a shot is fired this frame.
 #[allow(clippy::too_many_arguments)]
+/// The defenders' hold-the-line motion (`FUN_0028bd90` action 2, played by
+/// `FUN_0028bca0`).
+const DEFEND_MOTION: usize = 0x45;
+
+/// Takes the first free point (in `-d` order) whose path length from the
+/// front is under `below` (`FUN_0028dd28` / `FUN_0028ded8`, which first
+/// give up the point he had); none: the chase.
+fn take_point(d: &mut Defend, at: &Atcomm, taken: &mut std::collections::HashSet<usize>, below: f32) {
+    if let Some(i) = d.point.take() {
+        taken.remove(&i);
+    }
+    d.point = (0..at.points.len()).find(|i| at.dist[*i] < below && !taken.contains(i));
+    match d.point {
+        Some(i) => {
+            taken.insert(i);
+        }
+        None => d.chase = true,
+    }
+}
+
+/// A defender in an alert, `-t` 0 / 1 (w03a): on joining it
+/// (`FUN_00272ed0` -> `FUN_0028dd28`) he takes a point nearer the front
+/// than Snake by 4 m of path, runs to it (`FUN_0028db38` sub-state 10,
+/// stances 0x13 / 0x14: `FUN_0028c248`, `FUN_0028c498`, at it within
+/// 100 mm) and holds it facing Snake (sub-state 9 stance 4,
+/// `FUN_0028cbb0`). On the way he takes a nearer point once Snake's path
+/// length from the front is within 3 m of his point's (`FUN_0028d970`) and
+/// gives up for the chase once he is no nearer the front than Snake less
+/// 2 m (`FUN_0028c8e8`, every 12 frames; checked each frame here); holding,
+/// after 60 frames he picks again under Snake's length less 3 m once Snake
+/// is 4 m of path farther out than his point, and goes back to it when
+/// moved more than 250 mm off. Returns the point and whether he holds it;
+/// None: the chase (the alert brain, `FUN_00283498`).
+/// Not ported: `FUN_0028c8e8`'s other giving up (Snake unseen 300 frames
+/// and 10 m away), shooting on the move (`FUN_0028a280`), the re-entry of
+/// a soldier down (`FUN_002733f0` / `FUN_002732a0`) and atcomm's modes
+/// (+0x2f0, from the manager's reinforcement counts).
+fn defend(g: &mut Guard, body: &Body, game: &Game, snake_far: f32, taken: &mut std::collections::HashSet<usize>, ticks: u32) -> Option<(Vec3, bool)> {
+    let at = game.atcomm.as_ref()?;
+    let d = &mut g.defend;
+    if d.fixed || at.at_once || d.chase {
+        return None;
+    }
+    d.frames += ticks;
+    if !d.joined {
+        d.joined = true;
+        d.frames = 0;
+        take_point(d, at, taken, snake_far - 4000.0);
+        if let Some(i) = d.point {
+            info!("defender {} takes point {i}", g.route);
+        }
+    }
+    let i = d.point?;
+    let point = at.points[i];
+    if !d.holding {
+        let me = game.nav.as_ref().map_or(at.front.distance(body.pos), |nav| nav.path_length(at.front, body.pos, 9_000_000.0));
+        if me > snake_far - 2000.0 {
+            taken.remove(&i);
+            d.point = None;
+            d.chase = true;
+            info!("defender {} leaves his point for the chase", g.route);
+            return None;
+        }
+        if snake_far - 3000.0 < at.dist[i] {
+            take_point(d, at, taken, snake_far - 3000.0);
+            let j = d.point?;
+            if j != i {
+                info!("defender {} falls back to point {j}", g.route);
+            }
+            return Some((at.points[j], false));
+        }
+        // (Held too when walls keep him a little short of it for a second:
+        // the port's collision is rounder than the game's. Not the game's.)
+        let off = Vec2::new(point.x - body.pos.x, point.z - body.pos.z).length();
+        if off <= 100.0 || (off <= 1500.0 && g.stuck > 1.0) {
+            g.stuck = 0.0;
+            d.holding = true;
+            d.frames = 0;
+            d.spot = if off <= 100.0 { point } else { body.pos };
+            info!("defender {} holds point {i}", g.route);
+        }
+        return Some((point, d.holding));
+    }
+    let point = d.spot;
+    if d.frames > 60 && at.dist[i] + 4000.0 < snake_far {
+        take_point(d, at, taken, snake_far - 3000.0);
+        let j = d.point?;
+        if j != i {
+            d.holding = false;
+            info!("defender {} moves up to point {j}", g.route);
+            return Some((at.points[j], false));
+        }
+    }
+    if (point.x - body.pos.x).abs() > 250.0 || (point.z - body.pos.z).abs() > 250.0 {
+        d.holding = false;
+        d.frames = 0;
+    }
+    Some((point, d.holding))
+}
+
+#[allow(clippy::too_many_arguments)]
 fn alert_brain(
     g: &mut Guard,
     body: &mut Body,
     snake: Vec3,
     snake_dead: bool,
+    goal: Option<(Vec3, bool)>,
     dt: f32,
     ticks: u32,
     game: &Game,
@@ -3045,6 +3234,31 @@ fn alert_brain(
         let length = body.motions.and_then(|m| game.data.motions.get(m)).and_then(|(_, mar)| mar.motions.get(STRIKE_MOTION)).map_or(40.0, |m| m.length as f32);
         a.strike = if t >= length { None } else { Some((t, landed)) };
         return false;
+    }
+    // A defender: on his way to his point he only runs; at it he holds
+    // the line facing Snake, and shoots as below when he sees him.
+    if let Some((point, holding)) = goal {
+        if !holding {
+            a.firing = false;
+            a.aim = 0.0;
+            if g.path.last() != Some(&point) {
+                plan(g, body.pos, point, game);
+            }
+            if follow(g, body, RUN_SPEED, 100.0, dt, game) {
+                body.play(DEFEND_MOTION);
+            } else {
+                body.play(g.anim.run);
+            }
+            return false;
+        }
+        g.path.clear();
+        if g.level != 3 || snake_dead {
+            a.firing = false;
+            a.aim = 0.0;
+            body.play(DEFEND_MOTION);
+            face(body, snake, dt);
+            return false;
+        }
     }
     if g.level == 3 && body.pos.distance(snake) < STRIKE_RANGE && !snake_dead && g.anim.knocked.is_some() {
         g.path.clear();

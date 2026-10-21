@@ -241,6 +241,8 @@ pub struct Game {
     pub on_alert: Option<u32>,
     /// Troopers on their way: (spawn, seconds until they arrive).
     pub arrivals: Vec<(gcl::Spawn, f32)>,
+    /// Deck 2's defence (atcomm), once it is created.
+    pub atcomm: Option<guard::Atcomm>,
     /// Rain on the open deck, if the stage has it.
     pub rain: Option<rain::RainSpec>,
     /// The holds' time limit, when the stage runs one.
@@ -1045,6 +1047,7 @@ fn prepare(
         codec_then: Vec::new(),
         on_alert,
         arrivals: Vec::new(),
+        atcomm: None,
         rain: rain_spec,
         timer: holds_timer,
         fog: fog_spec,
@@ -1653,6 +1656,10 @@ fn script_event(
     }
     apply_codec(game, &codec);
     game.new_items.extend(spawns.iter().filter(|s| s.kind == items::ITEM_ACTOR).cloned());
+    if let Some(a) = spawns.iter().filter(|s| s.kind == guard::ATCOMM_ACTOR).find_map(|s| guard::Atcomm::from_spawn(s, game.nav.as_ref())) {
+        info!("atcomm: {} defence points, front {}, path lengths {:?}", a.points.len(), a.front, a.dist);
+        game.atcomm = Some(a);
+    }
     // Troopers, and the Deck-2 defenders an alert's "atcomm" creates (taken
     // to arrive and leave as the troopers do: assumed).
     game.arrivals.extend(spawns.into_iter().filter(|s| s.kind == guard::TROOPER_ACTOR || s.kind == guard::DEFENDER_ACTOR).map(|s| (s, TROOPER_DELAY)));

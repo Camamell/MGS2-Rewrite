@@ -125,6 +125,23 @@ impl Nav {
         vec![to]
     }
 
+    /// How far it is from `from` to `to` along [`Nav::path`], at most `cap`
+    /// (`FUN_0022a438`: to the first node, the links, then to the end; the
+    /// game's links carry their own lengths, byte * 500 - 500 mm, taken here
+    /// as the distance between node centres).
+    pub fn path_length(&self, from: Vec3, to: Vec3, cap: f32) -> f32 {
+        let mut at = from;
+        let mut length = 0.0;
+        for p in self.path(from, to) {
+            length += at.distance(p);
+            at = p;
+            if length > cap {
+                break;
+            }
+        }
+        length.min(cap)
+    }
+
     /// Dijkstra from node `a` to node `b` (then `to`); None when they are
     /// not linked.
     fn path_nodes(&self, a: usize, b: usize, to: Vec3) -> Option<Vec<Vec3>> {

@@ -897,9 +897,58 @@ Their message handler `FUN_00273828`: 0 / 1 set +0x328 to 6 / 1; 2 warps
 him (x y+1000 z, dir) when `FUN_002898e8` fails; 3 `route [x y z dir]`
 sets the route byte (+0xc0f) and the post point +0x2b0; 4 / 5 flags.
 Ported: creation through the manager's `-a` (taken to arrive after the
-troopers' delay and leave as they do: assumed), message 3. Not ported:
-their own brain (`FUN_00272e68`, `FUN_0038b4f0` / `FUN_00392af8`); they
-run the watcher's. Test: `MGS2_ALERT_AT=2` (meter full at 2 s) in w03a.
+troopers' delay and leave as they do: assumed), message 3. Outside an
+alert they run the watcher's brain (`FUN_0038b4f0` / `FUN_00392af8`, the
+port's own: assumed the same). Test: `MGS2_ALERT_AT=2` (meter full at
+2 s) or `MGS2_ALERT_AT=2-30` (held full until 30 s) in w03a.
+
+### The defence (alert)
+
+atcomm (actor 0x530 bytes; its "squad" at +0x40, the defence block
+`ctl` at +0x2f0): `-d` points at ctl+0x60 (16 bytes each, n at +0xc),
+their count at ctl+0x1a0, occupants at ctl+4+i (soldier index +0x13c,
+0xff free), `-f` front at ctl+0x1b0 and its nav node at +0x1c0. With
+`-t` 0 (w03a) `FUN_00272308` stores the path length front -> point i at
+ctl+0x160+4i (`FUN_0022a438`, cap 9 000 000) and each frame
+`FUN_00272820` the length front -> Snake at ctl+0x1c4 (cap 120 000).
+`FUN_0022a438` = first node, then the links' own lengths
+(byte * 500 - 500), then the end: the port sums node centres instead.
+A defender's unit is soldier +0x430 (+0x3ac points at it): +0 = ctl,
++0xa / +0xb his point, +0xf = `-t`, +0x12 flags (0x10 = no point / chase,
+0x20, 0x01). His brain switch +0x31f8 (`FUN_002735b0`): 0 the watcher's
+(`FUN_003971b8`), 1 the alert (`FUN_00283218`), 2 / 4 / 5 the others,
+6 the defence (`FUN_0028db38`); phase changes run `FUN_00272ed0`.
+On the alert (`FUN_00272ed0`, `-t` 0, no point): `FUN_0028dd28` takes
+the first free point (in `-d` order) with length < Snake's - 4000, else
+flag 0x10; then a point -> `FUN_0028dfc8` (state 6, sub-state 10, stance
+0x13, actions by `FUN_0028bd90`), none -> `FUN_00283498` (state 1, the
+alert's chase). Sub-state 10 (`FUN_0028db38`): Snake's path to the front
+shorter than his -> flag 0x10, action 0x19 (the chase); else
+`FUN_0028d970`: Snake's length - 3000 < his point's -> `FUN_0028ded8`
+(give up the point, take the first free under Snake's - 3000, none: flag
+0x10); stance 0x13 `FUN_0028c248` runs (action 0x11) and every 12 frames
+`FUN_0028c8e8` gives up (flag 0x10, action 0x19) when his length > Snake's
+- 2000, or when the squad's unseen count +0x214 > 300 and Snake is 10 m+
+away; arriving (`FUN_00224ed8`) -> stance 0x14 `FUN_0028c498`: within
+100 mm he is put on the point, sub-state 9 stance 4. Sub-state 9 stance 4
+`FUN_0028cbb0`: after 60 frames, if his point's length + 4000 < Snake's
+-> `FUN_0028ded8`; more than 250 mm off in x or z -> back to stance 0x13;
+else action 2 (motion 0x45, `FUN_0028bca0`) facing +0x18c, and after 60
+frames `FUN_0028c640` (the attack from the point: not read).
+Sub-state 10 stance 4 (`FUN_0028d8a8`, a re-entered defender) holds only
+while atcomm's mode ctl+0 is 1: `FUN_00272820` sets it from the manager's
+reinforcement counts (global 0x3e62b8 used / 0x3e62ba allowed, `-b`;
+`FUN_00215930` hands them out) and to 2 after 3600 frames.
+Ported (`guard::defend`): the point picks, the run, the hold facing
+Snake (motion 0x45) with the alert's shooting when he sees Snake, the
+re-picks and giving up for the chase (checked each frame). Not ported:
+the unseen-for-300-frames giving up, shooting on the move
+(`FUN_0028a280`), `FUN_0028c640`'s own attack, the re-entry of a soldier
+down (`FUN_002733f0` / `FUN_002732a0`, which decrements the allowed
+count and warps him back), atcomm's modes, `-t` 1 (w03b: phase held at
+Alert, defenders put on their points at once) and defenders' `-t` 2 / 3
+(own point by index, `FUN_0028ddf0`). Port-only: a defender kept 1.5 m
+short of his point by walls for a second holds where he stands.
 Lead: a defender's `-p` (up to 4 procs, `FUN_0021a750` into +0x322c) is
 not yet traced to where it runs; w03a's fourth defender has
 `-p #67363a` (300 frames later message 3 route 3 to the third, As16:0xb4a

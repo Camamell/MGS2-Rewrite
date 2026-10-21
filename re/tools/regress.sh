@@ -82,6 +82,10 @@ MGS2_COLD=120 MGS2_GIVE=0/4:1 MGS2_KEYS=N@4 check cold "cold medicine used" ge 1
 MGS2_GOGGLES=1 check goggles "panicked" eq 0 w01a --skip-cutscenes --shot-at 3
 # Deck 2: the alert's "atcomm" brings in its four defenders (#3259e5).
 MGS2_GOD=1 MGS2_ALERT_AT=2 check defenders "trooper arrives" ge 4 w03a --skip-cutscenes --shot-at 8
+# In a held alert they run to atcomm's defence points and hold them; with
+# Snake at the front no point is nearer it than he is: they chase.
+MGS2_GOD=1 MGS2_ALERT_AT=2-30 check defence_hold "defender [0-9]+ holds point" ge 3 w03a --skip-cutscenes --shot-at 30
+MGS2_GOD=1 MGS2_ALERT_AT=2-20 check defence_chase "takes point" eq 0 w03a --skip-cutscenes --snake-at=8000,-5000,-127000 --shot-at 12
 
 if [ "${1:-}" != quick ]; then
     for st in w00a w00b w00c w01a w01b w01c w01d w01e w01f w02a w03a w03b w04a w04b w04c; do
