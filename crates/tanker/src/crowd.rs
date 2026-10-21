@@ -97,10 +97,10 @@ pub fn members(s: &Spawn) -> Vec<Member> {
         .collect()
 }
 
-/// `-c x y z dir member actor` (repeated): spotlights (`FUN_00230938`) at
+/// `-c x y z dir member actor` (repeated): TV cameras (`FUN_00230938`) at
 /// `x y z`, worked by `member` and turned toward `actor` (w04c: two
-/// Marines on the upper level light the commandant). The lights are not
-/// drawn yet. Returns (member name, place, facing).
+/// Marines on the upper level film the commandant; see [`cameras`]).
+/// Returns (member name, place, facing).
 fn placed(s: &Spawn) -> Vec<(i32, Vec3, i32)> {
     let Some(list) = s.opt(b'c') else { return Vec::new() };
     list.chunks_exact(6)
@@ -127,16 +127,56 @@ pub fn walkers(s: &Spawn) -> Vec<usize> {
         .collect()
 }
 
+/// A crowd TV camera's head (`FUN_00230938`, update 0x230640) on its
+/// tripod: turned each frame toward the actor it films (`FUN_00230488` / `FUN_00230440`:
+/// x = atan2(horizontal distance, dy) - 0x400, y = atan2(dx, dz), about
+/// its pivot `x y z` + 145 mm). The game stops turning it while its
+/// Marine's state has 0x60000 (not modelled), and turns it onto Snake on
+/// the upper level (`FUN_002304e8`, not ported).
+#[derive(Component)]
+pub struct FilmCamera {
+    pub target: u32,
+    pub at: Vec3,
+}
+
+/// The head's pivot above the `-c` point (`FUN_00230750`: +0xa4 += 145).
+pub const CAMERA_RISE: f32 = 145.0;
+/// The two models (`FUN_00355268(.., 0x11)`): the camera, turned toward
+/// its actor, and its tripod, fixed at the `-c` facing.
+pub const CAMERA_HEAD: u32 = 0xC6CBC3;
+pub const CAMERA_STAND: u32 = 0xC0B045;
+
+/// The cameras of `-c`: (pivot, facing in 4096ths, filmed actor's name).
+pub fn cameras(s: &Spawn) -> Vec<(Vec3, i32, u32)> {
+    let Some(list) = s.opt(b'c') else { return Vec::new() };
+    list.chunks_exact(6)
+        .map(|c| {
+            let v = |i: usize| c[i].int().unwrap_or(0);
+            (Vec3::new(v(0) as f32, v(1) as f32 + CAMERA_RISE, v(2) as f32), v(3), v(5) as u32 & 0x00FF_FFFF)
+        })
+        .collect()
+}
+
+/// The camera's turn toward `target` (the game's angles, applied as the
+/// port applies the engine's x y z rotations).
+pub fn camera_turn(at: Vec3, target: Vec3) -> Quat {
+    let d = target - at;
+    let unit = std::f32::consts::TAU / 4096.0;
+    let rx = Vec2::new(d.x, d.z).length().atan2(d.y) - 0x400 as f32 * unit;
+    let ry = d.x.atan2(d.z);
+    Quat::from_euler(EulerRot::YXZ, ry, rx, 0.0)
+}
+
 /// The commandant, a member of variant 19 placed at `0 0 n`: the crowd
 /// makes him a walker on route `n` like the patrols (`FUN_002302a8`), with
 /// flags | 0x21 (`FUN_0022a5d8`), which give him his own motions
 /// (`guard::Anim::COMMANDANT`) and hide his rifle (`FUN_0022f9a8`). In
 /// w04c he paces route 0 on the stage above the formation. Returns his
-/// route and `-a` flags (his hat).
-pub fn commandant(s: &Spawn) -> Option<(usize, i32)> {
+/// route, `-a` flags (his hat) and name.
+pub fn commandant(s: &Spawn) -> Option<(usize, i32, u32)> {
     s.opt(b'a')?.chunks_exact(RECORD).find_map(|r| {
         let v = |i: usize| r[i].int().unwrap_or(0);
-        (v(1) == 0 && v(2) == 0 && v(3) >= 0 && v(7).rem_euclid(22) == 19).then(|| (v(3) as usize, v(10)))
+        (v(1) == 0 && v(2) == 0 && v(3) >= 0 && v(7).rem_euclid(22) == 19).then(|| (v(3) as usize, v(10), v(0) as u32 & 0x00FF_FFFF))
     })
 }
 

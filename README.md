@@ -319,6 +319,7 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      the holds' patrolling Marines walk with their own motions from the
      game's slot table (and are knocked down and get up as soldiers do), and
      the commandant paces the stage above the formation during his speech
-     (his skinned `sco_def` mesh over the Marines' skeleton)
-   - next: the holds' spotlights on the commandant (`-c`, `FUN_00230938`), the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
+     (his skinned `sco_def` mesh over the Marines' skeleton), followed by
+     the two TV cameras on the upper level
+   - next: the TV cameras turning onto Snake (`FUN_002304e8`), the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects)

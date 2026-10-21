@@ -360,6 +360,9 @@ struct Cast {
     /// Walkers drawn with an evm (the commandant): (guard, skeleton kms,
     /// evm, motions, position, head accessories).
     evm_guards: Vec<(Guard, usize, usize, Option<usize>, Vec3, Vec<usize>)>,
+    /// The crowd's TV cameras: (camera model, tripod model, pivot,
+    /// facing in 4096ths, filmed actor).
+    film_cameras: Vec<(usize, usize, Vec3, i32, u32)>,
     props: Vec<Prop>,
     /// Item boxes and their model.
     items: Vec<(items::Item, usize)>,
@@ -757,6 +760,7 @@ fn prepare(
 
     let mut guards = Vec::new();
     let mut evm_guards = Vec::new();
+    let mut film_cameras = Vec::new();
     let mut phase = Phase::default();
     let mut doors = Vec::new();
     let mut traps = Vec::new();
@@ -980,7 +984,7 @@ fn prepare(
             // The commandant walks his route with the Marines' skeleton
             // under his own skinned mesh.
             let evm = data.evms.iter().position(|(h, _)| *h & 0x00FF_FFFF == str_code(crowd::model_name(19).as_bytes()));
-            for (route, flags) in vm.spawns.iter().filter(|s| s.kind == crowd::CROWD_ACTOR).filter_map(crowd::commandant) {
+            for (route, flags, name) in vm.spawns.iter().filter(|s| s.kind == crowd::CROWD_ACTOR).filter_map(crowd::commandant) {
                 let start = data.collision.as_ref().and_then(|h| h.routes.get(route)).and_then(|r| r.points.first());
                 if let (Some(wp), Some(evm)) = (start, evm) {
                     let mut p = Vec3::from(wp.position);
@@ -991,8 +995,16 @@ fn prepare(
                     eprintln!("the commandant walks route {route} from {p}");
                     let mut g = guard::patrol(route, vision, guard::Anim::COMMANDANT);
                     g.ghost = true;
+                    g.name = name as i32;
                     evm_guards.push((g, m, evm, ushold, p, extras));
                 }
+            }
+        }
+        let model_of = |h: u32| data.models.iter().position(|(k, _)| *k & 0x00FF_FFFF == h);
+        if let (Some(head), Some(stand)) = (model_of(crowd::CAMERA_HEAD), model_of(crowd::CAMERA_STAND)) {
+            for (at, dir, target) in vm.spawns.iter().filter(|s| s.kind == crowd::CROWD_ACTOR).flat_map(crowd::cameras) {
+                eprintln!("TV camera at {at} films {target:#x}");
+                film_cameras.push((head, stand, at, dir, target));
             }
         }
         if let Some(s) = vm.spawns.iter().find(|s| s.kind == crowd::CROWD_ACTOR) {
@@ -1143,7 +1155,7 @@ fn prepare(
     } else {
         game.entrance_done();
     }
-    Ok(Level { game, phase, cast: Cast { snake, guards, evm_guards, props, items, sliding, bosses, crowd, posed, attached } })
+    Ok(Level { game, phase, cast: Cast { snake, guards, evm_guards, film_cameras, props, items, sliding, bosses, crowd, posed, attached } })
 }
 
 fn main() -> Result<()> {
@@ -1426,6 +1438,7 @@ fn main() -> Result<()> {
     }
     app.add_systems(Update, body::hold.after(body::skin).before(player::follow_camera));
     app.add_systems(Update, body::skin_evm.after(body::skin));
+    app.add_systems(Update, aim_cameras.after(guard::think));
     app.add_systems(Update, guard::radio::place.after(guard::think).before(body::hold));
     app.add_systems(Update, (body::add_shadows, body::update_shadows.after(body::skin)));
     app.add_systems(Update, boss_defeat.after(olga::think).run_if(codec::idle).run_if(demo::idle));
@@ -1616,6 +1629,13 @@ fn spawn_level(
         if let Some(m) = rifle.filter(|_| flags & crowd::RIFLE_FLAGS != 0) {
             weapons.push((e, m, false, crowd::rifle_turn(), crowd::RIFLE_JOINT, crowd::RIFLE_OFFSET));
         }
+    }
+    for (head, stand, at, dir, target) in cast.film_cameras {
+        let base = Transform::from_translation(at * SCALE).with_rotation(Quat::from_rotation_y(dir as f32 / 4096.0 * std::f32::consts::TAU));
+        let e = scene::spawn_model_lit(&mut commands, &data.models[stand].1, data, &mut cache, &mut meshes, &mut images, &mut materials, unlit, LevelEntity, base, None);
+        commands.entity(e).insert(base);
+        let e = scene::spawn_model_lit(&mut commands, &data.models[head].1, data, &mut cache, &mut meshes, &mut images, &mut materials, unlit, LevelEntity, base, None);
+        commands.entity(e).insert((base, crowd::FilmCamera { target, at }));
     }
     for (g, model, evm, motions, pos, extras) in cast.evm_guards {
         let e = body::spawn_evm_body(&mut commands, &data.evms[evm].1, data, &mut cache, &mut meshes, &mut images, &mut materials, unlit, (Body::new(pos, 0.0, model, motions), LevelEntity));
@@ -2365,6 +2385,15 @@ fn stage_demo(
     for p in due {
         info!("in-stage demo: running {p:#x}");
         script_event(&mut commands, &session, &mut game, |vm| vm.call_proc(p, &[]), &level, &bullets);
+    }
+}
+
+/// Turns the crowd's TV cameras toward the actors they film.
+fn aim_cameras(mut cameras: Query<(&crowd::FilmCamera, &mut Transform)>, bodies: Query<(&Body, &reflect::ActorName)>) {
+    for (l, mut t) in &mut cameras {
+        if let Some((b, _)) = bodies.iter().find(|(_, n)| n.0 == l.target) {
+            t.rotation = crowd::camera_turn(l.at, b.pos);
+        }
     }
 }
 

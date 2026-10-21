@@ -236,17 +236,22 @@ points, his `FUN_0022f4a8` test (he sees as the walkers do), flag 0x80's
 flags are 0x90).
 
 The `-c x y z dir member actor` entries (`FUN_00230938`, update 0x230640)
-are spotlights, not speakers: each loads two models (0xc6cbc3 the lamp,
-0xc0b045 the beam, `FUN_00355268(.., 0x11)`) 145 mm above `x y z`, turned
-toward the actor named (`FUN_00230440`: bearing - 0x400; w04c: the
-commandant) unless its member's state has 0x60000, and marks the member
+are TV cameras on tripods, not speakers: each loads two models
+(0xc6cbc3 the camera, 0xc0b045 its tripod, `FUN_00355268(.., 0x11)`) 145 mm above `x y z`, turned
+toward the actor named (`FUN_00230440`: x = atan2(horizontal distance,
+dy) - 0x400, y = atan2(dx, dz), `FUN_0016cee0` being newlib's
+`atan2f(y, x)`; so the camera's lens, +z, points at him; w04c: the
+commandant's feet, his position) unless its member's state has 0x60000, and marks the member
 (flags | 0x40, +0x5bc = 6, +0x5e8 = 9, +0x5ea = 1). In w04c two Marines
-(23826964 / 40604180 at +-5500, -15000, -1200) work the lights at
+(23826964 / 40604180 at +-5500, -15000, -1200) work the cameras at
 +-5250, -14000, -2000 (the port had put the two Marines there; they stand
-at their own records). `FUN_002304e8` (the light's) turns it onto Snake
+at their own records). `FUN_002304e8` (the camera's) turns it onto Snake
 when he is on the upper level (y -15000..-12000, z
--15000..-12000, x -7000..0 for light 0, 0..7000 for light 1) and sets
-`DAT_0017f48c` bit 0. Not ported yet: the lights.
+-15000..-12000, x -7000..0 for camera 0, 0..7000 for camera 1) and sets
+`DAT_0017f48c` bit 0. Ported: the camera (0xc6cbc3, turned) and its
+tripod (0xc0b045, at the `-c` facing), `crowd::FilmCamera`. Not ported:
+the turn onto Snake with `FUN_002303d0`'s calls (not traced),
+the operator's 0x60000 test.
 
 The crowd actor's `-e` procs are its events (offsets from +0x8c8ac): 0 a
 pad flag, 1 / 2 Snake near the `-p` points facing them, 3 a Marine heard

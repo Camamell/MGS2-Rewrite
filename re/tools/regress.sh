@@ -43,6 +43,8 @@ check holds_quiet "game over" eq 0 w04a --skip-cutscenes --auto-walk 8 --shot-at
 # The commandant waits 1200 frames at route 0's first point, then paces
 # 4 m to the next at 349 mm/s (past x -1000 by ~24 s).
 check commandant "r0 \(-[1-9][0-9]{3},-14750" ge 1 w04c --skip-cutscenes --trace --snake-at=0,-17000,-2500 --shot-at 30
+# ... filmed by the crowd's two TV cameras (-c).
+check film_cameras "TV camera at .* films 0x8af8fd" eq 2 w04c --skip-cutscenes --shot-at 2
 # Guards: the box check and the rifle butt.
 MGS2_BOX_TEST=1 check box_check "checks the box" ge 1 w01a --skip-cutscenes --snake-at=6000,0,1500 --shot-at 26
 check close_quarters "life=(8|7)" ge 1 w01a --skip-cutscenes --trace --snake-at=6000,0,3300 --snake-dir=0 --shot-at 6
