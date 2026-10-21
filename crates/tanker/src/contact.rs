@@ -29,7 +29,7 @@ pub fn separate(
     mut guards: Query<(&mut Body, &Guard), Without<Player>>,
     marines: Query<&Body, (With<crate::crowd::Marine>, Without<Player>, Without<Guard>)>,
 ) {
-    let mut bodies: Vec<(Vec3, bool)> = guards.iter().map(|(b, g)| (b.pos, !g.asleep())).collect();
+    let mut bodies: Vec<(Vec3, bool)> = guards.iter().map(|(b, g)| (b.pos, !g.asleep() && !g.inactive)).collect();
     let snake_pos = snake.single().map(|b| b.pos).ok();
     let mut push = vec![Vec2::ZERO; bodies.len()];
     let mut snake_push = Vec2::ZERO;
@@ -130,6 +130,7 @@ pub fn punch(
         let to = gb.pos - sb.pos;
         let flat = Vec2::new(to.x, to.z);
         !g.asleep()
+            && !g.inactive
             && to.y.abs() < 1000.0
             && flat.length() < PUNCH_REACH
             && flat.normalize_or_zero().angle_to(Vec2::new(fwd.x, fwd.z)).abs() < PUNCH_ARC

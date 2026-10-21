@@ -79,6 +79,9 @@ pub fn motion_sounds(
 ) {
     last.retain(|e, _| bodies.contains(*e));
     for (e, body, player, guard, olga) in &bodies {
+        if guard.is_some_and(|g| g.inactive) {
+            continue;
+        }
         // Olga sets no table: her sounds play as they are.
         let table = match (player, guard, olga) {
             (Some(_), _, _) => 0u8,

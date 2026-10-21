@@ -787,3 +787,45 @@ brings the radio back on his belt (as clearing 0x10000 does in
 close-range 0x20 (Snake within 1 m), 0xf's 0x18 (+0x348 bit 0x2000), the
 runner's +0x348 bit 0x100 (it puts him in the manager's list of soldiers
 to see to, `FUN_0021e998`). Test: `MGS2_GRENADE_AT=<s>c` throws chaff.
+
+## Script messages to soldiers (`FUN_00222810`, `FUN_00257df8`)
+
+`mesg <soldier> <code> args..` (the soldier's name is his `chara #f7f777`
+first argument; scripts also give it as a number or a variable):
+
+- 1 `route [x y z map [point]]`: +0xc0f = route; with five or more
+  arguments the post +0x2b0..+0x2b8 (as `-d`), its map +0x2c0
+  (`FUN_0010e570(FUN_0010eb20(map))`), and the start point +0xc10 (0xff
+  without a sixth). The route walker takes it up (`FUN_00224760` /
+  `FUN_002247f0`: +0xc0f != +0xc0c -> `FUN_00252a20`; with +0xc10 < 0
+  `FUN_00257210` starts at the nearest point, else `FUN_002570b0` at that
+  point), also from `FUN_00227e00` (back to the route). The troopers'
+  handler (`attacker.c` `FUN_00299ea8`) instead warps a trooper not yet in
+  play (body +0xf98 bit 0x100000000000) to the new route (`FUN_00252ee8`).
+- 2: +0x34c bit 8 (one frame; cleared by `FUN_00258028`); 3 / 4: +0xd8
+  bit 2 on / off. Uses not traced.
+- 0x100 / 0x101: +0x350 bit 0x80000000 on / off; 0x103 / 0x104: bit 0x100
+  off / on; 0x105 n: down frames +0xf1a = n when asleep (+0xfb0 & 3).
+- 0x106: out of play: +0x350 bit 1 (`FUN_00222978` and `FUN_00257f50`
+  skip his senses and bookkeeping), `FUN_00257a68` hides the model and
+  its attachments (+0x4c |= 0x3000), sets +0x70 |= 9 and clears his alert
+  state; 0x107: bit 1 cleared, the model shown (`FUN_0022d320(.., 0x3000)`).
+
+Uses: w01d sends `#2c441d` (route 11) to route 7 at the start on every
+difficulty but Bs16:0x8 == 50, and moves `#2c441d` / `#2fa69f` between
+routes as Snake enters and leaves traps; w02a keeps its door soldier
+`#18e016` out of play (0x106) until an event brings him in (0x107, route
+43); w00a, w00c, w01b do the same kind of route changes.
+
+The maps named in these messages and in `-d` are `.hzx` areas: `chara
+#35a2cf <map> -h "~w01d" n` names area n (w01d: `#284a23` 0, `#e494d1` 1,
+`#0494ca` 3). Areas overlap and their node links stay within each area;
+the game's crossing data is among the undecoded path tables. The port
+joins nodes of different areas whose rectangles overlap or come within
+100 mm at under 600 mm of height (assumed), so a soldier sent to a route
+in another area walks there.
+
+Ported (`guard::messages`): 1 (route, post, start point; taken up from
+patrol, waiting or returning), 0x106 / 0x107 (hidden with his held
+models, skipped by the brain, bullets, blows, grenades, the radar and
+footsteps). Not ported: 2-4, 0x100-0x105, the post's map.

@@ -44,11 +44,11 @@ check holds_quiet "game over" eq 0 w04a --skip-cutscenes --auto-walk 8 --shot-at
 MGS2_BOX_TEST=1 check box_check "checks the box" ge 1 w01a --skip-cutscenes --snake-at=6000,0,1500 --shot-at 26
 check close_quarters "life=(8|7)" ge 1 w01a --skip-cutscenes --trace --snake-at=6000,0,3300 --snake-dir=0 --shot-at 6
 # A soldier finds his comrade asleep, kicks him awake and radios it in.
-MGS2_DOWN=11:s@3 check comrade "radios in a downed comrade" ge 1 w01d --skip-cutscenes --shot-at 22
+MGS2_DOWN=7:s@1 check comrade "radios in a downed comrade" ge 1 w01d --skip-cutscenes --shot-at 22
 # ... with his voice line from the manager's -v table, then HQ's reply.
-MGS2_DOWN=11:s@3 check radio_line "radio line 0x20" ge 2 w01d --skip-cutscenes --shot-at 22
+MGS2_DOWN=7:s@1 check radio_line "radio line 0x20" ge 2 w01d --skip-cutscenes --shot-at 22
 # Darted mid-report: the line stops and HQ calls for him.
-MGS2_DOWN=11:s@3,18:s@16 check radio_cut "HQ waits for an answer" ge 1 w01d --skip-cutscenes --shot-at 18
+MGS2_DOWN=7:s@1,18:s@16 check radio_cut "HQ waits for an answer" ge 1 w01d --skip-cutscenes --shot-at 18
 # Snake glimpsed (state 6): the guard turns, pauses and asks who is there;
 # a dart's noise behind him (state 3) brings him over without a word.
 check investigate_line "radio line 0x20" ge 1 w01a --skip-cutscenes --snake-at=6000,0,-2000 --fire-at 3 --shot-at 8
@@ -58,11 +58,11 @@ MGS2_WALK_DIR=2048 MGS2_GIVE=1/1:0 check holdup_call "radios in the hold-up" ge 
 # Discovery: the "!", a burst, the radio call for backup and HQ's area
 # answer; darted mid-call, he raises no alert and HQ calls for him.
 MGS2_GOD=1 check discovery_call "radios for backup|HQ answers" ge 2 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 18
-MGS2_GOD=1 MGS2_DOWN=3:s@10 check discovery_cut "radio cut off|radios for backup" eq 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 16
+MGS2_GOD=1 MGS2_DOWN=3:s@11 check discovery_cut "radio cut off|radios for backup" eq 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 16
 # Chaff jams the radio: the caller shakes it, runs to the manager's -c
 # point and reports in person (Caution, no alert); the comrade report too.
 MGS2_GOD=1 MGS2_GRENADE_AT=4c check discovery_jammed "reported Snake in person" ge 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 26
-MGS2_DOWN=11:s@3 MGS2_GRENADE_AT=8c check comrade_jammed "Comrade0xd/" ge 1 w01d --skip-cutscenes --trace --shot-at 21
+MGS2_DOWN=7:s@1 MGS2_GRENADE_AT=6c check comrade_jammed "Comrade0xd/" ge 1 w01d --skip-cutscenes --trace --shot-at 21
 # A dart into guard 3's radio from behind: his call fails the same way.
 MGS2_FPV_TEST=1 MGS2_FPV_AT=5893,762,3886 check radio_shot "radio shot|reported Snake in person" ge 2 w01a --skip-cutscenes --snake-at=6000,0,2000 --fire-at 1 --aim-for 0.2 --shot-at 26
 # Out of sight on the radio he looks about (sub 7: +-0x200 head turns).

@@ -127,7 +127,7 @@ fn fly(
             for (b, mut guard) in &mut guards {
                 let head = b.pos + Vec3::Y * 1500.0;
                 let clear = game.collision.as_ref().and_then(|c| c.ray(g.pos, head)).is_none_or(|t| t > 0.97);
-                if head.distance(g.pos) < STUN_RANGE && clear {
+                if head.distance(g.pos) < STUN_RANGE && clear && !guard.inactive {
                     if !guard.asleep() {
                         guard.knock_out();
                     }

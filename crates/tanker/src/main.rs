@@ -223,6 +223,8 @@ pub struct Game {
     pub song: i32,
     /// Actor messages for the props (`PropName`).
     pub prop_messages: Vec<(u32, u32, Vec<i32>)>,
+    /// Actor messages for the soldiers (`guard::messages`).
+    pub guard_messages: Vec<(u32, u32, Vec<i32>)>,
     /// Item boxes a script event created (a soldier's drop), to place.
     pub new_items: Vec<gcl::Spawn>,
     /// Places of actors the port does not run, for the script (`#c1eb06`).
@@ -1030,6 +1032,7 @@ fn prepare(
         song,
         new_items: Vec::new(),
         prop_messages: Vec::new(),
+        guard_messages: Vec::new(),
         places,
         continue_proc: None,
         death_voice: None,
@@ -1289,6 +1292,7 @@ fn main() -> Result<()> {
     app.add_plugins(fpv::plugin);
     app.add_plugins(hud::plugin);
     app.add_systems(Update, player::roll_hits.after(player::control));
+    app.add_systems(Update, guard::messages.before(guard::think).run_if(codec::idle).run_if(demo::idle));
     // Test runs (--screenshot, the pose sheets, MGS2_NO_SAVE) leave the
     // player's save alone.
     let testing = ["MGS2_GUARD_SHEET", "MGS2_MOTION_SHEET", "MGS2_NO_SAVE"].iter().any(|v| std::env::var_os(v).is_some());
@@ -1999,6 +2003,7 @@ fn apply_codec(game: &mut Game, reqs: &[gcl::CodecReq]) {
                     info!("crowd message {code}");
                     crowd::message(&mut game.crowd_head, code);
                 }
+                game.guard_messages.push((target, code, args.clone()));
                 game.prop_messages.push((target, code, args));
             }
             CodecReq::OverProcs { over, cont } => {

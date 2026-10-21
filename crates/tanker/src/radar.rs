@@ -170,6 +170,9 @@ fn draw(
         }
     }
     for (g, b) in &guards {
+        if g.inactive {
+            continue;
+        }
         if (b.pos.y - snake.pos.y).abs() > 2500.0 {
             continue;
         }

@@ -148,12 +148,12 @@ pub fn fly(
             // is not ported).
             // (The radio sits inside the port's 300 mm body cylinder, so
             // the order is judged against a torso core instead.)
-            let body_t = guards.iter().filter(|(_, g)| !g.dead()).filter_map(|(gb, _)| core_t(b.pos, end, gb.pos)).fold(f32::INFINITY, f32::min);
+            let body_t = guards.iter().filter(|(_, g)| !g.dead() && !g.inactive).filter_map(|(gb, _)| core_t(b.pos, end, gb.pos)).fold(f32::INFINITY, f32::min);
             let radio = radios
                 .iter()
                 .filter_map(|(h, t)| {
                     let g = guards.get(h.owner).ok()?.1;
-                    if g.dead() || g.radio_shot || h.hidden {
+                    if g.dead() || g.inactive || g.radio_shot || h.hidden {
                         return None;
                     }
                     let c = t.translation / SCALE + Vec3::Y * if g.radio_in_hand { RADIO_DROP } else { -RADIO_DROP };
@@ -170,7 +170,7 @@ pub fn fly(
                 continue 'bullets;
             }
             for (gb, mut g) in &mut guards {
-                if g.dead() {
+                if g.dead() || g.inactive {
                     continue;
                 }
                 if let Some(p) = hit_point(b.pos, end, gb.pos, HEIGHT) {

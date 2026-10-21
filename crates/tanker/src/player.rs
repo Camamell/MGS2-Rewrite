@@ -796,7 +796,7 @@ pub fn roll_hits(snake: Query<(&Body, &Player)>, mut guards: Query<(&Body, &mut 
     let f = b.forward();
     for (gb, mut g) in &mut guards {
         let to = gb.pos - b.pos;
-        if !g.asleep() && to.length() < 700.0 && to.normalize_or_zero().dot(f) > 0.3 && (to.y).abs() < 800.0 {
+        if !g.asleep() && !g.inactive && to.length() < 700.0 && to.normalize_or_zero().dot(f) > 0.3 && (to.y).abs() < 800.0 {
             crate::sfx::play(crate::sfx::BODY_FALL, Some(gb.pos));
             g.knock_out();
         }

@@ -103,7 +103,7 @@ pub fn hold(
     mut commands: Commands,
     game: Res<Game>,
     inv: Res<crate::items::Inventory>,
-    bodies: Query<(&Body, Option<&crate::player::Player>), Without<Held>>,
+    bodies: Query<(&Body, Option<&crate::player::Player>, Option<&Visibility>), Without<Held>>,
     mut held: Query<(Entity, &Held, &mut Transform, &mut Visibility)>,
     children: Query<&Children>,
     parts: Query<&Mesh3d, With<Part>>,
@@ -112,7 +112,7 @@ pub fn hold(
 ) {
     let lt2 = game.data.lights.first().map(|(_, l)| l).filter(|_| std::env::var_os("MGS2_NO_LT2").is_none());
     for (e, h, mut t, mut vis) in &mut held {
-        let Ok((b, player)) = bodies.get(h.owner) else {
+        let Ok((b, player, owner_vis)) = bodies.get(h.owner) else {
             // Its owner has gone (a trooper who left).
             commands.entity(e).try_despawn();
             continue;
@@ -123,7 +123,7 @@ pub fn hold(
         let owner = Transform::from_translation(b.pos * SCALE).with_rotation(Quat::from_rotation_y(b.yaw));
         let (_, rot, pos) = hand.to_scale_rotation_translation();
         *t = owner * Transform::from_translation((pos + rot * h.offset) * SCALE).with_rotation(rot * h.grip);
-        let shown = !h.hidden && (!h.when_aiming || player.is_some_and(|p| p.aiming)) && h.weapon.is_none_or(|w| w == if inv.usp { inv.weapon } else { 0 });
+        let shown = !h.hidden && (player.is_some() || owner_vis != Some(&Visibility::Hidden)) && (!h.when_aiming || player.is_some_and(|p| p.aiming)) && h.weapon.is_none_or(|w| w == if inv.usp { inv.weapon } else { 0 });
         *vis = if shown { Visibility::Inherited } else { Visibility::Hidden };
         // Lit like its owner, again whenever it has moved 10 cm.
         if let Some(l) = lt2.filter(|_| shown)

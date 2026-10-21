@@ -717,12 +717,18 @@ impl<'a> Vm<'a> {
                 self.codec.push(CodecReq::Timer(*m & 0x00FF_FFFF));
             }
             None
-        } else if is("mesg") && matches!((a.first(), a.get(1)), (Some(Value::Name(_)), Some(Value::Name(_)))) && !matches!(a.first(), Some(Value::Name(h)) if *h & 0x00FF_FFFF == SOUND_RELAY) {
+        } else if is("mesg") && a.len() >= 2 && !matches!(a.first(), Some(Value::Name(h)) if *h & 0x00FF_FFFF == SOUND_RELAY) {
             // Any other actor message (`mesg <actor> <code> args..`), for the
-            // actors the port keeps (the script walls).
-            if let (Some(Value::Name(t)), Some(Value::Name(c))) = (a.first(), a.get(1)) {
+            // actors the port keeps (script walls, props, soldiers). The
+            // actor may be given as a number or a variable (`mesg $2 ..`,
+            // `mesg 90520060 ..`).
+            let name = |v: Val| match v {
+                Val::Name(n) => Some(n),
+                v => v.int().map(|i| i as u32),
+            };
+            if let (Some(t), Some(c)) = (name(self.value(&a[0], args)), name(self.value(&a[1], args))) {
                 let rest = a.iter().skip(2).map(|v| self.value(v, args).int().unwrap_or(0)).collect();
-                self.codec.push(CodecReq::Mesg { target: *t & 0x00FF_FFFF, code: *c & 0x00FF_FFFF, args: rest });
+                self.codec.push(CodecReq::Mesg { target: t & 0x00FF_FFFF, code: c & 0x00FF_FFFF, args: rest });
             }
             None
         } else if is("mesg") && matches!(a.first(), Some(Value::Name(h)) if *h & 0x00FF_FFFF == SOUND_RELAY) {

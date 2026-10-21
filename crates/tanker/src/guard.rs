@@ -718,6 +718,12 @@ pub struct Guard {
     /// calls fail as under chaff until he reports in person, which clears
     /// it (`FUN_00232050` / `FUN_0023a610` / `FUN_00237d48`).
     pub radio_shot: bool,
+    /// Out of play by the script (message 0x106, +0x350 bit 1): hidden,
+    /// no brain, no senses, not hit; message 0x107 brings him back.
+    pub inactive: bool,
+    /// A route the script gave him (message 1): (route, start point),
+    /// taken up at his next route step.
+    pending_route: Option<(usize, Option<usize>)>,
     /// The radio line he is saying (its clip), until it ends.
     on_air: Option<u32>,
     /// Seconds spent walking without getting anywhere.
@@ -836,6 +842,8 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         radio_in_hand: false,
         radio_dead: false,
         radio_shot: false,
+        inactive: false,
+        pending_route: None,
         on_air: None,
         stuck: 0.0,
         post: post_at,
@@ -880,6 +888,8 @@ pub fn patrol(route: usize, vision: f32, anim: Anim) -> Guard {
         radio_in_hand: false,
         radio_dead: false,
         radio_shot: false,
+        inactive: false,
+        pending_route: None,
         on_air: None,
         stuck: 0.0,
         post: None,
@@ -1189,6 +1199,63 @@ fn waypoint(game: &Game, route: usize, node: usize) -> Option<Waypoint> {
     r.points.get(node % r.points.len().max(1)).copied()
 }
 
+/// The point of `route` nearest to `at` (where `FUN_00257210` starts a
+/// route given no point).
+fn nearest_point(game: &Game, route: usize, at: Vec3) -> usize {
+    game.data
+        .collision
+        .as_ref()
+        .and_then(|c| c.routes.get(route))
+        .and_then(|r| r.points.iter().enumerate().min_by(|a, b| Vec3::from(a.1.position).distance_squared(at).total_cmp(&Vec3::from(b.1.position).distance_squared(at))).map(|(i, _)| i))
+        .unwrap_or(0)
+}
+
+/// The script's messages to the soldiers (`mesg <name> <code> args..`):
+/// - 1 `route [x y z place [point]]` (`FUN_00222810`): a new route
+///   (+0xc0f), taken up the next time he walks his route, and with the
+///   rest a new post (+0x2b0, as `-d`) and start point (+0xc10, 0xff =
+///   the nearest);
+/// - 0x106 (`FUN_00257df8` -> `FUN_00257a68`): out of play: hidden (his
+///   model and attachments +0x4c |= 0x3000) and his brain and senses
+///   stopped (+0x350 bit 1); 0x107 back (+0x350 cleared, model shown);
+/// - 0x100 / 0x101 / 0x103 / 0x104 (+0x350 bits 0x80000000 / 0x100),
+///   0x105 (sleep frames), 2 (+0x34c bit 8, one frame) and 3 / 4 (+0xd8
+///   bit 2) are not ported (their uses not traced).
+pub fn messages(mut game: ResMut<Game>, mut guards: Query<(&mut Guard, Option<&mut Visibility>)>) {
+    if game.guard_messages.is_empty() {
+        return;
+    }
+    if guards.is_empty() {
+        // Not spawned yet (the stage's setup runs first): keep them a while.
+        let n = game.guard_messages.len();
+        game.guard_messages.drain(..n.saturating_sub(64));
+        return;
+    }
+    for (target, code, args) in std::mem::take(&mut game.guard_messages) {
+        for (mut g, vis) in guards.iter_mut().filter(|(g, _)| (g.name as u32) & 0x00FF_FFFF == target) {
+            match code {
+                1 => {
+                    let Some(&route) = args.first() else { continue };
+                    let node = args.get(5).copied().filter(|n| (0..0xFF).contains(n)).map(|n| n as usize);
+                    if args.len() >= 5 {
+                        g.post = Some(Vec3::new(args[1] as f32, args[2] as f32, args[3] as f32));
+                    }
+                    info!("guard {}: script gives route {route}", g.route);
+                    g.pending_route = Some((route.max(0) as usize, node));
+                }
+                0x106 | 0x107 => {
+                    g.inactive = code == 0x106;
+                    info!("guard {} {}", g.route, if g.inactive { "taken out of play" } else { "back in play" });
+                    if let Some(mut v) = vis {
+                        *v = if g.inactive { Visibility::Hidden } else { Visibility::Inherited };
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 fn face(body: &mut Body, target: Vec3, dt: f32) {
     let to = target - body.pos;
     body.yaw = turn_toward(body.yaw, to.x.atan2(to.z), TURN_RATE * dt);
@@ -1209,6 +1276,7 @@ pub fn think(
     mut guards: Query<(Entity, &mut Guard, &mut Body)>,
     mut clock: Local<f32>,
     mut down: Local<std::collections::HashSet<Entity>>,
+    mut tested: Local<std::collections::HashSet<usize>>,
 ) {
     // The game's logic runs once per 60 Hz frame; counters advance by the
     // whole frames elapsed (movement uses the real time step).
@@ -1269,32 +1337,40 @@ pub fn think(
     });
     // Soldiers still able (the "What was that sound?" needs a comrade to
     // ask; the game counts his group, `FUN_0021d530`).
-    let able = guards.iter().filter(|(_, g, _)| !g.asleep()).count();
+    let able = guards.iter().filter(|(_, g, _)| !g.asleep() && !g.inactive).count();
     let changed = std::mem::take(&mut phase.changed);
     let mut highest = 0i32;
 
     let shot = gunshot.0.take();
     let difficulty = game.banks.b16(crate::gcl::DIFFICULTY);
     // MGS2_DOWN=route:s|k|d@seconds,..: that soldier falls asleep, is
-    // knocked out or dies then (testing).
-    let downs: Vec<(usize, char)> = std::env::var("MGS2_DOWN")
+    // knocked out or dies then, or as soon after as a soldier walks that
+    // route (a script may hand it over a little later); once (testing).
+    let downs: Vec<(usize, char, usize)> = std::env::var("MGS2_DOWN")
         .ok()
         .map(|v| {
             v.split(',')
-                .filter_map(|e| {
+                .enumerate()
+                .filter_map(|(n, e)| {
                     let (who, at) = e.split_once('@')?;
                     let (route, kind) = who.split_once(':')?;
                     let at: f32 = at.parse().ok()?;
                     let now = time.elapsed_secs();
-                    (now >= at && now - dt < at).then_some((route.parse().ok()?, kind.chars().next()?))
+                    (now >= at && !tested.contains(&n)).then_some((route.parse().ok()?, kind.chars().next()?, n))
                 })
                 .collect()
         })
         .unwrap_or_default();
     for (me, mut g, mut body) in &mut guards {
+        // Out of play (message 0x106): nothing runs (`FUN_00222978` skips
+        // his senses under +0x350 bit 1).
+        if g.inactive {
+            continue;
+        }
         g.turn_head(&mut body, dt * 60.0);
         let darted = std::mem::take(&mut g.stung);
-        if let Some(&(_, kind)) = downs.iter().find(|d| d.0 == g.route) {
+        if let Some(&(_, kind, n)) = downs.iter().find(|d| d.0 == g.route) {
+            tested.insert(n);
             info!("test: guard {} down ({kind})", g.route);
             match kind {
                 'k' => g.knock_out(),
@@ -2505,6 +2581,23 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
         g.state = State::Discovery { timer: 0 };
     }
 
+    // A new route from the script (message 1, `FUN_00222810` -> +0xc0f),
+    // taken up by the route walker (`FUN_00224760`: +0xc0f != +0xc0c ->
+    // `FUN_00252a20`; start point +0xc10, or the nearest when none).
+    if let Some((route, node)) = g.pending_route
+        && matches!(g.state, State::Patrol | State::Wait(_) | State::Return)
+    {
+        g.pending_route = None;
+        if route != g.route {
+            info!("guard {} takes route {route}", g.route);
+            g.route = route;
+            g.node = node.unwrap_or_else(|| nearest_point(game, route, body.pos));
+            if let Some(wp) = waypoint(game, g.route, g.node) {
+                plan(g, body.pos, Vec3::from(wp.position), game);
+            }
+            g.state = State::Return;
+        }
+    }
     match g.state.clone() {
         State::Patrol => {
             let Some(wp) = waypoint(game, g.route, g.node) else {

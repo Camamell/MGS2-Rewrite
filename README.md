@@ -287,6 +287,8 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      toward where Snake was and look about; the Evasion search looks about with the head;
      chaff jams the soldiers' radios: a caller shakes his dead radio, runs to
      the manager's report point and reports in person (Caution, not Alert);
-     a shot radio (a dart will do) fails him the same way
+     a shot radio (a dart will do) fails him the same way; the scripts'
+     messages to soldiers move them to other routes (w01d's lookout) or take
+     them out of play and back (w02a's door soldier)
    - next: the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects), the commandant's walk
