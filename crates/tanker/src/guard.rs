@@ -175,6 +175,13 @@ pub struct Phase {
     /// The radios are jammed (`DAT_0017f48c` bit 0x10, set while chaff
     /// (`bomb_chaff.c`) is in the air): the port's chaff timer.
     pub jammed: bool,
+    /// The manager's `-e`: (route, point, proc) run when a soldier reaches
+    /// that point (0x3fe828, `FUN_002217f0` / `FUN_0021dc60`).
+    route_events: Vec<(usize, usize, u32)>,
+    /// The manager's `-f`: (route, point, clip, frames) said there by a
+    /// soldier whose point waits -4 (0x401e48, `FUN_00221858`: the length
+    /// / 5).
+    route_lines: Vec<(usize, usize, u32, u32)>,
 }
 
 /// The soldiers' radio lines, as the enemy manager's init reads them
@@ -402,6 +409,8 @@ impl Default for Phase {
             no_answer: Vec::new(),
             report_at: Vec3::ZERO,
             jammed: false,
+            route_events: Vec::new(),
+            route_lines: Vec::new(),
         }
     }
 }
@@ -416,8 +425,30 @@ impl Phase {
             if let (Some(x), Some(y), Some(z)) = (c(0), c(1), c(2)) {
                 p.report_at = Vec3::new(x, y, z);
             }
+            let vals = |letter| s.opt(letter).map(|v| v.to_vec()).unwrap_or_default();
+            p.route_events = vals(b'e')
+                .chunks_exact(3)
+                .filter_map(|c| match (c[0].int(), c[1].int(), &c[2]) {
+                    (Some(r), Some(n), crate::gcl::Val::Proc(proc)) => Some((r.max(0) as usize, n.max(0) as usize, *proc)),
+                    _ => None,
+                })
+                .collect();
+            p.route_lines = vals(b'f')
+                .chunks_exact(4)
+                .filter_map(|c| Some((c[0].int()?.max(0) as usize, c[1].int()?.max(0) as usize, c[2].int()? as u32, (c[3].int()? / 5).max(0) as u32)))
+                .collect();
         }
         p
+    }
+
+    /// The `-e` proc for a soldier reaching `point` of `route`.
+    fn route_event(&self, route: usize, point: usize) -> Option<u32> {
+        self.route_events.iter().find(|e| e.0 == route && e.1 == point).map(|e| e.2)
+    }
+
+    /// The `-f` line for `point` of `route`: (clip, frames).
+    fn route_line(&self, route: usize, point: usize) -> Option<(u32, u32)> {
+        self.route_lines.iter().find(|l| l.0 == route && l.1 == point).map(|l| (l.2, l.3))
     }
 
     fn set(&mut self, k: PhaseKind) {
@@ -724,6 +755,12 @@ pub struct Guard {
     /// A route the script gave him (message 1): (route, start point),
     /// taken up at his next route step.
     pending_route: Option<(usize, Option<usize>)>,
+    /// The script's message 2 arrived (+0x34c bit 8, good for one frame:
+    /// `signal` until his turn this frame, then `signal_now`).
+    signal: bool,
+    signal_now: bool,
+    /// Frames he has spent at his current route point.
+    point_frames: u32,
     /// The radio line he is saying (its clip), until it ends.
     on_air: Option<u32>,
     /// Seconds spent walking without getting anywhere.
@@ -844,6 +881,9 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         radio_shot: false,
         inactive: false,
         pending_route: None,
+        signal: false,
+        signal_now: false,
+        point_frames: 0,
         on_air: None,
         stuck: 0.0,
         post: post_at,
@@ -890,6 +930,9 @@ pub fn patrol(route: usize, vision: f32, anim: Anim) -> Guard {
         radio_shot: false,
         inactive: false,
         pending_route: None,
+        signal: false,
+        signal_now: false,
+        point_frames: 0,
         on_air: None,
         stuck: 0.0,
         post: None,
@@ -1199,6 +1242,73 @@ fn waypoint(game: &Game, route: usize, node: usize) -> Option<Waypoint> {
     r.points.get(node % r.points.len().max(1)).copied()
 }
 
+/// A route point's action index -> the walker's action (+0xc00), the table
+/// at w00a 0x1f39f0 (`FUN_00224870`). 0x1d / 0x1e / 0x25 / 0x26 are gaits
+/// for the walk to the point (`FUN_00224c28`: 2 / 3 / 7 / 9), not actions.
+const POINT_ACTIONS: [u16; 26] = [0, 4, 5, 6, 0xA, 7, 8, 9, 0xD, 0xE, 0x10, 0x11, 0x12, 0x13, 0x15, 0x16, 0x17, 0x18, 2, 0x14, 0x1D, 0x1E, 0x25, 0x19, 0x1B, 0x26];
+
+/// The walker's action at a point. With flags 0x40 / 0x80 the action index
+/// is a motion number played through other steps (+0xc00 | 0x1000 /
+/// 0x2000; not ported).
+fn point_action(wp: &mgs2_formats::hzx::Waypoint) -> u16 {
+    if wp.flags & 0xC0 != 0 {
+        return 0;
+    }
+    POINT_ACTIONS.get(wp.action.max(0) as usize).copied().filter(|&a| a < 0x1D).unwrap_or(0)
+}
+
+/// The motion an action plays once while he waits (`FUN_002240f8`; the
+/// step functions end it with +0xf58 = 1). Not ported: 2 (the "!"), 3 / 0xf
+/// (turns), 7 / 8 / 0xe / 0x10..0x14 / 0x17 (motions 274-282, one-frame
+/// placeholders in gbs.mar), 0xa's effect at frame 18 and its motion 7,
+/// 6's voice at frames 70, 226 and 393, 0x16 (idle, body flag
+/// 0x100000000000) and 0x19 / 0x1a (the radio).
+fn action_motion(action: u16) -> Option<usize> {
+    Some(match action {
+        4 => 15,
+        5 => 16,
+        6 => 17,
+        9 => 231,
+        0xA => 6,
+        0xB => 20,
+        0xC => 232,
+        0x15 => 5,
+        0x18 => 104,
+        0x1B => 228,
+        0x1C => 229,
+        _ => return None,
+    })
+}
+
+/// Action 0xd's head (`FUN_00223aa0`, a 270-frame cycle): front, then
+/// +0x200 from frame 90 and -0x200 from frame 180 (the yaw +0xf66 under
+/// +0x354 bit 0x800).
+fn head_swing(t: u32) -> f32 {
+    match t % 270 {
+        90..180 => 512.0,
+        180.. => -512.0,
+        _ => 0.0,
+    }
+}
+
+/// Whether the action at a point has ended (+0xf58 == 1), for waits of -1.
+fn action_done(action: u16, t: u32, game: &Game, body: &Body) -> bool {
+    match action {
+        // `FUN_00223aa0` signals on frame 269 of its cycle.
+        0xD => t >= 0x10D,
+        a => action_motion(a).is_some_and(|m| t >= motion_length(game, body, m, 0)),
+    }
+}
+
+/// `a` wrapped to -pi..pi.
+fn signed_angle(a: f32) -> f32 {
+    (a + std::f32::consts::PI).rem_euclid(TAU) - std::f32::consts::PI
+}
+
+/// A route point's `-f` line: no click (0x40000), panned from him
+/// (0x4000000), its length from the `-f` table (0x20000).
+const ROUTE_LINE: u32 = 0x0406_0000;
+
 /// The point of `route` nearest to `at` (where `FUN_00257210` starts a
 /// route given no point).
 fn nearest_point(game: &Game, route: usize, at: Vec3) -> usize {
@@ -1218,9 +1328,11 @@ fn nearest_point(game: &Game, route: usize, at: Vec3) -> usize {
 /// - 0x106 (`FUN_00257df8` -> `FUN_00257a68`): out of play: hidden (his
 ///   model and attachments +0x4c |= 0x3000) and his brain and senses
 ///   stopped (+0x350 bit 1); 0x107 back (+0x350 cleared, model shown);
+/// - 2: +0x34c bit 8 for a frame, which ends a route point's wait of -3
+///   (`FUN_002246c0`);
 /// - 0x100 / 0x101 / 0x103 / 0x104 (+0x350 bits 0x80000000 / 0x100),
-///   0x105 (sleep frames), 2 (+0x34c bit 8, one frame) and 3 / 4 (+0xd8
-///   bit 2) are not ported (their uses not traced).
+///   0x105 (sleep frames) and 3 / 4 (+0xd8 bit 2) are not ported (their
+///   uses not traced).
 pub fn messages(mut game: ResMut<Game>, mut guards: Query<(&mut Guard, Option<&mut Visibility>)>) {
     if game.guard_messages.is_empty() {
         return;
@@ -1242,6 +1354,10 @@ pub fn messages(mut game: ResMut<Game>, mut guards: Query<(&mut Guard, Option<&m
                     }
                     info!("guard {}: script gives route {route}", g.route);
                     g.pending_route = Some((route.max(0) as usize, node));
+                }
+                2 => {
+                    info!("guard {}: script signal", g.route);
+                    g.signal = true;
                 }
                 0x106 | 0x107 => {
                     g.inactive = code == 0x106;
@@ -1284,7 +1400,8 @@ pub fn think(
     let ticks = clock.floor() as u32;
     *clock -= ticks as f32;
     // Chaff in the air jams the soldiers' radios (`DAT_0017f48c` bit 0x10).
-    phase.jammed = jam.is_some_and(|j| j.0 > 0.0);
+    // MGS2_JAM=1 jams them for good (testing).
+    phase.jammed = jam.is_some_and(|j| j.0 > 0.0) || std::env::var_os("MGS2_JAM").is_some();
     // Comrades lying on the floor (only after they have fallen), and how.
     // (The game's list behind `FUN_0021e998`, manager +0x7c, is filled
     // where the decomp does not show; taken here as the soldiers down.)
@@ -1345,8 +1462,9 @@ pub fn think(
     let difficulty = game.banks.b16(crate::gcl::DIFFICULTY);
     // MGS2_DOWN=route:s|k|d@seconds,..: that soldier falls asleep, is
     // knocked out or dies then, or as soon after as a soldier walks that
-    // route (a script may hand it over a little later); once (testing).
-    let downs: Vec<(usize, char, usize)> = std::env::var("MGS2_DOWN")
+    // route (a script may hand it over a little later); `@air` as soon as
+    // he starts a radio line; once each (testing).
+    let downs: Vec<(usize, char, usize, bool)> = std::env::var("MGS2_DOWN")
         .ok()
         .map(|v| {
             v.split(',')
@@ -1354,9 +1472,11 @@ pub fn think(
                 .filter_map(|(n, e)| {
                     let (who, at) = e.split_once('@')?;
                     let (route, kind) = who.split_once(':')?;
-                    let at: f32 = at.parse().ok()?;
+                    // `@air`: when he starts a radio line.
+                    let air = at == "air";
+                    let at: f32 = if air { 0.0 } else { at.parse().ok()? };
                     let now = time.elapsed_secs();
-                    (now >= at && !tested.contains(&n)).then_some((route.parse().ok()?, kind.chars().next()?, n))
+                    (now >= at && !tested.contains(&n)).then_some((route.parse().ok()?, kind.chars().next()?, n, air))
                 })
                 .collect()
         })
@@ -1367,9 +1487,10 @@ pub fn think(
         if g.inactive {
             continue;
         }
+        g.signal_now = std::mem::take(&mut g.signal);
         g.turn_head(&mut body, dt * 60.0);
         let darted = std::mem::take(&mut g.stung);
-        if let Some(&(_, kind, n)) = downs.iter().find(|d| d.0 == g.route) {
+        if let Some(&(_, kind, n, _)) = downs.iter().find(|d| d.0 == g.route && (!d.3 || g.on_air.is_some())) {
             tested.insert(n);
             info!("test: guard {} down ({kind})", g.route);
             match kind {
@@ -2621,6 +2742,19 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
                 return;
             }
             if follow(g, body, WALK_SPEED, 150.0, dt, game) {
+                // At the point (`FUN_002244f0`): the manager's `-e` event
+                // for it runs (`FUN_0021dc60`, the soldier's name as $1).
+                let node = g.node % game.data.collision.as_ref().and_then(|c| c.routes.get(g.route)).map_or(1, |r| r.points.len().max(1));
+                if let Some(proc) = phase.route_event(g.route, node) {
+                    info!("guard {} at point {node}: event {proc:#x}", g.route);
+                    if let Ok(mut q) = DROPS.lock() {
+                        q.push((proc, vec![g.name]));
+                    }
+                }
+                g.point_frames = 0;
+                if point_action(&wp) != 0 || wp.wait < 0 {
+                    info!("guard {} at point {node}: action {:#x}, wait {}", g.route, point_action(&wp), wp.wait);
+                }
                 // A route of one point is a post: he stands there.
                 let posts = game.data.collision.as_ref().and_then(|c| c.routes.get(g.route)).is_some_and(|r| r.points.len() <= 1);
                 g.state = match wp.wait {
@@ -2629,22 +2763,56 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
                         g.node += 1;
                         State::Patrol
                     }
+                    // `FUN_002246f8`: the manager's `-f` line for this point
+                    // (`FUN_0021c9e0`, line 0x4060000 | n: no click), and he
+                    // waits while he says it (0xf0 frames without one).
+                    -4 => {
+                        let frames = match phase.route_line(g.route, node) {
+                            Some((clip, frames)) => {
+                                info!("guard {} at point {node}: line {clip:#x}", g.route);
+                                phase.play_line(ROUTE_LINE, clip);
+                                frames
+                            }
+                            None => 0xF0,
+                        };
+                        State::Wait(frames as f32 / 60.0)
+                    }
                     w if w < 0 => State::Wait(f32::INFINITY),
                     w => State::Wait(f32::from(w) / 60.0),
                 };
             }
         }
         State::Wait(left) => {
-            body.play(g.anim.idle);
-            if let Some(wp) = waypoint(game, g.route, g.node) {
-                let f = match wp.look_at {
-                    Some(l) => (l[0] - body.pos.x).atan2(l[2] - body.pos.z),
-                    None => f32::from(wp.direction) * ANGLE,
-                };
-                body.yaw = turn_toward(body.yaw, f, TURN_RATE * dt);
+            let Some(wp) = waypoint(game, g.route, g.node) else {
+                body.play(g.anim.idle);
+                return;
+            };
+            let t = g.point_frames.saturating_add(ticks);
+            g.point_frames = t;
+            let action = point_action(&wp);
+            match action_motion(action) {
+                Some(m) if t < motion_length(game, body, m, 0) => body.play_once(m),
+                _ => body.play(g.anim.idle),
+            }
+            // He faces the point's direction (+0xc04 -> +0xf54); his head
+            // looks at its look point, or swings for action 0xd.
+            body.yaw = turn_toward(body.yaw, f32::from(wp.direction) * ANGLE, TURN_RATE * dt);
+            if let Some(l) = wp.look_at() {
+                let to = (l[0] - body.pos.x).atan2(l[2] - body.pos.z);
+                g.head_to = signed_angle(to - body.yaw) / ANGLE;
+            } else if action == 0xD {
+                g.head_to = head_swing(t);
             }
             let left = left - dt;
-            g.state = if left <= 0.0 {
+            let done = match wp.wait {
+                // `FUN_00225dc8`: until the action's motion ends (+0xf58 == 1).
+                -1 => action_done(action, t, game, body),
+                -2 => false,
+                // `FUN_002246c0`: until the script's message 2 (+0x34c bit 8).
+                -3 => g.signal_now,
+                _ => left <= 0.0,
+            };
+            g.state = if done {
                 g.node += 1;
                 State::Patrol
             } else {

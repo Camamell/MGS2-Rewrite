@@ -289,6 +289,9 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      the manager's report point and reports in person (Caution, not Alert);
      a shot radio (a dart will do) fails him the same way; the scripts'
      messages to soldiers move them to other routes (w01d's lookout) or take
-     them out of play and back (w02a's door soldier)
+     them out of play and back (w02a's door soldier); at their route points
+     soldiers play the point's action, turn their heads to its look point
+     or look left and right, and wait for a script signal or a radio line
+     as the point says; reaching a point can run a script event
    - next: the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects), the commandant's walk

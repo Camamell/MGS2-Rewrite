@@ -65,19 +65,36 @@ pub struct Route {
     pub points: Vec<Waypoint>,
 }
 
-/// One 40-byte route point:
-/// `f32 x, z, y, look_x; f32 look_z, look_y; i16 ?, flags, wait, dir, ?, action, ...`.
+/// One 40-byte route point, as the soldier's route loader `FUN_002593f0`
+/// copies it: `f32 x, z, y, look_x, look_z, look_y; u16 action, wait, dir,
+/// ?; u32 flags, area`.
 #[derive(Clone, Copy, Debug)]
 pub struct Waypoint {
     pub position: [f32; 3],
-    /// Point to look at while waiting (flag 4).
-    pub look_at: Option<[f32; 3]>,
-    pub flags: i16,
-    /// Frames to wait here (-1 = forever, 0 = walk on).
-    pub wait: i16,
-    /// Facing while waiting, 4096 = full turn.
-    pub direction: i16,
+    /// The point the flags 0x5 / 0xa / 0x300 look at (runtime +0x400).
+    pub look: [f32; 3],
+    /// Action index (+0x18, runtime +0x900): the walker's action through
+    /// the table at 0x1f39f0, or (flags 0x40 / 0x80) a motion number.
     pub action: i16,
+    /// Frames to wait here (runtime +0x980): 0 walk on, -1 until the
+    /// action ends, -2 for good, -3 until the script's message 2, -4 the
+    /// manager's `-f` line for this point.
+    pub wait: i16,
+    /// Facing while waiting, 4096 = full turn (+0xa00).
+    pub direction: i16,
+    /// +0x1e (runtime +0xa80; use not traced).
+    pub extra: i16,
+    /// +0x20 (runtime +0xb00, then +0xc08).
+    pub flags: u32,
+    /// +0x24: the area (runtime +0x800 = 0x40000000 >> area).
+    pub area: u32,
+}
+
+impl Waypoint {
+    /// The point to look at, when the flags use it.
+    pub fn look_at(&self) -> Option<[f32; 3]> {
+        (self.flags & 0x30F != 0).then_some(self.look)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -225,14 +242,15 @@ pub fn parse(data: &[u8]) -> Result<Hzx> {
             let p = at + k * 40;
             let f = |o: usize| r.u32(p + o).map(f32::from_bits);
             let h = |n: usize| r.i16(p + 16 + n * 2);
-            let flags = h(4)?;
             points.push(Waypoint {
                 position: [f(0)?, f(8)?, f(4)?],
-                look_at: (flags & 4 != 0).then(|| -> Result<[f32; 3]> { Ok([f(12)?, f(20)?, f(16)?]) }).transpose()?,
-                flags,
+                look: [f(12)?, f(20)?, f(16)?],
+                action: h(4)?,
                 wait: h(5)?,
                 direction: h(6)?,
-                action: h(8)?,
+                extra: h(7)?,
+                flags: r.u32(p + 0x20)?,
+                area: r.u32(p + 0x24)?,
             });
         }
         routes.push(Route { points });

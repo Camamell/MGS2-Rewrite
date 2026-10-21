@@ -829,3 +829,59 @@ Ported (`guard::messages`): 1 (route, post, start point; taken up from
 patrol, waiting or returning), 0x106 / 0x107 (hidden with his held
 models, skipped by the brain, bullets, blows, grenades, the radar and
 footsteps). Not ported: 2-4, 0x100-0x105, the post's map.
+
+## Route points (normal state 0, `FUN_002261f0`)
+
+The route loader `FUN_002593f0` copies each 40-byte `.hzx` point into the
+soldier's route block: +0x000 position, +0x400 look point, +0x800 area bit
+(0x40000000 >> u32 +0x24), +0x900 action (u16 +0x18), +0x980 wait (+0x1a),
++0xa00 direction (+0x1c), +0xa80 (+0x1e, use not traced), +0xb00 flags
+(u32 +0x20). (The port's parser had the action and the flags swapped.)
+`FUN_00224870` loads the current point into +0xc00 (action, through the
+table at 0x1f39f0: 1 -> 4, 2 -> 5, 3 -> 6, 4 -> 0xa, 5 -> 7, 6 -> 8, 7 -> 9,
+8 -> 0xd, 9 -> 0xe, 10..13 -> 0x10..0x13, 14 -> 0x15, 15 -> 0x16, 16 ->
+0x17, 17 -> 0x18, 18 -> 2, 19 -> 0x14, 20 -> 0x1d, 21 -> 0x1e, 22 -> 0x25,
+23 -> 0x19, 24 -> 0x1b, 25 -> 0x26; flags 0x40 / 0x80 instead keep the
+index as a motion with bit 0x1000 / 0x2000), +0xc02 wait, +0xc04
+direction, +0xc08 flags (in Caution flags 0x800 / 0x1000 and actions 4-6
+become 2 / 0xd with a wait of -1 turned into 180 frames).
+
+Sub-states (+0x330): 1 (`FUN_00224d20`) walks to the point (arrival
+within 450 mm; the head looks at the point for the first 30 frames), 6
+(`FUN_00225590`) turns to the direction (up to 60 frames), 10
+(`FUN_00225770`, flags 0x20) plays action 0xf first; then `FUN_002244f0`
+runs the manager's `-e` event for (route, point) (`FUN_0021dc60` ->
+`FUN_0022e6d0(proc, soldier)`) and `FUN_00224a68` picks the wait: 7
+(`FUN_00225dc8`) for -1 or flags 0x40: until the action ends (+0xf58 ==
+1); 8 for -2 and 2 otherwise (`FUN_002258a0`): the wait counts down;
+`FUN_002246c0` ends it at 0, -3 ends at the script's message 2 (+0x34c bit
+8), -4 is set by `FUN_002246f8` to the length of the manager's `-f` line
+for the point (`FUN_0021c9e0`: line 0x4060000 | entry). Each frame of the
+wait `FUN_00224618` sets the body action to +0xc00 (0 from 0x1d on) and
+the head by the flags: 0x5 / 0xa / 0x300 look at the look point (+0x354
+0x300 / 0x400 / 0x10200), else the head yaw +0xf66 = the direction; action
+0xd sets +0x354 bit 0x800 and its step `FUN_00223aa0` swings +0xf66 on a
+270-frame cycle (front, +0x200 at 90, -0x200 at 180, done at 269). Moving
+on, `FUN_00224c28` picks the gait from the next point's action (0x1d 2,
+0x1e 3, 0x25 7, 0x26 9; flags 0xa 1; Caution 5; `-s` 0x40 10).
+
+Actions and motions (`FUN_002240f8`): 4 15, 5 16, 6 17 (`FUN_00260320`),
+9 231, 0xa 6 then 7 (`FUN_002237e0`, an effect at frame 18), 0xb 20, 0xc
+232, 0xd idle + head swing, 0x15 5, 0x16 idle with body flag
+0x100000000000 (`FUN_00260240`), 0x18 104, 0x19 radio out, 0x1b 228, 0x1c
+229; 7 / 8 / 0xe / 0x10-0x14 / 0x17 use motions 274-282 (one-frame
+placeholders in gbs.mar). The Tanker's points use actions 8 (45 points),
+3 (27), 4 (21), 15 (21), 2 (9), 23 / 21 / 1 (5 each), 18 (4), 17 / 10 (2),
+14 (1); waits -1 (63), -4 (6), -3 (2). `-e` events: w02a (routes 43 / 37 /
+38 / 42) and w03a (2 / 16 / 17 / 18, for its `#3259e5` soldiers); `-f`
+lines: w02a route 43.
+
+Ported (`Wait` in `normal_brain`): the action's motion once, the head
+swing of 0xd, the head turned to the look point (yaw only; the +0x354
+modes 0x100 / 0x200 / 0x400 are not told apart), the body to the
+direction, waits -1 / -2 / -3 / -4, `-e` events (the soldier's name as
+$1) and `-f` lines. Not ported: the turn sub-state 6 (the body turns as
+he waits), 10 / action 0xf, the gaits, the Caution changes, the walking
+head look, actions 2 / 3 / 7 / 8 / 0xe / 0x10-0x14 / 0x16 / 0x17 / 0x19 /
+0x1a and the 0x40 / 0x80 motion forms, 0xa's effect and second motion,
+6's voices.

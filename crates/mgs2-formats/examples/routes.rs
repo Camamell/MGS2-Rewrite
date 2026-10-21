@@ -55,8 +55,8 @@ fn main() {
         println!("route {i}: {} points", r.points.len());
         for (n, p) in r.points.iter().enumerate() {
             println!(
-                "  {n:2} ({:7.0} {:7.0} {:7.0}) wait {:5} dir {:5} flags {:#06x} action {} look {:?}",
-                p.position[0], p.position[1], p.position[2], p.wait, p.direction, p.flags, p.action, p.look_at
+                "  {n:2} ({:7.0} {:7.0} {:7.0}) wait {:5} dir {:5} flags {:#06x} action {} extra {} area {} look {:?}",
+                p.position[0], p.position[1], p.position[2], p.wait, p.direction, p.flags, p.action, p.extra, p.area, p.look_at()
             );
         }
     }
