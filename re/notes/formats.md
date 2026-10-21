@@ -482,13 +482,18 @@ table is 0 for Snake (`FUN_002898d0`) and 1 + voice for soldiers
 (`FUN_00257bc0`). Without a table the raw sound plays. w00a: Snake's steps
 2 / 3 become 422..437, the soldiers' 358..421.
 
-Snake's shots (bullet flag 2: the M9's darts and the USP; soldiers' rounds
-pass 1 and skip this) use the same tables: the struck element's flags >> 28
-picks a hook the stage set per material (`FUN_0036c630` -> `FUN_003a5c40`):
-`#41cf4e -n <material>` plays that material's variant of sound 0x27 from
-table 0 (`FUN_003a5cf8`; w00a 446..453), `#0acf09 -n` registers
-`0x2d7498` (sparks, not ported), and a few stages hook other actors on
-5..7.
+Shots with bullet flag 2 (Snake's: table 0x1f83d0 by weapon, the M9
+0x4002, the others 0x2022; and the soldiers': `FUN_002550c0` passes
+flags | 2 | 0x10 | 0x80 | 0x200) use the same tables: the struck
+element's flags >> 28 picks a hook the stage set per material
+(`FUN_0036c630` -> `FUN_003a5c40`): `#41cf4e -n <material>` plays that
+material's variant of sound 0x27 from table 0 (`FUN_003a5cf8`; w00a
+446..453) and a spark burst, then noise 5 / 6 for flags 0x4000 / 0x2000.
+`#0acf09 -n` registers `0x2d7498`, wall_scar.c's placement: bullet holes
+for shots with flag 0x20 (`FUN_0036c520`; not the M9's darts, not the
+soldiers' rounds), a ring of `-u` (default 10, Tanker 32) +-50 mm quads
+of `dankon2_alp`, the oldest fading when fewer than 5 are free. A few
+stages hook other actors on 5..7. Ported (`scar.rs`, `bullet.rs`).
 
 Snake's `snake.sar` (r_tnk0) keys his wall knocks to sound 55 on joint 6
 (motion 67 at time 50, the crouched and other knocks 68-78, 91-94,
