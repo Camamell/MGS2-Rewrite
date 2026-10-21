@@ -195,7 +195,12 @@ The slot table (`FUN_00269458`: player+0x420 = w00a 0x1f4b30, shorts):
 (death), +0x1a 14, +0x1c 176, +0x1e 15, +0x20 16, +0x22 115, +0x24 116,
 +0x26 37. Ported (`player::React`): the flinch (11 / 12, 37 prone), the
 knock-down from the front (14, the push, 15, 60 frames and a key, 16) for
-the rifle butt and the soldiers' grenades (push assumed none). Not
+the rifle butt and the soldiers' grenades. The push sums the hits'
+records into Snake's (`FUN_00108468` -> `FUN_001082f0`): a record of
+type 0 adds its vector (the butt's), type 4 (a blast, `FUN_003724d0`:
+x = half its box size / 8) pushes that far along the line from the
+blast to him (atan2 of the boxes' centres): 125 mm a frame for the
+soldiers' 2000 mm grenade. Not
 ported: the front / back variants, face-down lying, the damage scaling,
 flag 2's and the item's states, 0x15e / 0x15f.
 

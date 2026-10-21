@@ -104,7 +104,17 @@ fn frags(
     mut q: Query<(Entity, &mut Frag)>,
     mut player: Query<(&Body, &mut Player)>,
     mut gizmos: Gizmos,
+    mut tested: Local<bool>,
 ) {
+    // MGS2_FRAG_AT=seconds: a soldier's grenade thrown at Snake from 3 m
+    // ahead of him then (testing).
+    if !*tested
+        && std::env::var("MGS2_FRAG_AT").ok().and_then(|v| v.parse::<f32>().ok()).is_some_and(|t| time.elapsed_secs() >= t)
+        && let Ok((b, _)) = player.single()
+    {
+        *tested = true;
+        throw_frag(b.pos + b.forward() * 3000.0 + Vec3::Y * 1400.0, b.pos, 1000.0);
+    }
     for (hand, target, height) in THROWS.lock().map(|mut t| std::mem::take(&mut *t)).unwrap_or_default() {
         let up = (18.0 * height).sqrt();
         let flight = (2.0 * up / FRAG_GRAVITY).max(1.0);
@@ -165,9 +175,11 @@ fn frags(
             let clear = game.collision.as_ref().and_then(|c| c.ray(g.pos + Vec3::Y * 100.0, mid)).is_none();
             if d.max_element() <= FRAG_REACH && clear && !p.dead() {
                 info!("Snake caught in the blast");
-                // A blast's hit (group 0x20000) knocks him down; its push
-                // is not read (none assumed).
-                p.knocked_down(FRAG_DAMAGE, Vec3::ZERO);
+                // A blast's hit (group 0x20000) knocks him down, pushed
+                // away from it by an eighth of its box's half-size a frame
+                // (`FUN_003724d0` / `FUN_001082f0`, record type 4).
+                let away = Vec3::new(mid.x - g.pos.x, 0.0, mid.z - g.pos.z).normalize_or_zero();
+                p.knocked_down(FRAG_DAMAGE, away * FRAG_REACH / 8.0);
             }
         }
     }

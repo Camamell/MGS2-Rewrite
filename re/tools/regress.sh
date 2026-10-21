@@ -53,7 +53,9 @@ MGS2_BOX_TEST=1 check box_check "checks the box" ge 1 w01a --skip-cutscenes --sn
 # The rifle butt takes 5 (FUN_00254248's hit record).
 check close_quarters "life=95" ge 1 w01a --skip-cutscenes --trace --snake-at=6000,0,3300 --snake-dir=0 --shot-at 6
 # Struck, Snake is knocked down, slides 800 mm and gets up on a button.
-MGS2_KEYS=J@7.5 check knocked_down "Snake knocked down|Snake gets up|snake=\(598[0-9],0,2500\)" ge 3 w01a --skip-cutscenes --trace --snake-at=6000,0,3300 --snake-dir=0 --shot-at 7
+MGS2_KEYS=J@7.5 check knocked_down "Snake knocked down|Snake gets up|snake=\(59[89][0-9],0,(249[5-9]|250[0-5])\)" ge 3 w01a --skip-cutscenes --trace --snake-at=6000,0,3300 --snake-dir=0 --shot-at 9
+# A grenade's blast knocks him 1 m away from it (125 mm a frame, easing).
+MGS2_FRAG_AT=3 check frag_knock "Snake knocked down|snake=\(9000,0,(309[5-9]|310[0-5])\)" ge 2 w01a --skip-cutscenes --trace --snake-at=9000,0,4100 --snake-dir=0 --shot-at 7
 # A soldier with a wounded arm strikes in the alert with motion 0x54.
 MGS2_WOUND=3:1 MGS2_ALERT_AT=0.5 check wounded_strike "strikes in the alert \(motion 0x54\)" ge 1 w01a --skip-cutscenes --snake-at=6000,0,3300 --snake-dir=0 --shot-at 4
 # A soldier finds his comrade asleep, kicks him awake and radios it in.

@@ -350,7 +350,9 @@ pub fn control(
                     // = the push's heading + 0x800).
                     body.yaw = (-r.push.x).atan2(-r.push.z);
                 }
-                let mut next = body.pos + r.push * frames;
+                // The game's frames summed: push (1 + 7/8 + ...) over them.
+                let keep = 0.875f32.powf(frames);
+                let mut next = body.pos + r.push * (1.0 - keep) / 0.125;
                 if let Some(col) = &game.collision {
                     next = col.push_out(next, RADIUS, 1000.0, STEP_UP);
                     next = col.push_out_script(next, RADIUS, 1000.0, STEP_UP);
@@ -359,7 +361,7 @@ pub fn control(
                     }
                 }
                 body.pos = next;
-                r.push *= 0.875f32.powf(frames);
+                r.push *= keep;
                 Some(if r.frames >= length(BLOWN_MOTION) { React { stage: ReactStage::Down, frames: 0.0, ..r } } else { r })
             }
             ReactStage::Down => {
