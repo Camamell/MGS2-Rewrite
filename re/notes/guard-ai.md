@@ -166,6 +166,39 @@ Bs16:0xf4). `FUN_00289320` applies the damage accumulators (e.g.
 DAT_001919f4) and revives Snake with an equipped ration: full life on Very
 Easy, half otherwise.
 
+### Snake's reactions to hits (`FUN_002713e8`, `FUN_00271af0`)
+
+`FUN_002713e8` takes a hit on Snake: the record's damage (+0x14) is
+halved for flags 0x800000004801c when +0x9c8 == 7 and raised by half
+under DAT_001ecbe8 & 0x8000000000000002 (neither traced), added to the
+accumulator (PTR_DAT_00191910 + 0x13e, capped at 30000) and the frame's
+hit bit DAT_001ecd40 0x200 set. For flags meeting 0x440023000203e0 the
+record's vector is his push (+0xf30) and he is turned to face where it
+came from (+0x62 = its heading + 0x800; flags 0x4000000000000 /
+0x2000000000 pick front / back variants, bits +0xf90 0x2000-0x20000).
+`FUN_00271af0` then picks the state:
+- flags in that mask (a rifle butt 0x100000000, a blast 0x20000): voice
+  0x18 and the knock-down `FUN_00285690`: motion slot +0x1a (+0x10 /
+  +0x12 / +0x14 / +0x16 by the +0xf90 variant; +0x1c when +0xa70 = 1),
+  sliding by the push, which eases by an eighth a frame
+  (`FUN_00142008(+0xf30, 0, 3)`); at the motion's end `FUN_00285b28`
+  (slot +0x1e, +0x22 face down): +0xa70 counts 1 a frame (5 while the pad
+  is worked) and past 60 any button press gets him up (`FUN_00285d30`,
+  slot +0x20 / +0x24; motions 0x15e / 0x15f when +0x9b0 is 5, 6, 0xf or
+  0x12), then standing (`0x2733d0`). Life at 0 goes to `FUN_00285eb0`.
+- others (rounds): voice 0x19 and the flinch `FUN_002852c0`: slot +0xe /
+  +0xc by the frame clock's parity, +0x26 prone (+0xf40 == 2); then his
+  stance's state. (`FUN_00285430` instead with item 0x47bfe3 and flag 0x40,
+  `FUN_00285570` / `0x278c58` with flag 2: not traced.)
+The slot table (`FUN_00269458`: player+0x420 = w00a 0x1f4b30, shorts):
++0xc 11, +0xe 12, +0x10 206, +0x12 207, +0x14 338, +0x16 339, +0x18 13
+(death), +0x1a 14, +0x1c 176, +0x1e 15, +0x20 16, +0x22 115, +0x24 116,
++0x26 37. Ported (`player::React`): the flinch (11 / 12, 37 prone), the
+knock-down from the front (14, the push, 15, 60 frames and a key, 16) for
+the rifle butt and the soldiers' grenades (push assumed none). Not
+ported: the front / back variants, face-down lying, the damage scaling,
+flag 2's and the item's states, 0x15e / 0x15f.
+
 ## Evasion brain: `FUN_0022C670`
 
 Its case 2 (`FUN_00238BF8`) is the discovery state again: seeing Snake

@@ -2952,6 +2952,8 @@ fn test_keys(time: Res<Time>, mut keys: ResMut<ButtonInput<KeyCode>>, mut done: 
             "B" => KeyCode::KeyB,
             "G" => KeyCode::KeyG,
             "V" => KeyCode::KeyV,
+            // Unbound: any button (getting up after a knock-down).
+            "J" => KeyCode::KeyJ,
             _ => continue,
         };
         if done.contains(&i) {

@@ -1127,8 +1127,17 @@ fn strike_hits(game: &Game, body: &Body, joint: usize, snake: Vec3) -> bool {
     d.x <= STRIKE_BOX + RADIUS && d.z <= STRIKE_BOX + RADIUS && d.y <= STRIKE_BOX + HEIGHT / 2.0
 }
 
-/// Strikes that landed this frame (damage), taken by the player.
-pub static STRIKES: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+/// Strikes that landed this frame (damage, push in mm per frame), taken by
+/// the player. The push is (0, -100, 100) turned by the soldier's facing
+/// (w00a 0x1f3c30): 100 mm a frame away from him (the drop is not used).
+pub static STRIKES: std::sync::Mutex<Vec<(i32, Vec3)>> = std::sync::Mutex::new(Vec::new());
+const STRIKE_PUSH: f32 = 100.0;
+
+fn land_strike(body: &Body) {
+    if let Ok(mut s) = STRIKES.lock() {
+        s.push((STRIKE_DAMAGE, body.forward() * STRIKE_PUSH));
+    }
+}
 
 const AIM_FRAMES: f32 = 21.0;
 const SHOT_FRAMES: f32 = 4.0;
@@ -2957,7 +2966,7 @@ fn call(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, (sub, ti
                 if strike_hits(game, body, STRIKE_JOINT, snake) {
                     info!("guard {} strikes with the rifle butt", g.route);
                     g.attack.strike = Some((t as f32, true));
-                    STRIKES.fetch_add(STRIKE_DAMAGE, std::sync::atomic::Ordering::Relaxed);
+                    land_strike(body);
                 }
             }
             if t >= motion_length(game, body, STRIKE_MOTION, 40) {
@@ -3926,7 +3935,7 @@ fn alert_brain(
             if strike_hits(game, body, joint, snake) {
                 info!("guard {} strikes in the alert (motion {motion:#x})", g.route);
                 landed = true;
-                STRIKES.fetch_add(STRIKE_DAMAGE, std::sync::atomic::Ordering::Relaxed);
+                land_strike(body);
             }
         }
         let length = body.motions.and_then(|m| game.data.motions.get(m)).and_then(|(_, mar)| mar.motions.get(motion)).map_or(40.0, |m| m.length as f32);

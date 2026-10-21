@@ -322,6 +322,9 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      (his skinned `sco_def` mesh over the Marines' skeleton), followed by
      the two TV cameras on the upper level, which catch Snake when he
      steps onto their side of it: a "!" over the camera, which turns to
-     film him, the stage camera from its side and the caught sequence
+     film him, the stage camera from its side and the caught sequence;
+     Snake flinches when a round hits him, and a rifle butt or a grenade
+     knocks him down (he slides back, lies until a button, gets up), the
+     butt's hit as the game's (5 damage, a box on the soldier's joint)
    - next: the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects)

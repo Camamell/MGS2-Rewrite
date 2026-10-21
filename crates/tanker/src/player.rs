@@ -131,7 +131,44 @@ pub struct Player {
     pub blocked: f32,
     /// Frames left of a forward roll (motion 117).
     pub roll: f32,
+    /// A hit's reaction in progress (`FUN_00271af0`'s damage states).
+    pub react: Option<React>,
 }
+
+/// Snake's reaction to a hit. `FUN_00271af0` sends a hit whose flags meet
+/// 0x440023000203e0 (a rifle butt's 0x100000000, a blast's 0x20000) to the
+/// knock-down (`FUN_00285690`, voice 0x18) and others (rounds) to the
+/// flinch (`FUN_002852c0`, voice 0x19). Motions from the slot table
+/// `FUN_00269458` points player+0x420 at (w00a 0x1f4b30).
+#[derive(Clone, Copy, Debug)]
+pub struct React {
+    pub stage: ReactStage,
+    /// Frames into the stage.
+    pub frames: f32,
+    /// The knock-down's slide (mm per frame), which eases to nothing by an
+    /// eighth a frame (`FUN_00142008(+0xf30, 0, 3)`).
+    pub push: Vec3,
+    /// The lying count (+0xa70): one a frame, five while the pad is
+    /// worked (`FUN_00285b28`).
+    pub count: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReactStage {
+    /// Slot +0xc / +0xe by the frame's parity (11 / 12), +0x26 (37) prone.
+    Flinch(usize),
+    /// Slot +0x1a (14): thrown down, sliding with the push.
+    Blown,
+    /// Slot +0x1e (15): on the floor until the count passes 60 and a
+    /// button is pressed.
+    Down,
+    /// Slot +0x20 (16): getting up.
+    GetUp,
+}
+
+const BLOWN_MOTION: usize = 14;
+const DOWN_MOTION: usize = 15;
+const GET_UP_MOTION: usize = 16;
 
 /// Roll travel: motion 117 moves 625 mm in 52 frames.
 const ROLL_SPEED: f32 = 624.6 / 52.0 * 60.0;
@@ -181,6 +218,40 @@ impl Player {
         if amount > 0 && std::env::var_os("MGS2_GOD").is_some() {
             return;
         }
+        self.take(amount);
+        crate::sfx::play(crate::sfx::HURT, None);
+    }
+
+    /// A round's hit: damage and the flinch (unless already knocked down).
+    pub fn shot(&mut self, amount: i32, frame: u64) {
+        if std::env::var_os("MGS2_GOD").is_some() {
+            return;
+        }
+        self.damage(amount);
+        if matches!(self.react, None | Some(React { stage: ReactStage::Flinch(_), .. })) {
+            let motion = if self.prone { 37 } else if frame & 1 == 0 { 12 } else { 11 };
+            self.react = Some(React { stage: ReactStage::Flinch(motion), frames: 0.0, push: Vec3::ZERO, count: 0.0 });
+        }
+    }
+
+    /// A blow that knocks him down: damage, voice 0x18 and the knock-down,
+    /// sliding with `push` (mm per frame).
+    pub fn knocked_down(&mut self, amount: i32, push: Vec3) {
+        if std::env::var_os("MGS2_GOD").is_some() {
+            return;
+        }
+        self.take(amount);
+        crate::sfx::play(0x18, None);
+        if !matches!(self.react, Some(React { stage: ReactStage::Blown | ReactStage::Down, .. })) {
+            info!("Snake knocked down");
+            self.react = Some(React { stage: ReactStage::Blown, frames: 0.0, push, count: 0.0 });
+            self.crouch = false;
+            self.prone = false;
+            self.aiming = false;
+        }
+    }
+
+    fn take(&mut self, amount: i32) {
         self.life -= amount;
         // A hit that leaves him under a third of his life starts him
         // bleeding (`FUN_002713e8` sets 0x1000000; `blood_dp.c`).
@@ -189,7 +260,6 @@ impl Player {
         }
         self.hurt = 0.25;
         self.since_hit = 0.0;
-        crate::sfx::play(crate::sfx::HURT, None);
         if self.life <= 0 && self.rations > 0 {
             self.rations -= 1;
             self.life = if self.very_easy { self.max_life } else { self.max_life / 2 };
@@ -243,18 +313,74 @@ pub fn control(
     fp: Res<crate::fpv::FirstPerson>,
 ) {
     let Ok((mut p, mut body)) = q.single_mut() else { return };
-    // A soldier's rifle butt (`guard.rs` close quarters).
-    let struck = crate::guard::STRIKES.swap(0, std::sync::atomic::Ordering::Relaxed);
-    if struck > 0 && !p.dead() {
-        p.damage(struck);
+    // A soldier's rifle butt (`guard.rs` close quarters) knocks him down.
+    let struck: Vec<(i32, Vec3)> = crate::guard::STRIKES.lock().map(|mut s| std::mem::take(&mut *s)).unwrap_or_default();
+    for (amount, push) in struck {
+        if !p.dead() {
+            p.knocked_down(amount, push);
+        }
     }
     let Ok(cam_tf) = cam.single() else { return };
     let dt = time.delta_secs().min(0.05);
     p.hurt = (p.hurt - dt).max(0.0);
     if p.dead() {
         p.speed = 0.0;
+        p.react = None;
         body.play_once(motion::DEATH);
         return;
+    }
+    if p.hang.is_some() {
+        p.react = None;
+    }
+    if let Some(mut r) = p.react {
+        let frames = dt * 60.0;
+        r.frames += frames;
+        p.speed = 0.0;
+        let set = body.motions;
+        let length = |m: usize| set.and_then(|i| game.data.motions[i].1.motions.get(m)).map_or(30.0, |mo| mo.length as f32);
+        p.react = match r.stage {
+            ReactStage::Flinch(m) => {
+                body.play_once(m);
+                (r.frames < length(m)).then_some(r)
+            }
+            ReactStage::Blown => {
+                body.play_once(BLOWN_MOTION);
+                if r.push.length_squared() > 1.0 {
+                    // Facing the one who struck him (`FUN_002713e8`: +0x62
+                    // = the push's heading + 0x800).
+                    body.yaw = (-r.push.x).atan2(-r.push.z);
+                }
+                let mut next = body.pos + r.push * frames;
+                if let Some(col) = &game.collision {
+                    next = col.push_out(next, RADIUS, 1000.0, STEP_UP);
+                    next = col.push_out_script(next, RADIUS, 1000.0, STEP_UP);
+                    if col.floor_below(next.x, next.z, next.y + STEP_UP).is_none() {
+                        next = body.pos;
+                    }
+                }
+                body.pos = next;
+                r.push *= 0.875f32.powf(frames);
+                Some(if r.frames >= length(BLOWN_MOTION) { React { stage: ReactStage::Down, frames: 0.0, ..r } } else { r })
+            }
+            ReactStage::Down => {
+                body.play(DOWN_MOTION);
+                let working = keys.get_pressed().next().is_some() || stick.as_ref().is_some_and(|s| s.0.length() > 0.5);
+                r.count += if working { 5.0 } else { 1.0 } * frames;
+                if r.count > 60.0 && keys.get_just_pressed().next().is_some() {
+                    info!("Snake gets up");
+                    Some(React { stage: ReactStage::GetUp, frames: 0.0, ..r })
+                } else {
+                    Some(r)
+                }
+            }
+            ReactStage::GetUp => {
+                body.play_once(GET_UP_MOTION);
+                (r.frames < length(GET_UP_MOTION)).then_some(r)
+            }
+        };
+        if p.react.is_some() {
+            return;
+        }
     }
     // MGS2_DROP=mm: two seconds in, lift him that high to fall (testing).
     if let Some(d) = std::env::var("MGS2_DROP").ok().and_then(|v| v.parse::<f32>().ok())

@@ -216,7 +216,7 @@ pub fn fly(
                 }
             }
         } else if hits_body(b.pos, end, sb.pos, player.height()).is_some() && !player.dead() {
-            player.damage(DAMAGE);
+            player.shot(DAMAGE, (time.elapsed_secs() * 60.0) as u64);
             commands.entity(e).despawn();
             continue;
         }

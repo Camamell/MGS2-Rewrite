@@ -165,7 +165,9 @@ fn frags(
             let clear = game.collision.as_ref().and_then(|c| c.ray(g.pos + Vec3::Y * 100.0, mid)).is_none();
             if d.max_element() <= FRAG_REACH && clear && !p.dead() {
                 info!("Snake caught in the blast");
-                p.damage(FRAG_DAMAGE);
+                // A blast's hit (group 0x20000) knocks him down; its push
+                // is not read (none assumed).
+                p.knocked_down(FRAG_DAMAGE, Vec3::ZERO);
             }
         }
     }
