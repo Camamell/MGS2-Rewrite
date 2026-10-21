@@ -140,7 +140,20 @@ within ±0x400 of facing him); within 1000 mm and seen it switches to
 sub-state 6 instead (close quarters: alert action 5 or 9 when +0xf16 & 1,
 table `FUN_002281e8`: `FUN_0025f810` with motion 0x55 / `FUN_0025fa48` 0xf3;
 for 0x55 a hit box on joint 20 (`FUN_00254248`) rides frames 2-5; when the
-motion ends, back to sub-state 3. Ported with an assumed 15 damage). Each shot is action 6. Aim for 21 frames, then fire
+motion ends, back to sub-state 3). The hit (`FUN_00254248`, frames 2-5
+of 0x54-0x57, via `FUN_0025f810`): a box of half-extents 500 mm (w00a
+0x1f3c40) on joint 20 (0x14 for motion 0x55; 0x57 / 0xf6 use 10, 0x56 6,
+0x53 0xe, 0x54 / 0x4c 0x10, 0x82-0x85 / 0xf3 / 0x173 joint 0 with flag
+0x40000000000000), a push (0, -100, 100) turned by his facing (0x1f3c30),
+and the hit record `FUN_001081d0(+0x1290, 0, 0xff, 0, 5, push)`: damage
+5 at +0x14 (the field the rifle round's 10 and the blasts' damage fill;
+an instant kill puts Snake's maximum life there). Boxes meet when their
+centres are within the sum of half-extents on every axis
+(`FUN_00108e38`). Ported: damage 5, the 500 mm box on joint 20 against
+Snake's collision cylinder as a box (assumed: his own hit box is not
+read), once per strike, and the alert's action 9 for a soldier with a
+wounded arm (+0xf16 & 1: `FUN_0025fa48`, motion 0x54 with the box on joint
+16; 0x153 under body flag 0x4000, not traced); the push is not. Each shot is action 6. Aim for 21 frames, then fire
 every 4 frames with a 1-in-3 chance to stop after each shot; reload after
 31 shots.
 
@@ -302,7 +315,7 @@ facing).
 
 ## Not yet ported
 
-- radio reports; the troopers' own brain; the strike's real damage;
+- radio reports; the troopers' own brain; the strike's push;
 - the game's precomputed shortest-path matrices in the `.hzx` (paths are
   recomputed from the node links instead).
 

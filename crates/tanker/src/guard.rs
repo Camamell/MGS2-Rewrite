@@ -1098,10 +1098,34 @@ struct Attack {
 /// rides joint 20 on frames 2-5 (`FUN_00254248`).
 const STRIKE_RANGE: f32 = 1000.0;
 const STRIKE_MOTION: usize = 0x55;
-/// What a strike takes from Snake (the hit's damage is not read yet;
-/// assumed) and the reach of its hit box (assumed).
-const STRIKE_DAMAGE: i32 = 15;
-const STRIKE_REACH: f32 = 1100.0;
+/// What a strike takes from Snake: `FUN_00254248`'s hit record
+/// (`FUN_001081d0(.., 0, 0xff, 0, 5, ..)`, damage at +0x14 as the rifle
+/// round's 10) and its box: half-extents 500 mm (w00a 0x1f3c40) on the
+/// joint's place, tested box against box (`FUN_00108e38`).
+const STRIKE_DAMAGE: i32 = 5;
+const STRIKE_BOX: f32 = 500.0;
+const STRIKE_JOINT: usize = 20;
+/// With a wounded arm (+0xf16 & 1) the alert strikes with action 9
+/// (`FUN_0025fa48`): motion 0x54 (0x153 under body flag 0x4000, not
+/// traced), whose box rides joint 16 (`FUN_00254248`).
+const WOUNDED_STRIKE_MOTION: usize = 0x54;
+const WOUNDED_STRIKE_JOINT: usize = 16;
+/// Frames of the motion that carry the hit box (`FUN_0025f810`: 2-5).
+const STRIKE_FRAMES: std::ops::RangeInclusive<f32> = 2.0..=5.0;
+
+/// Whether the strike's box on joint 20 meets Snake's (feet at `snake`;
+/// his box is assumed to be his collision cylinder's: [`RADIUS`] across,
+/// [`HEIGHT`] tall).
+fn strike_hits(game: &Game, body: &Body, joint: usize, snake: Vec3) -> bool {
+    let model = &game.data.models[body.model].1;
+    let motion = body.motions.and_then(|m| game.data.motions[m].1.motions.get(body.motion));
+    let Some(joint) = mgs2_bevy::anim::pose(model, motion, body.frame, false).get(joint).map(|m| Vec3::from(m.translation)) else {
+        return false;
+    };
+    let at = body.pos + Quat::from_rotation_y(body.yaw) * joint;
+    let d = (at - (snake + Vec3::Y * HEIGHT / 2.0)).abs();
+    d.x <= STRIKE_BOX + RADIUS && d.z <= STRIKE_BOX + RADIUS && d.y <= STRIKE_BOX + HEIGHT / 2.0
+}
 
 /// Strikes that landed this frame (damage), taken by the player.
 pub static STRIKES: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
@@ -1151,7 +1175,11 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         hearing,
         life,
         max_life: life,
-        wounds: 0,
+        // MGS2_WOUND=route:bits: start that soldier wounded (testing).
+        wounds: std::env::var("MGS2_WOUND")
+            .ok()
+            .and_then(|v| v.split(',').find_map(|e| e.split_once(':').filter(|(r, _)| r.parse() == Ok(route)).and_then(|(_, b)| b.parse().ok())))
+            .unwrap_or(0),
         stamina,
         max_stamina: stamina,
         resist: RESIST,
@@ -2879,7 +2907,8 @@ const BACK_OFF_FRAMES: u32 = 300;
 ///   (`FUN_00237d48`): "I'm under attack! Stay alert!" in person (HQ
 ///   replies), the caution timer and back to the route; no alert.
 ///
-/// Not ported: the arm-wound variants (+0xf16), 0x14's close-range 0x20,
+/// Not ported: the arm-wound variants (+0xf16; the alert's strike has
+/// its own), 0x14's close-range 0x20,
 /// 0xf's 0x18, +0x348 bit 0x100 (the runner joins the manager's list of
 /// soldiers to see to), sub 3's
 /// comrade check (`FUN_0021eb20` / `FUN_0021d230` -> 10). The radio
@@ -2923,10 +2952,9 @@ fn call(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, (sub, ti
                 g.attack.strike = Some((0.0, false));
             }
             if let Some((_, false)) = g.attack.strike
-                && frames.clone().any(|f| (2..=6).contains(&f))
+                && frames.clone().any(|f| STRIKE_FRAMES.contains(&(f as f32)))
             {
-                let to = snake - body.pos;
-                if to.length() < STRIKE_REACH && to.normalize_or_zero().dot(body.forward()) > 0.5 {
+                if strike_hits(game, body, STRIKE_JOINT, snake) {
                     info!("guard {} strikes with the rifle butt", g.route);
                     g.attack.strike = Some((t as f32, true));
                     STRIKES.fetch_add(STRIKE_DAMAGE, std::sync::atomic::Ordering::Relaxed);
@@ -3886,20 +3914,22 @@ fn alert_brain(
         face(body, target, dt);
         return false;
     }
-    // Close quarters: the rifle butt.
+    // Close quarters: the rifle butt (alert action 5, or 9 with a wounded
+    // arm: `FUN_002281e8`).
+    let (motion, joint) = if g.wounds & 1 != 0 { (WOUNDED_STRIKE_MOTION, WOUNDED_STRIKE_JOINT) } else { (STRIKE_MOTION, STRIKE_JOINT) };
     if let Some((t, landed)) = a.strike {
         let t = t + frames;
-        body.play_once(STRIKE_MOTION);
+        body.play_once(motion);
         face(body, snake, dt);
         let mut landed = landed;
-        if !landed && (2.0..=6.0).contains(&t) && !snake_dead {
-            let to = snake - body.pos;
-            if to.length() < STRIKE_REACH && to.normalize_or_zero().dot(body.forward()) > 0.5 {
+        if !landed && STRIKE_FRAMES.contains(&t) && !snake_dead {
+            if strike_hits(game, body, joint, snake) {
+                info!("guard {} strikes in the alert (motion {motion:#x})", g.route);
                 landed = true;
                 STRIKES.fetch_add(STRIKE_DAMAGE, std::sync::atomic::Ordering::Relaxed);
             }
         }
-        let length = body.motions.and_then(|m| game.data.motions.get(m)).and_then(|(_, mar)| mar.motions.get(STRIKE_MOTION)).map_or(40.0, |m| m.length as f32);
+        let length = body.motions.and_then(|m| game.data.motions.get(m)).and_then(|(_, mar)| mar.motions.get(motion)).map_or(40.0, |m| m.length as f32);
         a.strike = if t >= length { None } else { Some((t, landed)) };
         return false;
     }

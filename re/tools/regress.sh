@@ -50,7 +50,10 @@ check camera_sees "TV camera 0 sees Snake|crowd event (7|0): running" eq 3 w04c 
 check camera_sees_1 "TV camera 1 sees Snake|crowd event 6: running" eq 2 w04c --skip-cutscenes --snake-at=3000,-14500,-13500 --shot-at 2
 # Guards: the box check and the rifle butt.
 MGS2_BOX_TEST=1 check box_check "checks the box" ge 1 w01a --skip-cutscenes --snake-at=6000,0,1500 --shot-at 26
-check close_quarters "life=(8|7)" ge 1 w01a --skip-cutscenes --trace --snake-at=6000,0,3300 --snake-dir=0 --shot-at 6
+# The rifle butt takes 5 (FUN_00254248's hit record).
+check close_quarters "life=95" ge 1 w01a --skip-cutscenes --trace --snake-at=6000,0,3300 --snake-dir=0 --shot-at 6
+# A soldier with a wounded arm strikes in the alert with motion 0x54.
+MGS2_WOUND=3:1 MGS2_ALERT_AT=0.5 check wounded_strike "strikes in the alert \(motion 0x54\)" ge 1 w01a --skip-cutscenes --snake-at=6000,0,3300 --snake-dir=0 --shot-at 4
 # A soldier finds his comrade asleep, kicks him awake and radios it in.
 MGS2_DOWN=7:s@1 check comrade "radios in a downed comrade" ge 1 w01d --skip-cutscenes --shot-at 22
 # ... with his voice line from the manager's -v table, then HQ's reply.
