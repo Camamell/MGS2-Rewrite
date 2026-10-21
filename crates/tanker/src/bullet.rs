@@ -220,20 +220,31 @@ pub fn fly(
             commands.entity(e).despawn();
             continue;
         }
-        // Rounds (not darts) leave a mark where they strike; see below.
         if let Some((_, n, flags)) = surface {
-            // Snake's shots (bullet flag 2, darts too) run the stage's hook
-            // for the struck material (`FUN_0036c630`): sound, noise, sparks.
             let material = flags >> 28;
-            let sparks = b.dart && game.impact_sparks >> material & 1 != 0;
-            if !b.dart || b.lethal || sparks {
-                crate::scar::add(end, n, sparks, !b.dart || b.lethal);
+            // Bullet flag 0x20 and element flag 0x1000 clear (`FUN_0036c520`)
+            // run the material's `#0acf09` hook: a bullet hole. Snake's guns
+            // set 0x20 except the M9 (weapon flags table 0x1f83d0: 0x4002,
+            // the rest 0x2022 / 0x23); the soldiers' rounds never do.
+            let scar = b.lethal && flags & 0x1000 == 0 && game.impact_scars >> material & 1 != 0;
+            // Bullet flag 2 (every shot: the soldiers' `FUN_002550c0` sets it
+            // unless its bit 0x10, which no caller passes) and element flag
+            // 0x200 clear (`FUN_0036c630`) run the `#41cf4e` hook (sound
+            // 0x27's material variant and a spark burst), then the noise:
+            // 5 for flag 0x4000 (the M9), 6 for 0x2000 (Snake's other guns),
+            // none for the soldiers' rounds.
+            let mut sparks = false;
+            if flags & 0x200 == 0 {
+                if let Some((id, _)) = game.impact_sound(material) {
+                    crate::sfx::play(id, Some(end));
+                    sparks = true;
+                }
+                if b.dart {
+                    crate::guard::noise(if b.lethal { 6 } else { 5 }, end);
+                }
             }
-            if b.dart
-                && let Some((id, noise)) = game.impact_sound(material)
-            {
-                crate::sfx::play(id, Some(end));
-                crate::guard::noise(noise, end);
+            if scar || sparks {
+                crate::scar::add(end, n, sparks, scar);
             }
         }
         let wall = wall.is_some();

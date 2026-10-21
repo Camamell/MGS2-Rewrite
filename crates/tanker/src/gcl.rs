@@ -136,12 +136,13 @@ const SEND_MESSAGE: u32 = 0x3822C7;
 /// the three variables; 1, or -1 if it is not found.
 const ACTOR_POS: u32 = 0xC1EB06;
 /// `#41cf4e -n <material>` (`cmd_41cf4e`): rounds striking that material
-/// sound its variant of motion sound 0x27 (`FUN_003a5cf8`); bullets look
+/// sound its variant of motion sound 0x27 and throw a spark burst
+/// (`FUN_003a5cf8` -> `FUN_003057f8`); bullets look
 /// the hook up by the struck element's flags >> 28 (`FUN_0036c630`).
 const IMPACT_SOUND: u32 = 0x41CF4E;
 /// `#0acf09 -n <material>` (`cmd_0acf09`): rounds striking that material
-/// throw sparks (`FUN_002d7498`).
-const IMPACT_SPARKS: u32 = 0x0ACF09;
+/// leave a bullet hole (`FUN_002d7498`, `wall_scar.c`'s own placement).
+const IMPACT_SCARS: u32 = 0x0ACF09;
 /// `#542b2d -a <n> -r <times> -d <values..> -e {block}` (`cmd_542b2d`):
 /// runs the block `times` times, each with the next `n` values as `$1..`.
 const REPEAT: u32 = 0x542B2D;
@@ -295,8 +296,8 @@ pub enum CodecReq {
     SoundTable(Option<SoundTable>),
     /// Rounds striking this material make its impact sound (`#41cf4e`).
     ImpactSound(u8),
-    /// Rounds striking this material throw sparks (`#0acf09`).
-    ImpactSparks(u8),
+    /// Rounds striking this material leave bullet holes (`#0acf09`).
+    ImpactScars(u8),
     /// The volume (0-63) of the spoken line `handle`.
     Volume { handle: u32, vol: u8 },
     Reset,
@@ -828,7 +829,7 @@ impl<'a> Vm<'a> {
         };
         let known = CALL_AFTER.contains(&id)
             || CODEC_THEN.contains(&id)
-            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, VOLUME, SOUND_TABLE, ACTOR_POS, IMPACT_SOUND, IMPACT_SPARKS, REPEAT, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand"), SIN, COS, ABS, DISTANCE, ATAN, SONG].contains(&id);
+            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, VOLUME, SOUND_TABLE, ACTOR_POS, IMPACT_SOUND, IMPACT_SCARS, REPEAT, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand"), SIN, COS, ABS, DISTANCE, ATAN, SONG].contains(&id);
         known.then_some(id)
     }
 
@@ -970,9 +971,9 @@ impl<'a> Vm<'a> {
                     self.block(b, &call);
                 }
             }
-        } else if id == IMPACT_SOUND || id == IMPACT_SPARKS {
+        } else if id == IMPACT_SOUND || id == IMPACT_SCARS {
             if let Some(n) = opt(self, b'n').first().and_then(Val::int).filter(|n| (0..16).contains(n)) {
-                self.codec.push(if id == IMPACT_SOUND { CodecReq::ImpactSound(n as u8) } else { CodecReq::ImpactSparks(n as u8) });
+                self.codec.push(if id == IMPACT_SOUND { CodecReq::ImpactSound(n as u8) } else { CodecReq::ImpactScars(n as u8) });
             }
         } else if id == VOLUME {
             if let Some(h) = a.get(1).and_then(|v| self.value(v, args).int()) {
