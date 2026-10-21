@@ -245,13 +245,27 @@ commandant's feet, his position) unless its member's state has 0x60000, and mark
 (flags | 0x40, +0x5bc = 6, +0x5e8 = 9, +0x5ea = 1). In w04c two Marines
 (23826964 / 40604180 at +-5500, -15000, -1200) work the cameras at
 +-5250, -14000, -2000 (the port had put the two Marines there; they stand
-at their own records). `FUN_002304e8` (the camera's) turns it onto Snake
-when he is on the upper level (y -15000..-12000, z
--15000..-12000, x -7000..0 for camera 0, 0..7000 for camera 1) and sets
-`DAT_0017f48c` bit 0. Ported: the camera (0xc6cbc3, turned) and its
-tripod (0xc0b045, at the `-c` facing), `crowd::FilmCamera`. Not ported:
-the turn onto Snake with `FUN_002303d0`'s calls (not traced),
-the operator's 0x60000 test.
+at their own records). The update (0x230640, decompiled headless; the dump
+missed it) has two states at +0xcc: 0 films the actor (`FUN_00230488`)
+and tests Snake (`FUN_002304e8`); 1 films Snake (`FUN_00230600`, aimed at
+`DAT_001ece00`, no 0x60000 test). `FUN_002304e8`: Snake on the upper level
+(y -15000..-12000, z -15000..-12000; x -7000..0 for camera 0, the first
+`-c` entry at x +5250; 0..7000 for camera 1) sets crowd flag (+0x8c878)
+0x800 (camera 0) / 0x400 (camera 1), runs `FUN_002303d0` (a "!" mark,
+`FUN_0029ca50` kinds 0 and 0x4000, at the head's matrix applied to
+(0, 333, 0), w04c 0x1f3900; kind 0 also counts toward the times spotted),
+sets +0xcc = 1 and `DAT_0017f48c` bit 0. The crowd's update
+(`FUN_00228c30` tail) runs event 6 for 0x400, event 7 for 0x800 and event
+0 for `DAT_0017f48c & 1`, each once. In w04c events 6 / 7 (`#29827f` /
+`#a98232`) set a stage camera from the camera's side (`chara 0x43f718 -c 1
+-p +-5421 -12924 -314`), event 0 (`#2d274b`) is the caught sequence.
++0xd4 counts frames and flips +0xd0 between 0x80000001 / 0x80000002 every
+0x800 frames (camera 1 the other way round), the head model's
+`FUN_0029bdd8` link (probably its lamp; not ported). Ported: the camera
+(0xc6cbc3, turned) and its tripod (0xc0b045, at the `-c` facing),
+`crowd::FilmCamera`, the sighting, its events and the "!" (shown 1.5 s:
+the mark's lifetime is not decoded, an assumption). Not ported: the
+operator's 0x60000 test, the times-spotted count.
 
 The crowd actor's `-e` procs are its events (offsets from +0x8c8ac): 0 a
 pad flag, 1 / 2 Snake near the `-p` points facing them, 3 a Marine heard

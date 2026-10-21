@@ -1630,12 +1630,12 @@ fn spawn_level(
             weapons.push((e, m, false, crowd::rifle_turn(), crowd::RIFLE_JOINT, crowd::RIFLE_OFFSET));
         }
     }
-    for (head, stand, at, dir, target) in cast.film_cameras {
+    for (index, (head, stand, at, dir, target)) in cast.film_cameras.into_iter().enumerate() {
         let base = Transform::from_translation(at * SCALE).with_rotation(Quat::from_rotation_y(dir as f32 / 4096.0 * std::f32::consts::TAU));
         let e = scene::spawn_model_lit(&mut commands, &data.models[stand].1, data, &mut cache, &mut meshes, &mut images, &mut materials, unlit, LevelEntity, base, None);
         commands.entity(e).insert(base);
         let e = scene::spawn_model_lit(&mut commands, &data.models[head].1, data, &mut cache, &mut meshes, &mut images, &mut materials, unlit, LevelEntity, base, None);
-        commands.entity(e).insert((base, crowd::FilmCamera { target, at }));
+        commands.entity(e).insert((base, crowd::FilmCamera { target, at, index, on_snake: false }));
     }
     for (g, model, evm, motions, pos, extras) in cast.evm_guards {
         let e = body::spawn_evm_body(&mut commands, &data.evms[evm].1, data, &mut cache, &mut meshes, &mut images, &mut materials, unlit, (Body::new(pos, 0.0, model, motions), LevelEntity));
@@ -2388,12 +2388,50 @@ fn stage_demo(
     }
 }
 
-/// Turns the crowd's TV cameras toward the actors they film.
-fn aim_cameras(mut cameras: Query<(&crowd::FilmCamera, &mut Transform)>, bodies: Query<(&Body, &reflect::ActorName)>) {
-    for (l, mut t) in &mut cameras {
+/// Turns the crowd's TV cameras toward the actors they film (0x230640).
+/// A camera that catches Snake on its side of the upper level puts up a
+/// "!", raises its crowd event and event 0 (`FUN_002304e8`), and films
+/// Snake from then on (`FUN_00230600`).
+#[allow(clippy::too_many_arguments)]
+fn aim_cameras(
+    mut commands: Commands,
+    session: Res<Session>,
+    mut game: ResMut<Game>,
+    mut cameras: Query<(&mut crowd::FilmCamera, &mut Transform)>,
+    bodies: Query<(&Body, &reflect::ActorName)>,
+    player: Query<(&Body, &Player)>,
+    level: LevelRoots,
+    bullets: Query<Entity, With<bullet::Bullet>>,
+) {
+    let snake = player.single().ok().map(|(b, _)| b.pos);
+    let mut events = Vec::new();
+    for (mut l, mut t) in &mut cameras {
+        if l.on_snake {
+            if let Some(s) = snake {
+                t.rotation = crowd::camera_turn(l.at, s);
+            }
+            continue;
+        }
         if let Some((b, _)) = bodies.iter().find(|(_, n)| n.0 == l.target) {
             t.rotation = crowd::camera_turn(l.at, b.pos);
         }
+        if let Some(s) = snake.filter(|s| crowd::camera_sees(l.index, *s)) {
+            l.on_snake = true;
+            t.rotation = crowd::camera_turn(l.at, s);
+            commands.spawn(headmark::PointMark::exclaim(l.at + t.rotation * Vec3::Y * crowd::CAMERA_MARK));
+            info!("TV camera {} sees Snake at {s}", l.index);
+            events.extend(crowd::CAMERA_EVENTS.get(l.index).copied());
+            events.push(0);
+        }
+    }
+    for event in events {
+        if game.crowd_fired & 1 << event != 0 {
+            continue;
+        }
+        let Some(Some(proc)) = game.crowd_procs.get(event).copied() else { continue };
+        game.crowd_fired |= 1 << event;
+        info!("crowd event {event}: running {proc:#x}");
+        script_event(&mut commands, &session, &mut game, |vm| vm.call_proc(proc, &[]), &level, &bullets);
     }
 }
 

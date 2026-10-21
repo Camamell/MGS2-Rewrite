@@ -320,6 +320,8 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      game's slot table (and are knocked down and get up as soldiers do), and
      the commandant paces the stage above the formation during his speech
      (his skinned `sco_def` mesh over the Marines' skeleton), followed by
-     the two TV cameras on the upper level
-   - next: the TV cameras turning onto Snake (`FUN_002304e8`), the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
+     the two TV cameras on the upper level, which catch Snake when he
+     steps onto their side of it: a "!" over the camera, which turns to
+     film him, the stage camera from its side and the caught sequence
+   - next: the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects)

@@ -46,8 +46,26 @@ struct Sprites {
     frames: Vec<(Kind, Vec<(Handle<Mesh>, Handle<StandardMaterial>)>)>,
 }
 
+/// A mark at a fixed place, not over a guard: the "!" a crowd TV camera
+/// puts up when it catches Snake (`FUN_002303d0`). It stays up for
+/// [`POINT_TIME`] (an assumption: the game's lifetime is not decoded).
+#[derive(Component)]
+pub struct PointMark {
+    at: Vec3,
+    kind: Kind,
+    age: f32,
+}
+
+impl PointMark {
+    pub fn exclaim(at: Vec3) -> Self {
+        Self { at, kind: Kind::Exclaim, age: 0.0 }
+    }
+}
+
+const POINT_TIME: f32 = 1.5;
+
 pub fn plugin(app: &mut App) {
-    app.init_resource::<Sprites>().add_systems(Update, (attach, update));
+    app.init_resource::<Sprites>().add_systems(Update, (attach, update, points));
 }
 
 fn quad(u0: f32, u1: f32, aspect: f32) -> Mesh {
@@ -73,6 +91,24 @@ fn attach(
     if added.is_empty() {
         return;
     }
+    build(&game, &mut sprites, &mut meshes, &mut images, &mut materials);
+    let Some((_, first)) = sprites.frames.first() else { return };
+    let (mesh, mat) = first[0].clone();
+    for owner in &added {
+        commands.spawn((
+            crate::LevelEntity,
+            HeadMark { owner, kind: None, age: 0.0 },
+            Mesh3d(mesh.clone()),
+            MeshMaterial3d(mat.clone()),
+            Transform::default(),
+            Visibility::Hidden,
+            bevy::camera::visibility::NoFrustumCulling,
+        ));
+    }
+}
+
+/// Builds the stage's mark sprites once.
+fn build(game: &Game, sprites: &mut Sprites, meshes: &mut Assets<Mesh>, images: &mut Assets<Image>, materials: &mut Assets<StandardMaterial>) {
     if sprites.stage != game.data.name {
         sprites.stage = game.data.name.clone();
         sprites.frames.clear();
@@ -103,18 +139,49 @@ fn attach(
             sprites.frames.push((kind, list));
         }
     }
-    let Some((_, first)) = sprites.frames.first() else { return };
-    let (mesh, mat) = first[0].clone();
-    for owner in &added {
-        commands.spawn((
-            crate::LevelEntity,
-            HeadMark { owner, kind: None, age: 0.0 },
-            Mesh3d(mesh.clone()),
-            MeshMaterial3d(mat.clone()),
-            Transform::default(),
-            Visibility::Hidden,
-            bevy::camera::visibility::NoFrustumCulling,
-        ));
+}
+
+/// Shows the place marks: the sprite's frames, facing the camera, then
+/// gone.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+fn points(
+    mut commands: Commands,
+    time: Res<Time>,
+    game: Res<Game>,
+    mut sprites: ResMut<Sprites>,
+    cams: Query<&Transform, (With<crate::player::FollowCam>, Without<PointMark>)>,
+    mut marks: Query<(Entity, &mut PointMark, Option<&mut Transform>)>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut images: ResMut<Assets<Image>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    if marks.is_empty() {
+        return;
+    }
+    build(&game, &mut sprites, &mut meshes, &mut images, &mut materials);
+    let cam = cams.single().ok().map(|c| c.rotation);
+    for (e, mut m, t) in &mut marks {
+        let Some((_, frames)) = sprites.frames.iter().find(|(k, _)| *k == m.kind) else {
+            commands.entity(e).try_despawn();
+            continue;
+        };
+        if m.age >= POINT_TIME {
+            commands.entity(e).try_despawn();
+            continue;
+        }
+        let (mesh, mat) = frames[((m.age * 10.0) as usize).min(frames.len() - 1)].clone();
+        let mut at = Transform::from_translation(m.at * SCALE);
+        if let Some(r) = cam {
+            at.rotation = r;
+        }
+        match t {
+            Some(mut t) => *t = at,
+            None => {
+                commands.entity(e).insert((crate::LevelEntity, at, Visibility::Inherited, bevy::camera::visibility::NoFrustumCulling));
+            }
+        }
+        commands.entity(e).insert((Mesh3d(mesh), MeshMaterial3d(mat)));
+        m.age += time.delta_secs();
     }
 }
 

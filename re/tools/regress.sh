@@ -45,6 +45,9 @@ check holds_quiet "game over" eq 0 w04a --skip-cutscenes --auto-walk 8 --shot-at
 check commandant "r0 \(-[1-9][0-9]{3},-14750" ge 1 w04c --skip-cutscenes --trace --snake-at=0,-17000,-2500 --shot-at 30
 # ... filmed by the crowd's two TV cameras (-c).
 check film_cameras "TV camera at .* films 0x8af8fd" eq 2 w04c --skip-cutscenes --shot-at 2
+# ... which catch Snake on their side of the upper level (events 7 / 6 and 0).
+check camera_sees "TV camera 0 sees Snake|crowd event (7|0): running" eq 3 w04c --skip-cutscenes --snake-at=-3000,-14500,-13500 --shot-at 2
+check camera_sees_1 "TV camera 1 sees Snake|crowd event 6: running" eq 2 w04c --skip-cutscenes --snake-at=3000,-14500,-13500 --shot-at 2
 # Guards: the box check and the rifle butt.
 MGS2_BOX_TEST=1 check box_check "checks the box" ge 1 w01a --skip-cutscenes --snake-at=6000,0,1500 --shot-at 26
 check close_quarters "life=(8|7)" ge 1 w01a --skip-cutscenes --trace --snake-at=6000,0,3300 --snake-dir=0 --shot-at 6

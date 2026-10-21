@@ -131,13 +131,35 @@ pub fn walkers(s: &Spawn) -> Vec<usize> {
 /// tripod: turned each frame toward the actor it films (`FUN_00230488` / `FUN_00230440`:
 /// x = atan2(horizontal distance, dy) - 0x400, y = atan2(dx, dz), about
 /// its pivot `x y z` + 145 mm). The game stops turning it while its
-/// Marine's state has 0x60000 (not modelled), and turns it onto Snake on
-/// the upper level (`FUN_002304e8`, not ported).
+/// Marine's state has 0x60000 (not modelled). Once Snake steps onto its
+/// half of the upper level (`FUN_002304e8`, see [`camera_sees`]) it films
+/// him for good (+0xcc = 1, `FUN_00230600`).
 #[derive(Component)]
 pub struct FilmCamera {
     pub target: u32,
     pub at: Vec3,
+    /// Its place in `-c` (`FUN_00230750`'s +0xce).
+    pub index: usize,
+    pub on_snake: bool,
 }
+
+/// `FUN_002304e8`: Snake (feet) on the upper level, y and z within
+/// -15000..-12000, on camera 0's side x -7000..0 or camera 1's 0..7000.
+pub fn camera_sees(index: usize, snake: Vec3) -> bool {
+    let upper = (-15000.0..=-12000.0).contains(&snake.y) && (-15000.0..=-12000.0).contains(&snake.z);
+    let side = if index == 0 { (-7000.0..=0.0).contains(&snake.x) } else { (0.0..=7000.0).contains(&snake.x) };
+    upper && side
+}
+
+/// The crowd event each camera's sighting raises (it sets crowd flag 0x800
+/// for camera 0, 0x400 for camera 1, which the crowd's update turns into
+/// events 7 and 6, `FUN_00228c30`'s tail; w04c: a stage camera from the
+/// camera's side). It also sets `DAT_0017f48c` bit 0, which runs event 0.
+pub const CAMERA_EVENTS: [usize; 2] = [7, 6];
+
+/// The "!" over the camera (`FUN_002303d0`: `FUN_0029ca50` kinds 0 and
+/// 0x4000 at the head's matrix applied to (0, 333, 0), w04c 0x1f3900).
+pub const CAMERA_MARK: f32 = 333.0;
 
 /// The head's pivot above the `-c` point (`FUN_00230750`: +0xa4 += 145).
 pub const CAMERA_RISE: f32 = 145.0;
@@ -146,10 +168,12 @@ pub const CAMERA_RISE: f32 = 145.0;
 pub const CAMERA_HEAD: u32 = 0xC6CBC3;
 pub const CAMERA_STAND: u32 = 0xC0B045;
 
-/// The cameras of `-c`: (pivot, facing in 4096ths, filmed actor's name).
+/// The cameras of `-c` (the first two, `FUN_0022a5d8`): (pivot, facing in
+/// 4096ths, filmed actor's name).
 pub fn cameras(s: &Spawn) -> Vec<(Vec3, i32, u32)> {
     let Some(list) = s.opt(b'c') else { return Vec::new() };
     list.chunks_exact(6)
+        .take(2)
         .map(|c| {
             let v = |i: usize| c[i].int().unwrap_or(0);
             (Vec3::new(v(0) as f32, v(1) as f32 + CAMERA_RISE, v(2) as f32), v(3), v(5) as u32 & 0x00FF_FFFF)
