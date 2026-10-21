@@ -171,7 +171,10 @@ caution).
 
 ## Reinforcements
 
-- The manager's `-a` proc runs when an alert starts; in w00a it is
+- The manager's init (`FUN_002181f0`) runs every `-w` proc and then
+  every `-a` proc at once (`FUN_0021a688` -> `FUN_00152ca0`), not on the
+  alert (corrected 2026-10-21; the port still re-runs `-a` when an alert
+  starts for the troopers, whose squad waits for it). An `-a` such as
   `chara #5bb4d4 -e proc:#8dfc0c -w 180 -a 300 -s 1`, a squad actor
   (`cmd_5bb4d4` at 0x29E0A0). Its init (`FUN_0029ddd0`) calls every `-e`
   proc at once (`FUN_0029dcb8` -> `FUN_00152ca0`), which create the
@@ -896,9 +899,8 @@ routes 0 / 8 / 8 / 4, or 1 / 3 / 2 / 13 when Au32:0xc4 is not "#cd9f50".
 Their message handler `FUN_00273828`: 0 / 1 set +0x328 to 6 / 1; 2 warps
 him (x y+1000 z, dir) when `FUN_002898e8` fails; 3 `route [x y z dir]`
 sets the route byte (+0xc0f) and the post point +0x2b0; 4 / 5 flags.
-Ported: creation through the manager's `-a` (taken to arrive after the
-troopers' delay and leave as they do: assumed), message 3. Outside an
-alert they run the watcher's brain (`FUN_0038b4f0` / `FUN_00392af8`, the
+Ported: creation with the stage (the manager's `-a` runs in its init),
+message 3. Outside an alert they run the watcher's brain (`FUN_0038b4f0` / `FUN_00392af8`, the
 port's own: assumed the same). Test: `MGS2_ALERT_AT=2` (meter full at
 2 s) or `MGS2_ALERT_AT=2-30` (held full until 30 s) in w03a.
 
@@ -1031,12 +1033,67 @@ Assumed: the hand 1400 mm up, 300 ahead; Snake hit when his middle (900
 mm up) is within 1000 mm in each axis with a clear line. Not done: the
 item in hand, the bomb.c effect, the blast on soldiers, kind 5.
 Not ported: shooting on the move (`FUN_0028a280`), the spread, flag 4's skip of step 0 (+0x12 bit
-4, distance under the near range - 250), mirrored motions, the re-entry of a soldier
-down (`FUN_002733f0` / `FUN_002732a0`, which decrements the allowed
-count and warps him back), atcomm's modes, `-t` 1 (w03b: phase held at
-Alert, defenders put on their points at once) and defenders' `-t` 2 / 3
-(own point by index, `FUN_0028ddf0`). Port-only: a defender kept 1.5 m
-short of his point by walls for a second holds where he stands.
+4, distance under the near range - 250), mirrored motions. Port-only: a
+defender kept 1.5 m short of his point by walls for a second holds where
+he stands.
+
+### w03b's fight (atcomm `-t` 1, defenders `-t` 2)
+
+Story point As16:0xe 32 (after the demo `#7c273b` that the trap
+`#8bc637` leads to: point 31, Abit:0xb4d.0 set, restart): the manager
+(`-b` Au8:0xb61 = 4 / 5 / 8 by difficulty, `-r 14000 -5000 -70000`) makes
+atcomm `-t 1 -d` 4 points (kinds 0 2 1 1) `-l` two lights `-c 1800 -p
+#d77a1e`, whose `-e` makes three defenders `-t 2` (routes 3 3 4).
+- `FUN_00272308` (`-t` 1): defender i gets point i (post +0x2b0, unit
+  +0xa / +0xb, occupant); his near range +600 is 3000.
+- `FUN_00272820` each frame: Bs16:0x112 = 1 and the meter 0x400 (the
+  phase held at Alert); with the countdown +0x4e0 (`-c`) at 0, +0x4e8
+  counts 0..900 round and +0x4ea up to 300; mode +0x2f0 from the
+  manager's counts (record 0x3e61d0 +0xe8 = 0x3e62b8 used, 0 here, +0xea
+  = 0x3e62ba left, `-b`): left - n < used (n = the squad, +0x8c) -> left
+  != used: countdown 0, mode 1; else mode 2 (and +0x25c 2500 for all);
+  also mode 2 when +0x4f4 >= n (+0x4f4 is zeroed each frame; its setter
+  is not in the dump). `FUN_002727a8`: the gap +0x4e2 at 0 restarts at
+  180 (mode 0) or 12, else counts down. The countdown runs down; at 60
+  with lights on `FUN_00213260(-1, 0, 0x4060000, +0xbc)` (not ported).
+  Beaten: left == used and left + n == +0x4f0 (deaths, `FUN_00273570`
+  from `FUN_00273a30` when life +0xf0c drops to 0) + +0x4ec (soldiers
+  down 120 frames this frame) -> the `-p` proc (`FUN_00221498`): a fade,
+  then As16:0xe 33 and restart (the demo `#7ca73b`, then d10t).
+- Messages (`FUN_00272208`): 1 n sets a 12-frame timer that clears light
+  bit n (+0x2f3; the lights' `-b` procs send it when shot); 2 n sets the
+  entry index +0x4e6.
+- `FUN_00272ed0` (`-t` >= 2): mode != 2 -> `FUN_0028de58` (his own point
+  again) -> `FUN_0028dfc8` (state 6 sub 10 stance 0x13, or 0x3f after a
+  comeback: action 0x13, motion 0x15, until it ends). No path-length
+  give-ups (`FUN_0028c248` / `FUN_0028cdf8` skip `FUN_0028c8e8`), no
+  re-picks (`FUN_0028cbb0`), fire range always (`FUN_0028ba30`).
+- Holding (`FUN_0028cbb0`): after 60 frames he attacks when the gap
+  (ctl+0x1f2) is 0. `FUN_0028c640`: lights on (ctl+3), countdown 0 and
+  `-t` 2 -> pattern 5; cycle < 450, warm == 300 and order 2 -> 4 (warm
+  0, the gap 300, unseen 0, target Snake); else rand & 3; then (cycle >
+  449, order 0, mode != 1) or mode 2 -> the chase.
+- A defender down (`FUN_002733f0`, `-t` >= 2): life > 0 and down (+0xf1a)
+  over 120 frames: +0xf98 |= 0x800; left == used -> +0x4ec += 1. left >
+  used: with +0x3208 from 181 to 300 he blinks (odd frames hidden,
+  `FUN_0028b638` / `FUN_0028b670`); before 301 `FUN_002898e8(1000, 2000,
+  pos)` (a view test, it seems) >= 0 makes him wait; then left -= 1,
+  `FUN_002732a0`: his point again, warped to the manager's place +0x4e6
+  (`FUN_002158e8`: 0x3e6470, the `-r` places, and 0x3e64f0 a direction),
+  `FUN_0028dfc8`; left - n < used and left != used -> sub 10 stance 4
+  (`FUN_0028d8a8`: action 1 facing +0x18c while mode is 1; after 3600
+  frames mode 2; mode != 1 -> the chase); left == used -> the chase.
+Ported (`guard::atc_frames`, `guard::come_back`, `defend` under `fixed`):
+all of the above but the 0x4f4 rule, the countdown's call, the 12-frame
+light timer and +0x25c. Assumed: he comes back at 300 frames always (the
+view test not ported), with full life and no darts (`FUN_00222c08` not
+read); the dead never come back (as decoded), so a fight won by killing
+leaves soldiers "left" and is never beaten (lead: check in the game).
+Test: `MGS2_BANKS=a8:0xb4d=1,a16:0xe=32,a32:0x74=#272ebd` (w03b).
+The demos at points 31 and 33 (`chara "demo" "#858bd0"`) play in the
+stage (`demo::StageDemo`, see formats.md "DEMO.DAT"); their `-n` procs
+set points 32 / 34 and restart (or load d10t). Test: `MGS2_BANKS=
+a8:0xb4d=1,a16:0xe=31` reaches the fight with cutscenes skipped.
 Lead: a defender's `-p` (up to 4 procs, `FUN_0021a750` into +0x322c) is
 not yet traced to where it runs; w03a's fourth defender has
 `-p #67363a` (300 frames later message 3 route 3 to the third, As16:0xb4a

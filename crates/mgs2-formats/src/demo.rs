@@ -118,6 +118,10 @@ pub struct Demo {
     /// Lightning bolts (type-6 `0x1002000`, `d_thunder.c`): frame and the
     /// bolt's start on screen (x, y).
     pub thunders: Vec<(u32, [f32; 2])>,
+    /// Script procs the demo calls (type-6 `0x10fff01`, `cmd_10fff01` ->
+    /// `FUN_00216ae8`: the proc +0x20, run only when the demo actor's `-p`
+    /// lists it): frame and proc name.
+    pub procs: Vec<(u32, u32)>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -277,6 +281,11 @@ fn effect(r: &[u8], frame: u32, demo: &mut Demo) {
             let len = (x * x + y * y + z * z).sqrt();
             if len > 0.0 {
                 demo.lights.push(DemoLight { frame, dir: [x / len, y / len, z / len], color: [p(0), p(1), p(2)] });
+            }
+        }
+        Some(0x010F_FF01) => {
+            if let Some(proc) = u32_at(r, 0x20) {
+                demo.procs.push((frame, proc & 0x00FF_FFFF));
             }
         }
         Some(0x0100_0003) => demo.fades.push(Fade { frame, from: None, to: rgba(0), frames: p(4) - p(5) }),

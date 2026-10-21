@@ -111,7 +111,49 @@ pub struct Cutscene {
     pub frame: f32,
     pub length: f32,
     pub name: String,
+    /// An in-stage demo's script procs still to run (frame, proc).
+    pub procs: Vec<(f32, u32)>,
+    /// An in-stage demo's `-n` proc, run when it ends.
+    pub then_proc: Option<u32>,
     spawned: bool,
+}
+
+/// The `demo` actor's name (`chara "demo"`).
+pub fn demo_actor() -> u32 {
+    str_code(b"demo") & 0x00FF_FFFF
+}
+
+/// A demo a gameplay stage's script plays in the stage (`chara "demo"
+/// <name> -i <id> -p <procs> -n <proc>`, w03b's two scenes; w03a's demo
+/// actor `FUN_00380ed0` / `FUN_00380ce0`): `-p` lists the procs the demo
+/// may call (+0x24dc, up to 64), `-n` the proc run when its stream ends
+/// (`FUN_00118178`'s callback `proc << 8 | 2`).
+/// Not ported: `-b` (+0x2608, a proc run when the stream starts,
+/// `FUN_00380b48`), `-u` (+0x260c), `-E` / `-K` (`FUN_003811a8`, model
+/// swaps it seems: w03b passes Raiden's head models) and `-S` (bit
+/// 0x10000000 of `DAT_0017f48c` when absent).
+#[derive(Clone, Debug)]
+pub struct StageDemo {
+    pub id: u32,
+    pub procs: Vec<u32>,
+    pub end: Option<u32>,
+}
+
+impl StageDemo {
+    pub fn from_spawn(s: &crate::gcl::Spawn) -> Option<Self> {
+        if s.kind != demo_actor() {
+            return None;
+        }
+        let proc = |v: &crate::gcl::Val| match v {
+            crate::gcl::Val::Proc(p) => Some(*p & 0x00FF_FFFF),
+            _ => None,
+        };
+        Some(StageDemo {
+            id: s.opt_int(b'i', 0)? as u32,
+            procs: s.opt(b'p').unwrap_or(&[]).iter().filter_map(proc).collect(),
+            end: s.opt(b'n').and_then(|v| v.first()).and_then(proc),
+        })
+    }
 }
 
 impl Cutscene {
@@ -176,11 +218,16 @@ pub fn idle(c: Res<Cutscene>) -> bool {
 
 /// Loads every demo of a cutscene stage's script, played one after another.
 pub fn load(iso: &Path, name: &str, script: &Gcx, stage: Option<StageData>) -> Cutscene {
+    load_ids(iso, name, &demo_ids(script), stage)
+}
+
+/// Loads the given demos, played one after another.
+pub fn load_ids(iso: &Path, name: &str, ids: &[u32], stage: Option<StageData>) -> Cutscene {
     let mut lines = Vec::new();
     let mut demos = Vec::new();
     let mut audio = Vec::new();
     let mut offset = 0;
-    for id in demo_ids(script) {
+    for &id in ids {
         match read(iso, id) {
             Ok(bytes) => {
                 let d = fmt::parse(&bytes);
@@ -216,6 +263,8 @@ pub fn load(iso: &Path, name: &str, script: &Gcx, stage: Option<StageData>) -> C
         frame: 0.0,
         length: offset as f32,
         name: name.to_string(),
+        procs: Vec::new(),
+        then_proc: None,
         spawned: false,
     }
 }

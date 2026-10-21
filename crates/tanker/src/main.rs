@@ -275,6 +275,8 @@ pub struct Game {
     pub crowd_head: crowd::Head,
     /// Spoken line playing: (id, proc to run after, seconds left).
     pub speech: Option<(u32, Option<u32>, f32)>,
+    /// An in-stage demo the script started (`chara "demo"`), to play.
+    pub stage_demo: Option<demo::StageDemo>,
     /// Motion sound variants by floor material (`#b44bbb`).
     pub sound_tables: Vec<gcl::SoundTable>,
     /// Materials (bits) whose struck surfaces make an impact sound.
@@ -778,6 +780,7 @@ fn prepare(
     let mut cameras = script_cam::Cameras::default();
     let mut codec_reqs = Vec::new();
     let mut photos = (Vec::new(), None);
+    let mut stage_demo = None;
     let mut banks_after = banks.clone();
     // Snake's start: the player actor's `-p x y z -d dir`, which read the
     // start variables; else the start variables themselves.
@@ -802,8 +805,14 @@ fn prepare(
         let actor = |s: &gcl::Spawn| s.args.first().and_then(|v| v.int());
         let soldiers: Vec<&gcl::Spawn> = vm.spawns.iter().filter(|s| s.kind == guard::GUARD_ACTOR || s.kind == guard::DEFENDER_ACTOR).collect();
         let last = |i: usize| soldiers[i + 1..].iter().all(|o| actor(o) != actor(soldiers[i]));
+        // atcomm's defenders in the order its `-e` made them (+0x13c).
+        let mut defenders = 0;
         for s in (0..soldiers.len()).filter(|i| last(*i)).map(|i| soldiers[i]) {
-            if let (Some((g, mut p)), Some(m)) = (guard::from_spawn(s, 6000.0), gm) {
+            if let (Some((mut g, mut p)), Some(m)) = (guard::from_spawn(s, 6000.0), gm) {
+                if g.defender {
+                    g.defend.index = defenders;
+                    defenders += 1;
+                }
                 // The soldier starts on his route at point `-n`
                 // (`FUN_002233e8` keeps `-d` apart as his alert post).
                 let start = data.collision.as_ref().and_then(|h| h.routes.get(g.route)).and_then(|r| {
@@ -847,6 +856,12 @@ fn prepare(
         // (its `-e` soldiers are among the stage's soldiers above).
         atcomm = vm.spawns.iter().filter(|s| s.kind == guard::ATCOMM_ACTOR).find_map(|s| guard::Atcomm::from_spawn(s, nav.as_ref())).map(|mut a| {
             a.patterns = data.resident.as_deref().map(guard::Atcomm::read_patterns).unwrap_or_default();
+            // The manager's first `-r` place (x y z map): where a defender
+            // down comes back in.
+            let r = |i| manager.and_then(|m| m.opt_int(b'r', i)).map(|v| v as f32);
+            if let (Some(x), Some(y), Some(z)) = (r(0), r(1), r(2)) {
+                a.entry = Some(Vec3::new(x, y, z));
+            }
             eprintln!("{name}: atcomm: {} defence points (kinds {:?}), front {}, path lengths {:?}, {} attack pattern kinds", a.points.len(), a.kinds, a.front, a.dist, a.patterns.len());
             a
         });
@@ -1009,6 +1024,7 @@ fn prepare(
             }
         }
         cameras.apply(&vm.spawns);
+        stage_demo = vm.spawns.iter().find_map(demo::StageDemo::from_spawn);
         codec_reqs = vm.codec.clone();
         photos = (std::mem::take(&mut vm.photos), vm.photo_done);
         if !photos.0.is_empty() {
@@ -1072,6 +1088,7 @@ fn prepare(
         crowd_name,
         crowd_head: crowd::Head::default(),
         speech: None,
+        stage_demo,
         speech_volume: None,
         sound_tables: Vec::new(),
         impact_sounds: 0,
@@ -1182,6 +1199,28 @@ fn main() -> Result<()> {
     };
     // The stage script reads Snake's ammunition from the variables.
     inventory.to_banks(&mut banks);
+    // MGS2_BANKS=a8:0xb4d=1,a16:0xe=32,a32:0x74=#272ebd,b16:0x8=30: bank A
+    // / B values set before the first stage starts (testing; `#hex` is a
+    // name's code).
+    for e in std::env::var("MGS2_BANKS").unwrap_or_default().split(',').filter(|e| !e.is_empty()) {
+        let parse = |v: &str| {
+            let v = v.trim();
+            match v.strip_prefix('#').or_else(|| v.strip_prefix("0x")) {
+                Some(h) => i64::from_str_radix(h, 16).ok(),
+                None => v.parse::<i64>().ok(),
+            }
+        };
+        let Some((what, value)) = e.split_once('=') else { continue };
+        let Some((kind, offset)) = what.split_once(':') else { continue };
+        let (Some(offset), Some(value)) = (parse(offset), parse(value)) else { continue };
+        let (bank, width) = (&kind[..1], kind[1..].parse::<usize>().unwrap_or(8) / 8);
+        let bytes = if bank == "b" { &mut banks.b } else { &mut banks.a };
+        let o = offset as usize;
+        if let Some(dst) = bytes.get_mut(o..o + width) {
+            dst.copy_from_slice(&value.to_le_bytes()[..width]);
+            eprintln!("test: bank {bank} {o:#x} = {value}");
+        }
+    }
     let mut level = prepare(&mut disc, &cli.stage, banks, walk_in, cli.spawns, cli.vision)?;
     // The cutscene Snake comes from (the opening briefing for w00a).
     let skip_cutscenes = cli.skip_cutscenes || (cli.screenshot.is_some() && !cli.cutscenes);
@@ -1303,6 +1342,7 @@ fn main() -> Result<()> {
     );
     app.add_systems(Update, (codec::input, codec::screen, codec::voice).chain().run_if(demo::idle));
     app.add_systems(Update, (demo::play, demo::stage, demo::animate, demo::sound, demo::fade).chain().after(player::follow_camera));
+    app.add_systems(Update, stage_demo.run_if(codec::idle).run_if(not(resource_exists::<NewCast>)).before(demo::play));
     app.add_plugins(music::plugin);
     app.add_plugins(radar::plugin);
     app.add_plugins(headmark::plugin);
@@ -1664,6 +1704,9 @@ fn script_event(
     }
     apply_codec(game, &codec);
     game.new_items.extend(spawns.iter().filter(|s| s.kind == items::ITEM_ACTOR).cloned());
+    if let Some(d) = spawns.iter().find_map(demo::StageDemo::from_spawn) {
+        game.stage_demo = Some(d);
+    }
     // Troopers. (The manager's `-a` proc, run again here when an alert
     // starts, also makes Deck 2's atcomm and its defenders: those came
     // with the stage, so they are left out.)
@@ -2233,6 +2276,66 @@ fn speech(
     if let Some(p) = then {
         info!("speech {id:#x} over: running {p:#x}");
         script_event(&mut commands, &session, &mut game, |vm| vm.call_proc(p, &[0]), &level, &bullets);
+    }
+}
+
+/// Plays the in-stage demo the script started (`demo::StageDemo`) over
+/// the stage, running the procs it calls that its `-p` lists at their
+/// frames and its `-n` proc when it ends (or is skipped: the procs it had
+/// still to call are dropped, as the stream stops). With cutscenes
+/// skipped the `-n` proc runs at once.
+#[allow(clippy::too_many_arguments)]
+fn stage_demo(
+    mut commands: Commands,
+    session: Res<Session>,
+    mut game: ResMut<Game>,
+    mut c: ResMut<demo::Cutscene>,
+    level: LevelRoots,
+    bullets: Query<Entity, With<bullet::Bullet>>,
+) {
+    if let Some(d) = game.stage_demo.take() {
+        info!("in-stage demo {:#x} (procs {:x?}, then {:x?})", d.id, d.procs, d.end);
+        if session.skip_cutscenes {
+            // Its end proc runs next frame (below), once the systems that
+            // set up the stage's new entities are through with them.
+            info!("in-stage demo skipped");
+            c.then_proc = d.end;
+            return;
+        }
+        let (stage, backdrop) = {
+            let mut disc = session.disc.lock().unwrap();
+            (stage::load(&mut disc, &game.data.name).ok(), stage::load(&mut disc, &game.data.name).ok())
+        };
+        let mut new = demo::load_ids(&session.iso, &game.data.name, &[d.id], stage);
+        new.backdrop = backdrop;
+        new.procs = new
+            .demos
+            .iter()
+            .flat_map(|(start, demo)| demo.procs.iter().map(move |&(f, p)| ((start + f) as f32, p)))
+            .filter(|(_, p)| d.procs.contains(p))
+            .collect();
+        info!("in-stage demo calls {:x?}", new.procs);
+        new.then_proc = d.end;
+        *c = new;
+        return;
+    }
+    if c.procs.is_empty() && c.then_proc.is_none() {
+        return;
+    }
+    if !c.active() {
+        c.procs.clear();
+        if let Some(p) = c.then_proc.take() {
+            info!("in-stage demo over: running {p:#x}");
+            script_event(&mut commands, &session, &mut game, |vm| vm.call_proc(p, &[]), &level, &bullets);
+        }
+        return;
+    }
+    let frame = c.frame;
+    let due: Vec<u32> = c.procs.iter().filter(|(f, _)| *f <= frame).map(|p| p.1).collect();
+    c.procs.retain(|(f, _)| *f > frame);
+    for p in due {
+        info!("in-stage demo: running {p:#x}");
+        script_event(&mut commands, &session, &mut game, |vm| vm.call_proc(p, &[]), &level, &bullets);
     }
 }
 

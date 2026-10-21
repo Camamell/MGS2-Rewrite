@@ -94,6 +94,16 @@ MGS2_GOD=1 MGS2_ALERT_AT=2-30 check defence_attack "defender [0-9]+ fires from p
 MGS2_DOWN=1:d@1,13:d@1 MGS2_GOD=1 MGS2_ALERT_AT=2-30 check defence_grenade "soldier's grenade goes off" ge 1 w03a --skip-cutscenes --snake-at=-21000,-5000,-125000 --shot-at 20
 # With Snake at the front no point is nearer it than he is: they chase.
 MGS2_GOD=1 MGS2_ALERT_AT=2-20 check defence_chase "takes point" eq 0 w03a --skip-cutscenes --snake-at=8000,-5000,-127000 --shot-at 12
+# w03b's fight (story point 32): atcomm -t 1 holds the alert and gives
+# each defender his own point; soldiers put to sleep come back in until
+# the manager's -b count (5 on Normal) is used, then the -p proc runs.
+W03B_FIGHT="a8:0xb4d=1,a16:0xe=32,a32:0x74=#272ebd"
+MGS2_GOD=1 MGS2_BANKS=$W03B_FIGHT check w03b_hold "defender [0-9]+ holds point" ge 3 w03b --skip-cutscenes --shot-at 12
+MGS2_DOWN=3:s@3,4:s@3,3:s@10,4:s@10,3:s@17,4:s@17 MGS2_GOD=1 MGS2_BANKS=$W03B_FIGHT check w03b_beaten "the defence is beaten" ge 1 w03b --skip-cutscenes --shot-at 26
+# w03b's in-stage demos (chara "demo"): skipped, point 31's -n proc
+# restarts into the fight; the fight won, point 33's demo leads to w04a.
+MGS2_GOD=1 MGS2_BANKS="a8:0xb4d=1,a16:0xe=31" check w03b_demo "defender [0-9]+ holds point" ge 3 w03b --skip-cutscenes --shot-at 15
+MGS2_DOWN=3:s@3,4:s@3,3:s@10,4:s@10,3:s@17,4:s@17 MGS2_GOD=1 MGS2_BANKS=$W03B_FIGHT check w03b_onward "loading w04a" ge 1 w03b --skip-cutscenes --shot-at 34
 
 if [ "${1:-}" != quick ]; then
     for st in w00a w00b w00c w01a w01b w01c w01d w01e w01f w02a w03a w03b w04a w04b w04c; do

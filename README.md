@@ -296,15 +296,25 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      soldiers play the point's action, turn their heads to its look point
      or look left and right, and wait for a script signal or a radio line
      as the point says; reaching a point can run a script event; on Deck 2
-     (w03a / w03b) the alert's "atcomm" brings in the four defenders, whom
-     the scripts send to other routes; in the alert they run to atcomm's
+     (w03a / w03b) the manager's "atcomm" comes with the stage and its
+     defenders patrol from the start, sent to other routes by the
+     scripts; in the alert they run to atcomm's
      defence points (the first free one nearer the front than Snake), hold
      them facing Snake and fire when they see him, fall back or move up as
      he does, and give up the point for the chase once Snake is as near
      the front as they are; the two nearest Snake attack from their points
      in the game's patterns (a side step out from cover, a burst of fire
      when the line is clear, and back), and the nearest throws a grenade
-     at Snake when he has stayed out of sight for five seconds within 10 m
-   - next: the rest of the defenders' alert (a downed
-     defender's return, atcomm's modes, w03b's held alert), the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
+     at Snake when he has stayed out of sight for five seconds within 10 m;
+     w03b's fight holds the alert, each defender keeps his own point and
+     they attack together when atcomm's gap runs out (a grenade from the
+     third; the nearest leaves to rush Snake in the second half of each
+     15 s cycle), soldiers put to
+     sleep come back in at the manager's entry until its count (4 / 5 / 8
+     by difficulty) is used, then all chase, and once all are down the
+     stage moves on to its next story point; w03b's two in-stage demos
+     (`chara "demo"`) play over the stage, call the script procs their
+     `-p` allows as the demo asks, and run their `-n` proc at the end, so
+     Deck 2 runs from the trap's scene through the fight to d10t and w04a
+   - next: the in-stage demo's model swaps (`-E`), the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects), the commandant's walk

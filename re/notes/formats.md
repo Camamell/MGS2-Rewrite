@@ -319,6 +319,17 @@ Handler conditions (`FUN_00149FE8`) include `-b` (button), `-d dir range`
   skin 8 bytes a vertex (4 weights u8 / 128, 4 slots u8 = 4 x index into
   the mesh's bones). The demo's joints rotate the evm bones (the first
   `animated` ones); a vertex moves from its bones' bind positions.
+- Type-6 `0x10fff01` (`cmd_10fff01` -> `FUN_00216ae8` in d05t,
+  `FUN_0037bc40` in w03a): call the script proc +0x20, if the demo actor's
+  `-p` (+0x24dc, up to 64 procs) lists it.
+- In-stage demos: a gameplay stage's script can run `chara "demo" <name>
+  -i <id> -p <procs> -n <proc>` (w03b). The actor (w03a resident:
+  `FUN_00380ed0` creates it, `FUN_00380ce0` reads `-S -E -K -p`,
+  `FUN_00380c20` its end) starts the stream with `FUN_00118178(sector,
+  0x40000 | 0x80000, proc << 8 | 2, id)`, the `-n` proc being the stream's
+  end callback; `-b` (+0x2608) runs when the stream starts
+  (`FUN_00380b48`). Ported: `demo::StageDemo` (play over the stage, `-p`
+  calls, `-n` at the end; not `-b -u -E -K -S`).
 - Open: type-6 actors and effects, audio.
 ## mar (motions): joint rotations and root height done
 
