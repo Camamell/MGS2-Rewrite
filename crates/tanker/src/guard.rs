@@ -769,6 +769,9 @@ pub enum State {
 pub struct Anim {
     pub idle: usize,
     pub walk: usize,
+    /// How fast the walk carries him (mm/s): its root travel over its
+    /// length at 60 frames a second.
+    pub walk_speed: f32,
     pub run: usize,
     /// Rifle raised.
     pub aim: usize,
@@ -816,11 +819,36 @@ pub struct Check {
 
 impl Anim {
     /// Gurlukovich soldiers, `gbs.mar`.
-    pub const SOLDIER: Anim = Anim { idle: motion::IDLE, walk: motion::WALK, run: motion::RUN, aim: motion::AIM, hands_up: 8, fall: sleep::FALL, lie: sleep::LIE, exclaim: motion::EXCLAIM, look: Some(motion::LOOK), knocked: Some((hurt::FALL, hurt::GET_UP)), get_up: Some(((sleep::GET_UP, 95.0), (sleep::ROUSED, 175.0))), check: Some(Check { shake: 76, kick: 47, radio_out: 35, radio_talk: 27, radio_away: 28, radio_fails: 10 }) };
-    /// US Marines, `ushold.mar`: 39 and 40 cover 1332 and 4057 mm/s, the
-    /// soldiers' walk and run; 46 hands up, 151 falls forward, 152 lies.
-    /// No rifle-raised motion was found, so they aim from the idle pose.
-    pub const MARINE: Anim = Anim { idle: 0, walk: 39, run: 40, aim: 0, hands_up: 46, fall: 151, lie: 152, exclaim: 0, look: None, knocked: None, get_up: None, check: None };
+    pub const SOLDIER: Anim = Anim { idle: motion::IDLE, walk: motion::WALK, walk_speed: WALK_SPEED, run: motion::RUN, aim: motion::AIM, hands_up: 8, fall: sleep::FALL, lie: sleep::LIE, exclaim: motion::EXCLAIM, look: Some(motion::LOOK), knocked: Some((hurt::FALL, hurt::GET_UP)), get_up: Some(((sleep::GET_UP, 95.0), (sleep::ROUSED, 175.0))), check: Some(Check { shake: 76, kick: 47, radio_out: 35, radio_talk: 27, radio_away: 28, radio_fails: 10 }) };
+    /// The Marines who walk the holds' routes (crowd members placed at the
+    /// origin, w04c `FUN_002302a8`): the soldiers' brain over `ushold.mar`,
+    /// whose motions from 38 on are the soldiers' set by slot (`FUN_0022fbe8`
+    /// fills slot k with motion k + 0x26, then the pairs at 0x1f37a0: idle
+    /// 0x1f, walk 0x20, slot 5 0x21). About half are the Marines' own
+    /// versions; the aim, the look about and the radio are a one-frame
+    /// placeholder (0x5fc4), so they aim from the idle pose and do not
+    /// look about. 32 walks 1133 mm in 59 frames; 40 runs as the soldiers
+    /// do; 46 hands up, 151 / 152 fall asleep and lie, 130 the "!", 161 /
+    /// 168 knocked down and up, 170 / 171 get up (95 / 175 frames).
+    pub const MARINE: Anim = Anim {
+        idle: 31,
+        walk: 32,
+        walk_speed: 1132.7 / 59.0 * 60.0,
+        run: 40,
+        aim: 31,
+        hands_up: 46,
+        fall: 151,
+        lie: 152,
+        exclaim: 130,
+        look: None,
+        knocked: Some((161, 168)),
+        get_up: Some(((170, 95.0), (171, 175.0))),
+        check: None,
+    };
+    /// The commandant (variant 19, `-a` flag 0x20 on his walker): slots 0,
+    /// 1, 3 and 0x3d become 0x23, 0x22, 0x25 and 0x24 (`FUN_0022fbe8`). His
+    /// walk (34) covers 912 mm in 157 frames: he paces.
+    pub const COMMANDANT: Anim = Anim { idle: 35, walk: 34, walk_speed: 912.2 / 157.0 * 60.0, ..Anim::MARINE };
 }
 /// A held-up guard calls it in after this long without a gun on him
 /// (`FUN_0023af20`: 0x79 frames).
@@ -1024,6 +1052,12 @@ pub struct Guard {
     pub name: i32,
     /// A `defender.c` soldier (see [`DEFENDER_ACTOR`]).
     pub defender: bool,
+    /// Walks through the level's walls (the commandant: w04c's route 0
+    /// starts inside the wedge of walls round the stage's middle, x
+    /// -460..460, z -10220..-12180, which the game's walker must not be
+    /// stopped by; how its movement treats walls (`hzxd.c`) is not traced,
+    /// one-sided walls being the likely reason. Assumed.)
+    pub ghost: bool,
     pub defend: Defend,
     /// His head turned from his facing (4096ths): now, and where a state
     /// points it this frame (body +0xf66 under controller +0x354 bit 0x800).
@@ -1141,6 +1175,7 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         dropped: [0, 0],
         name: s.args.first().and_then(crate::gcl::Val::int).unwrap_or(0),
         defender: s.kind == DEFENDER_ACTOR,
+        ghost: false,
         defend: Defend { fixed: s.opt_int(b't', 0).is_some_and(|t| t >= 2), ..Default::default() },
         head: 0.0,
         head_to: 0.0,
@@ -1192,6 +1227,7 @@ pub fn patrol(route: usize, vision: f32, anim: Anim) -> Guard {
         dropped: [0, 0],
         name: 0,
         defender: false,
+        ghost: false,
         defend: Defend::default(),
         head: 0.0,
         head_to: 0.0,
@@ -1465,7 +1501,9 @@ fn follow(g: &mut Guard, body: &mut Body, speed: f32, reach: f32, dt: f32, game:
         let step = (speed * dt).min(flat.length());
         let mut p = body.pos + body.forward() * step;
         if let Some(col) = &game.collision {
-            p = col.push_out(p, RADIUS, HEIGHT, STEP_UP);
+            if !g.ghost {
+                p = col.push_out(p, RADIUS, HEIGHT, STEP_UP);
+            }
             match col.floor_below(p.x, p.z, p.y + STEP_UP) {
                 Some(y) => p.y = y,
                 None => {
@@ -3098,7 +3136,7 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
                 g.stuck = 0.0;
                 return;
             }
-            if follow(g, body, WALK_SPEED, 150.0, dt, game) {
+            if follow(g, body, g.anim.walk_speed, 150.0, dt, game) {
                 // At the point (`FUN_002244f0`): the manager's `-e` event
                 // for it runs (`FUN_0021dc60`, the soldier's name as $1).
                 let node = g.node % game.data.collision.as_ref().and_then(|c| c.routes.get(g.route)).map_or(1, |r| r.points.len().max(1));
@@ -3211,7 +3249,7 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
                 }
                 1 => {
                     body.play(g.anim.walk);
-                    if follow(g, body, WALK_SPEED, 600.0, dt, game) || timer > 600 {
+                    if follow(g, body, g.anim.walk_speed, 600.0, dt, game) || timer > 600 {
                         State::Investigate { target, sub: 2, timer: 0, asks }
                     } else {
                         State::Investigate { target, sub, timer, asks }
@@ -3300,7 +3338,7 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
         }
         State::Return => {
             body.play(g.anim.walk);
-            if follow(g, body, WALK_SPEED, 300.0, dt, game) {
+            if follow(g, body, g.anim.walk_speed, 300.0, dt, game) {
                 g.path.clear();
                 g.state = State::Patrol;
             }
@@ -4018,7 +4056,7 @@ fn evasion_brain(g: &mut Guard, body: &mut Body, phase: &Phase, dt: f32, ticks: 
         return;
     }
     body.play(g.anim.walk);
-    if follow(g, body, WALK_SPEED, 400.0, dt, game) {
+    if follow(g, body, g.anim.walk_speed, 400.0, dt, game) {
         g.state = State::Search { wait: LOOK_FRAMES, facing: body.yaw };
     }
 }

@@ -8,7 +8,7 @@
 //! with some parts swapped for `w04a_us_def` parts (table at 0x1f73e0, 0x54
 //! bytes per variant, one entry per part, -1 = keep); 19 is the commandant
 //! (`sco_def`), 20-21 `us_def_pants`. Members placed at the origin are
-//! moved by the actor later (the commandant's walk) and are left out here.
+//! walkers (`walkers`, `commandant`) and are left out here.
 //!
 //! Each stands looping his idle variation's `ushold` motion, with his
 //! variant's parts, head accessories and slung rifle; the script's head
@@ -72,7 +72,6 @@ pub fn accessories(flags: i32) -> Vec<&'static str> {
 
 pub fn members(s: &Spawn) -> Vec<Member> {
     let Some(list) = s.opt(b'a') else { return Vec::new() };
-    let placed = placed(s);
     // `-s x y z`: the point the members face (`FUN_0022a5d8` turns each
     // toward it, `FUN_00223118`), overriding their own rotation.
     let face = (0..3).map(|i| s.opt_int(b's', i)).collect::<Option<Vec<i32>>>().map(|p| Vec3::new(p[0] as f32, p[1] as f32, p[2] as f32));
@@ -82,14 +81,10 @@ pub fn members(s: &Spawn) -> Vec<Member> {
             if !matches!(r[0], Val::Name(_) | Val::Int(_)) {
                 return None;
             }
-            let mut pos = Vec3::new(v(1) as f32, v(2) as f32, v(3) as f32);
+            let pos = Vec3::new(v(1) as f32, v(2) as f32, v(3) as f32);
             let mut yaw = v(5) as f32 / 4096.0 * std::f32::consts::TAU;
             if let Some(f) = face {
                 yaw = (f.x - pos.x).atan2(f.z - pos.z);
-            }
-            // A member the `-c` actor stands somewhere (the commandant).
-            if let Some((at, dir)) = placed.iter().find(|p| p.0 == v(0)).map(|p| (p.1, p.2)) {
-                (pos, yaw) = (at, dir as f32 / 4096.0 * std::f32::consts::TAU);
             }
             (pos.y != 0.0).then(|| Member {
                 pos,
@@ -102,11 +97,10 @@ pub fn members(s: &Spawn) -> Vec<Member> {
         .collect()
 }
 
-/// `-c x y z dir member actor` (repeated): members a speaker actor
-/// (`FUN_00230938`, named `actor`) stands at `x y z` facing `dir` (w04c:
-/// the commandant and an officer, placed at the origin in `-a`). Their
-/// movement during the speech is not ported. Returns (member name, place,
-/// facing).
+/// `-c x y z dir member actor` (repeated): spotlights (`FUN_00230938`) at
+/// `x y z`, worked by `member` and turned toward `actor` (w04c: two
+/// Marines on the upper level light the commandant). The lights are not
+/// drawn yet. Returns (member name, place, facing).
 fn placed(s: &Spawn) -> Vec<(i32, Vec3, i32)> {
     let Some(list) = s.opt(b'c') else { return Vec::new() };
     list.chunks_exact(6)
@@ -120,7 +114,7 @@ fn placed(s: &Spawn) -> Vec<(i32, Vec3, i32)> {
 /// Members placed at `0 0 n` walk route `n` of the stage (the holds' patrols:
 /// one on Very Easy and Easy, two on Normal, three on Hard and Extreme in
 /// w04a). Returns their routes. The commandant (variant 19, also placed at
-/// the origin in w04c) is left out: he is not a patrol.
+/// the origin in w04c) is left out: see [`commandant`].
 pub fn walkers(s: &Spawn) -> Vec<usize> {
     let Some(list) = s.opt(b'a') else { return Vec::new() };
     let placed = placed(s);
@@ -131,6 +125,19 @@ pub fn walkers(s: &Spawn) -> Vec<usize> {
             (v(1) == 0 && v(2) == 0 && v(3) >= 0 && v(7).rem_euclid(22) != 19 && !speaker).then_some(v(3) as usize)
         })
         .collect()
+}
+
+/// The commandant, a member of variant 19 placed at `0 0 n`: the crowd
+/// makes him a walker on route `n` like the patrols (`FUN_002302a8`), with
+/// flags | 0x21 (`FUN_0022a5d8`), which give him his own motions
+/// (`guard::Anim::COMMANDANT`) and hide his rifle (`FUN_0022f9a8`). In
+/// w04c he paces route 0 on the stage above the formation. Returns his
+/// route and `-a` flags (his hat).
+pub fn commandant(s: &Spawn) -> Option<(usize, i32)> {
+    s.opt(b'a')?.chunks_exact(RECORD).find_map(|r| {
+        let v = |i: usize| r[i].int().unwrap_or(0);
+        (v(1) == 0 && v(2) == 0 && v(3) >= 0 && v(7).rem_euclid(22) == 19).then(|| (v(3) as usize, v(10)))
+    })
 }
 
 /// The `-e` procs (by event: 0 a shot or explosion heard, 1 and 2 Snake

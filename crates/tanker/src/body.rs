@@ -103,7 +103,7 @@ pub fn hold(
     mut commands: Commands,
     game: Res<Game>,
     inv: Res<crate::items::Inventory>,
-    bodies: Query<(&Body, Option<&crate::player::Player>, Option<&Visibility>), Without<Held>>,
+    bodies: Query<(&Body, Option<&crate::player::Player>, Option<&Visibility>, Option<&EvmBody>), Without<Held>>,
     mut held: Query<(Entity, &Held, &mut Transform, &mut Visibility)>,
     children: Query<&Children>,
     parts: Query<&Mesh3d, With<Part>>,
@@ -112,14 +112,18 @@ pub fn hold(
 ) {
     let lt2 = game.data.lights.first().map(|(_, l)| l).filter(|_| std::env::var_os("MGS2_NO_LT2").is_none());
     for (e, h, mut t, mut vis) in &mut held {
-        let Ok((b, player, owner_vis)) = bodies.get(h.owner) else {
+        let Ok((b, player, owner_vis, evm)) = bodies.get(h.owner) else {
             // Its owner has gone (a trooper who left).
             commands.entity(e).try_despawn();
             continue;
         };
         let model = &game.data.models[b.model].1;
         let motion = b.motions.and_then(|m| game.data.motions[m].1.motions.get(b.motion));
-        let Some(hand) = anim::pose(model, motion, b.frame, false).get(h.object).copied() else { continue };
+        let joints = match evm.and_then(|x| game.data.evms.get(x.0)) {
+            Some((_, em)) => evm_bones(em, b, &game),
+            None => anim::pose(model, motion, b.frame, false),
+        };
+        let Some(hand) = joints.get(h.object).copied() else { continue };
         let owner = Transform::from_translation(b.pos * SCALE).with_rotation(Quat::from_rotation_y(b.yaw));
         let (_, rot, pos) = hand.to_scale_rotation_translation();
         *t = owner * Transform::from_translation((pos + rot * h.offset) * SCALE).with_rotation(rot * h.grip);
@@ -457,5 +461,102 @@ pub fn update_shadows(
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, pos);
         mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[0.0f32, 1.0, 0.0]; n]);
         mesh.insert_indices(Indices::U32(idx));
+    }
+}
+
+/// A body drawn with an `.evm` skinned mesh (index into
+/// `StageData::evms`) in place of its kms, which only gives the skeleton
+/// for the rest of the game (the commandant's `sco_def` has no kms). Its
+/// first 21 bones are the standard body, turned by the motion's joints.
+#[derive(Component)]
+pub struct EvmBody(pub usize);
+
+/// One mesh of an [`EvmBody`].
+#[derive(Component)]
+pub struct EvmBodyPart(usize);
+
+/// Spawns an evm character, one mesh per evm mesh.
+#[allow(clippy::too_many_arguments)]
+pub fn spawn_evm_body(
+    commands: &mut Commands,
+    em: &mgs2_formats::evm::Model,
+    data: &mgs2_bevy::stage::StageData,
+    cache: &mut mgs2_bevy::scene::MaterialCache,
+    meshes: &mut Assets<Mesh>,
+    images: &mut Assets<Image>,
+    materials: &mut Assets<StandardMaterial>,
+    unlit: bool,
+    root: impl Bundle,
+) -> Entity {
+    let parent = commands.spawn((root, Transform::default(), Visibility::default())).id();
+    for (tex, mesh, i) in crate::demo::evm_meshes(em) {
+        let mat = cache.get(tex, data, images, materials, unlit);
+        let child = commands.spawn((Mesh3d(meshes.add(mesh)), MeshMaterial3d(mat), EvmBodyPart(i))).id();
+        commands.entity(parent).add_child(child);
+    }
+    parent
+}
+
+/// Bone matrices (mm, body space) of an evm body at its motion's frame:
+/// the hips stand as high above the feet as the bind pose's lowest bones
+/// lie below them, raised by the motion's root track as a kms body's are.
+pub fn evm_bones(em: &mgs2_formats::evm::Model, b: &Body, game: &Game) -> Vec<bevy::math::Affine3A> {
+    let motion = b.motions.and_then(|m| game.data.motions[m].1.motions.get(b.motion));
+    let root_y = motion.and_then(|m| m.root_position(b.frame)).map_or(0.0, |p| p[1]);
+    let hips = -em.bones.iter().map(|x| x.position[1]).fold(0.0, f32::min);
+    let rots: Vec<Quat> = (0..em.animated.min(em.bones.len()))
+        .map(|i| {
+            let r = motion.and_then(|m| m.rotation(i, b.frame)).map_or(Quat::IDENTITY, |q| Quat::from_xyzw(q[0], q[1], q[2], q[3]).normalize());
+            match b.turn {
+                Some((j, t)) if j == i => r * t,
+                _ => r,
+            }
+        })
+        .collect();
+    crate::demo::evm_pose(em, &rots, Some(Vec3::new(0.0, hips + root_y, 0.0)))
+}
+
+/// Skins the evm bodies on screen (after [`skin`], which places them and
+/// runs their clocks), lit by the stage's lt2 as the kms bodies are.
+pub fn skin_evm(
+    game: Res<Game>,
+    bodies: Query<(Entity, &Body, &EvmBody, &Transform)>,
+    children: Query<&Children>,
+    parts: Query<(&EvmBodyPart, &Mesh3d, &ViewVisibility)>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut last: Local<std::collections::HashMap<Entity, SkinKey>>,
+) {
+    let lt2 = game.data.lights.first().map(|(_, l)| l).filter(|_| std::env::var_os("MGS2_NO_LT2").is_none());
+    for (e, b, evm, t) in &bodies {
+        let Some((_, em)) = game.data.evms.get(evm.0) else { continue };
+        let list: Vec<_> = children.iter_descendants(e).filter_map(|c| parts.get(c).ok()).collect();
+        // Off screen: skinned again once seen (the first frame always).
+        let key = SkinKey::of(b, 1);
+        if last.get(&e) == Some(&key) || (last.contains_key(&e) && !list.iter().any(|p| p.2.get())) {
+            continue;
+        }
+        last.insert(e, key);
+        let mats = evm_bones(em, b, &game);
+        let reach = Vec3::splat(2000.0);
+        let lights = lt2.map(|l| l.gather((b.pos - reach).into(), (b.pos + reach).into())).unwrap_or_default();
+        for (part, m3, _) in list {
+            let Some(src) = em.meshes.get(part.0) else { continue };
+            let Some(mut mesh) = meshes.get_mut(&m3.0) else { continue };
+            let (pos, nrm) = crate::demo::evm_skin(em, src, &mats);
+            if let Some(l) = lt2 {
+                let col: Vec<[f32; 4]> = pos
+                    .iter()
+                    .zip(&nrm)
+                    .map(|(p, n)| {
+                        let c = l.shade((t.rotation * Vec3::from(*p) + b.pos).into(), (t.rotation * Vec3::from(*n)).into(), &lights);
+                        [c[0] / 128.0, c[1] / 128.0, c[2] / 128.0, 1.0]
+                    })
+                    .collect();
+                mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, col);
+            }
+            let pos: Vec<[f32; 3]> = pos.into_iter().map(|v| (Vec3::from(v) * SCALE).into()).collect();
+            mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, pos);
+            mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, nrm);
+        }
     }
 }

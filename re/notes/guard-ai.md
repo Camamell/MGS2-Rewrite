@@ -196,10 +196,57 @@ caution).
 The holds have no `0xf7f777` soldiers. Their Marines are members of the
 crowd actor `#b3e388` (see `formats.md`): most stand in formation, and
 members placed at `0 0 n` keep watch on route `n` (in w04a routes 4 and 6
-are single-point posts; Hard adds route 2). Their archive `ushold.mar` has
-the soldiers' speeds (walk 39: 2109 mm / 95 frames, run 40: 2164 mm / 32
-frames), hands up 46, fall 151, lie 152. The port runs them with the
-soldiers' AI and these motions (`guard::Anim::MARINE`).
+are single-point posts; Hard adds route 2). Each is a full soldier actor
+(`FUN_002302a8` -> `FUN_0022fbe8`, update `FUN_0022f9a8`, brain switch
+`FUN_0022f2d8` on +0x32c) made by the crowd's constructor for members whose
+x and y are 0. Its motion table maps slot k to `ushold.mar` motion k + 0x26
+(0x17a slots), then the pairs at w04c 0x1f37a0: slot 0 -> 0x1f (idle, 119
+frames), 1 -> 0x20 (walk: 1133 mm / 59 frames, 1152 mm/s), 5 -> 0x21 (499
+frames). `ushold` 38.. are the soldiers' `gbs.mar` by slot (same motion
+ids for half of them; the other half are the Marines' own versions, and
+the aim (42), the look about (54) and every radio motion are a one-frame
+placeholder, id 0x5fc4). So run 40, hands up 46, fall / lie 151 / 152, the
+"!" 130, knocked down / up 161 / 168 and the two get-ups 170 / 171 match
+the soldiers' slots. The port runs them with the soldiers' AI and these
+motions (`guard::Anim::MARINE`).
+
+The route walk (state 0, `FUN_0022e770`): sub 0 waits 61 frames, 1
+(`FUN_0022e040`) walks to the point, 3 (`FUN_0022e0a8`) arrives (within
+0x15e) and reads the point's action / wait / direction (+0x900 / +0x980 /
++0xa00 tables), 2 (`FUN_0022e1b8`) turns to the direction with the head
+leading, 4 (`FUN_0022e2c0`) waits (action 5 for point action 3), then the
+next point. `FUN_0022e928` (Snake seen, level >= 2, or +0x268 & 0x1800)
+goes to state 8 (`FUN_0022f7b8`: sub 8 `FUN_0022e670` the "!" with mark
+0x53, then 9 `FUN_0022e710` facing him and `FUN_0021e200(1)`, the crowd's
+"caught" event).
+
+The commandant (`#8af8fd` in w04c, variant 19 at `0 0 0`) is such a
+walker with member flags | 0x21: his slots 0 / 1 / 3 / 0x3d become 0x23
+(idle, 139 frames) / 0x22 (walk, 912 mm in 157 frames: 349 mm/s) / 0x25 /
+0x24; his update hides two models (his rifle and the object at +0x2358);
+at a point's end he plays action 6 for 10 frames (sub 0xb, `FUN_0022e388`)
+before the next walk; the soldiers' perception switch (`FUN_0023e318`) is
+replaced by `FUN_0022f4a8` (a hit, it seems) -> state 8. He paces w04c
+route 0 on the stage (x -4000..4000 at y -14750, waits of 1200 / 600
+frames facing the formation). His `sco_def` is an `.evm` without a kms:
+the port draws it skinned over the Marines' skeleton (`body::EvmBody`,
+hips 1047.5 mm up from the evm's bones). Not ported: action 6 at his
+points, his `FUN_0022f4a8` test (he sees as the walkers do), flag 0x80's
+60-frame count to `FUN_0021e200(1)` (+0x25e4 is not traced; his `-a`
+flags are 0x90).
+
+The `-c x y z dir member actor` entries (`FUN_00230938`, update 0x230640)
+are spotlights, not speakers: each loads two models (0xc6cbc3 the lamp,
+0xc0b045 the beam, `FUN_00355268(.., 0x11)`) 145 mm above `x y z`, turned
+toward the actor named (`FUN_00230440`: bearing - 0x400; w04c: the
+commandant) unless its member's state has 0x60000, and marks the member
+(flags | 0x40, +0x5bc = 6, +0x5e8 = 9, +0x5ea = 1). In w04c two Marines
+(23826964 / 40604180 at +-5500, -15000, -1200) work the lights at
++-5250, -14000, -2000 (the port had put the two Marines there; they stand
+at their own records). `FUN_002304e8` (the light's) turns it onto Snake
+when he is on the upper level (y -15000..-12000, z
+-15000..-12000, x -7000..0 for light 0, 0..7000 for light 1) and sets
+`DAT_0017f48c` bit 0. Not ported yet: the lights.
 
 The crowd actor's `-e` procs are its events (offsets from +0x8c8ac): 0 a
 pad flag, 1 / 2 Snake near the `-p` points facing them, 3 a Marine heard

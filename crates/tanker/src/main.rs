@@ -357,6 +357,9 @@ struct Cast {
     snake: Option<(usize, Option<usize>, Vec3, f32)>,
     /// Guards: (guard, model, motions, position, rifle model).
     guards: Vec<(Guard, usize, Option<usize>, Vec3, Option<usize>)>,
+    /// Walkers drawn with an evm (the commandant): (guard, skeleton kms,
+    /// evm, motions, position, head accessories).
+    evm_guards: Vec<(Guard, usize, usize, Option<usize>, Vec3, Vec<usize>)>,
     props: Vec<Prop>,
     /// Item boxes and their model.
     items: Vec<(items::Item, usize)>,
@@ -753,6 +756,7 @@ fn prepare(
     let nav = data.collision.as_ref().map(nav::Nav::new);
 
     let mut guards = Vec::new();
+    let mut evm_guards = Vec::new();
     let mut phase = Phase::default();
     let mut doors = Vec::new();
     let mut traps = Vec::new();
@@ -973,6 +977,23 @@ fn prepare(
                     guards.push((guard::patrol(route, vision, guard::Anim::MARINE), m, ushold, p, model_index(&data, "m4a_nm")));
                 }
             }
+            // The commandant walks his route with the Marines' skeleton
+            // under his own skinned mesh.
+            let evm = data.evms.iter().position(|(h, _)| *h & 0x00FF_FFFF == str_code(crowd::model_name(19).as_bytes()));
+            for (route, flags) in vm.spawns.iter().filter(|s| s.kind == crowd::CROWD_ACTOR).filter_map(crowd::commandant) {
+                let start = data.collision.as_ref().and_then(|h| h.routes.get(route)).and_then(|r| r.points.first());
+                if let (Some(wp), Some(evm)) = (start, evm) {
+                    let mut p = Vec3::from(wp.position);
+                    if let Some(y) = collision.as_ref().and_then(|c| c.floor_below(p.x, p.z, p.y + 1000.0)) {
+                        p.y = y;
+                    }
+                    let extras = crowd::accessories(flags).into_iter().filter_map(|n| model_index(&data, n)).collect();
+                    eprintln!("the commandant walks route {route} from {p}");
+                    let mut g = guard::patrol(route, vision, guard::Anim::COMMANDANT);
+                    g.ghost = true;
+                    evm_guards.push((g, m, evm, ushold, p, extras));
+                }
+            }
         }
         if let Some(s) = vm.spawns.iter().find(|s| s.kind == crowd::CROWD_ACTOR) {
             crowd_procs = crowd::events(s);
@@ -1122,7 +1143,7 @@ fn prepare(
     } else {
         game.entrance_done();
     }
-    Ok(Level { game, phase, cast: Cast { snake, guards, props, items, sliding, bosses, crowd, posed, attached } })
+    Ok(Level { game, phase, cast: Cast { snake, guards, evm_guards, props, items, sliding, bosses, crowd, posed, attached } })
 }
 
 fn main() -> Result<()> {
@@ -1404,6 +1425,7 @@ fn main() -> Result<()> {
         app.insert_resource(c);
     }
     app.add_systems(Update, body::hold.after(body::skin).before(player::follow_camera));
+    app.add_systems(Update, body::skin_evm.after(body::skin));
     app.add_systems(Update, guard::radio::place.after(guard::think).before(body::hold));
     app.add_systems(Update, (body::add_shadows, body::update_shadows.after(body::skin)));
     app.add_systems(Update, boss_defeat.after(olga::think).run_if(codec::idle).run_if(demo::idle));
@@ -1594,6 +1616,12 @@ fn spawn_level(
         if let Some(m) = rifle.filter(|_| flags & crowd::RIFLE_FLAGS != 0) {
             weapons.push((e, m, false, crowd::rifle_turn(), crowd::RIFLE_JOINT, crowd::RIFLE_OFFSET));
         }
+    }
+    for (g, model, evm, motions, pos, extras) in cast.evm_guards {
+        let e = body::spawn_evm_body(&mut commands, &data.evms[evm].1, data, &mut cache, &mut meshes, &mut images, &mut materials, unlit, (Body::new(pos, 0.0, model, motions), LevelEntity));
+        let name = reflect::ActorName(g.name as u32 & 0x00FF_FFFF);
+        commands.entity(e).insert((g, name, body::EvmBody(evm)));
+        weapons.extend(extras.into_iter().map(|m| (e, m, false, Quat::IDENTITY, crowd::HEAD, Vec3::ZERO)));
     }
     for (owner, model, when_aiming, grip, object, offset) in weapons {
         let m = &data.models[model].1;
@@ -2316,6 +2344,7 @@ fn stage_demo(
             .collect();
         info!("in-stage demo calls {:x?}", new.procs);
         new.then_proc = d.end;
+        new.swaps = d.swaps;
         *c = new;
         return;
     }

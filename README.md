@@ -315,6 +315,10 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      stage moves on to its next story point; w03b's two in-stage demos
      (`chara "demo"`) play over the stage, call the script procs their
      `-p` allows as the demo asks, and run their `-n` proc at the end, so
-     Deck 2 runs from the trap's scene through the fight to d10t and w04a
-   - next: the in-stage demo's model swaps (`-E`), the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
-     (needs her cover objects), the commandant's walk
+     Deck 2 runs from the trap's scene through the fight to d10t and w04a;
+     the holds' patrolling Marines walk with their own motions from the
+     game's slot table (and are knocked down and get up as soldiers do), and
+     the commandant paces the stage above the formation during his speech
+     (his skinned `sco_def` mesh over the Marines' skeleton)
+   - next: the holds' spotlights on the commandant (`-c`, `FUN_00230938`), the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
+     (needs her cover objects)

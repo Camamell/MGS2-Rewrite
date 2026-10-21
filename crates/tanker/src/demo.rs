@@ -115,6 +115,8 @@ pub struct Cutscene {
     pub procs: Vec<(f32, u32)>,
     /// An in-stage demo's `-n` proc, run when it ends.
     pub then_proc: Option<u32>,
+    /// An in-stage demo's model swaps (`StageDemo::swaps`).
+    pub swaps: Vec<(u32, u32)>,
     spawned: bool,
 }
 
@@ -128,15 +130,21 @@ pub fn demo_actor() -> u32 {
 /// actor `FUN_00380ed0` / `FUN_00380ce0`): `-p` lists the procs the demo
 /// may call (+0x24dc, up to 64), `-n` the proc run when its stream ends
 /// (`FUN_00118178`'s callback `proc << 8 | 2`).
-/// Not ported: `-b` (+0x2608, a proc run when the stream starts,
-/// `FUN_00380b48`), `-u` (+0x260c), `-E` / `-K` (`FUN_003811a8`, model
-/// swaps it seems: w03b passes Raiden's head models) and `-S` (bit
-/// 0x10000000 of `DAT_0017f48c` when absent).
+/// `-E` / `-K` list pairs of names (`FUN_003811a8`): an evm (`-E`, file
+/// type 4) or kms (`-K`, type 0x0a) the demo loads is replaced by the
+/// other of its pair (`FUN_00384d38`). Every script that plays a demo
+/// passes `-E "rai_def_mh_mt" "~rai_gbs_raihead_mh_mt"` (Raiden's head,
+/// for the Plant), which no Tanker demo loads, so in the Tanker it changes
+/// nothing. Not ported: `-b` (+0x2608, a proc run when the stream starts,
+/// `FUN_00380b48`), `-u` (+0x260c) and `-S` (bit 0x10000000 of
+/// `DAT_0017f48c` when absent).
 #[derive(Clone, Debug)]
 pub struct StageDemo {
     pub id: u32,
     pub procs: Vec<u32>,
     pub end: Option<u32>,
+    /// (from, to) file ids, type byte included.
+    pub swaps: Vec<(u32, u32)>,
 }
 
 impl StageDemo {
@@ -148,12 +156,41 @@ impl StageDemo {
             crate::gcl::Val::Proc(p) => Some(*p & 0x00FF_FFFF),
             _ => None,
         };
+        // A name's leading `~` is not part of its hash: the evm the pair
+        // names is `rai_gbs_raihead_mh_mt` (0x234f8a, in Plant demos).
+        let name = |v: &crate::gcl::Val| match v {
+            crate::gcl::Val::Str(t) => str_code(t.trim_start_matches('~').as_bytes()),
+            v => v.int().unwrap_or(0) as u32 & 0x00FF_FFFF,
+        };
+        let mut swaps = Vec::new();
+        for (letter, kind) in [(b'E', 4u32), (b'K', 0x0a)] {
+            for pair in s.opt(letter).unwrap_or(&[]).chunks_exact(2) {
+                swaps.push((name(&pair[0]) | kind << 24, name(&pair[1]) | kind << 24));
+            }
+        }
+        swaps.truncate(16);
         Some(StageDemo {
             id: s.opt_int(b'i', 0)? as u32,
+            swaps,
             procs: s.opt(b'p').unwrap_or(&[]).iter().filter_map(proc).collect(),
             end: s.opt(b'n').and_then(|v| v.first()).and_then(proc),
         })
     }
+}
+
+/// A demo's file id after its model swaps, as `FUN_00384d38` looks them
+/// up (last pair first); a pair whose replacement is not loaded was never
+/// entered (`FUN_00140a58` in `FUN_003811a8`).
+fn swap(swaps: &[(u32, u32)], mut id: u32, loaded: impl Fn(u32) -> bool) -> u32 {
+    if id == 0 {
+        return 0;
+    }
+    for &(from, to) in swaps.iter().rev() {
+        if from == id && loaded(to & 0x00FF_FFFF) {
+            id = to;
+        }
+    }
+    id
 }
 
 impl Cutscene {
@@ -265,6 +302,7 @@ pub fn load_ids(iso: &Path, name: &str, ids: &[u32], stage: Option<StageData>) -
         name: name.to_string(),
         procs: Vec::new(),
         then_proc: None,
+        swaps: Vec::new(),
         spawned: false,
     }
 }
@@ -365,6 +403,30 @@ pub fn evm_pose(m: &mgs2_formats::evm::Model, rotations: &[Quat], root: Option<V
         out.push(parent * local);
     }
     out
+}
+
+/// Skinned positions (mm) and normals of one evm mesh under posed bones
+/// ([`evm_pose`]).
+pub fn evm_skin(em: &mgs2_formats::evm::Model, src: &mgs2_formats::evm::Mesh, mats: &[bevy::math::Affine3A]) -> (Vec<[f32; 3]>, Vec<[f32; 3]>) {
+    let mut pos: Vec<[f32; 3]> = Vec::with_capacity(src.positions.len());
+    let mut nrm: Vec<[f32; 3]> = Vec::with_capacity(src.positions.len());
+    for (i, p) in src.positions.iter().enumerate() {
+        let v = Vec3::from(*p);
+        let n = src.normals.get(i).map_or(Vec3::Y, |n| Vec3::from(*n));
+        let (mut acc, mut accn) = (Vec3::ZERO, Vec3::ZERO);
+        for &(bone, w) in &src.skin[i] {
+            if w <= 0.0 {
+                continue;
+            }
+            let Some(m) = mats.get(usize::from(bone)) else { continue };
+            let bind = Vec3::from(em.bones[usize::from(bone)].position);
+            acc += m.transform_point3(v - bind) * w;
+            accn += m.transform_vector3(n) * w;
+        }
+        pos.push(acc.into());
+        nrm.push(accn.normalize_or(Vec3::Y).into());
+    }
+    (pos, nrm)
 }
 
 /// Advances the cutscene; Space skips to the next line, Esc ends it.
@@ -538,13 +600,15 @@ pub fn stage(
     let mut n = 0;
     for (di, (_, d)) in c.demos.iter().enumerate() {
         for m in &d.models {
-            let hash = m.file & 0x00FF_FFFF;
+            let hash = swap(&c.swaps, m.file, |h| data.models.iter().any(|(k, _)| *k & 0x00FF_FFFF == h)) & 0x00FF_FFFF;
             let Some(model) = data.models.iter().position(|(h, _)| *h & 0x00FF_FFFF == hash) else {
                 debug!("demo model {:#x} not found", m.file);
                 continue;
             };
+            let has_evm = |h: u32| data.evms.iter().any(|(k, _)| *k & 0x00FF_FFFF == h);
+            let evm_id = swap(&c.swaps, m.evm, has_evm);
             let evm = (m.evm != 0)
-                .then(|| data.evms.iter().position(|(h, _)| *h & 0x00FF_FFFF == m.evm & 0x00FF_FFFF))
+                .then(|| data.evms.iter().position(|(h, _)| *h & 0x00FF_FFFF == evm_id & 0x00FF_FFFF))
                 .flatten();
             let actor = DemoActor { demo: di, serial: m.serial, model, evm };
             let _entity = match evm {
@@ -670,24 +734,8 @@ pub fn animate(
                 let Ok((part, mesh3d)) = evm_parts.get(child) else { continue };
                 let Some(src) = em.meshes.get(part.0) else { continue };
                 let Some(mut mesh) = meshes.get_mut(&mesh3d.0) else { continue };
-                let mut pos: Vec<[f32; 3]> = Vec::with_capacity(src.positions.len());
-                let mut nrm: Vec<[f32; 3]> = Vec::with_capacity(src.positions.len());
-                for (i, p) in src.positions.iter().enumerate() {
-                    let v = Vec3::from(*p);
-                    let n = src.normals.get(i).map_or(Vec3::Y, |n| Vec3::from(*n));
-                    let (mut acc, mut accn) = (Vec3::ZERO, Vec3::ZERO);
-                    for &(bone, w) in &src.skin[i] {
-                        if w <= 0.0 {
-                            continue;
-                        }
-                        let Some(m) = mats.get(usize::from(bone)) else { continue };
-                        let bind = Vec3::from(em.bones[usize::from(bone)].position);
-                        acc += m.transform_point3(v - bind) * w;
-                        accn += m.transform_vector3(n) * w;
-                    }
-                    pos.push((acc * SCALE).into());
-                    nrm.push(accn.normalize_or(Vec3::Y).into());
-                }
+                let (pos, nrm) = evm_skin(em, src, &mats);
+                let pos: Vec<[f32; 3]> = pos.into_iter().map(|p| (Vec3::from(p) * SCALE).into()).collect();
                 if let Some(l) = light {
                     let col: Vec<[f32; 4]> = nrm.iter().map(|n| l.shade(tf.rotation * Vec3::from(*n))).collect();
                     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, col);
@@ -734,5 +782,20 @@ pub fn animate(
             mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, pos);
             mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, nrm);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn swaps_need_the_replacement_loaded() {
+        let swaps = [(0x0454_1e89, 0x0423_4f8a)];
+        assert_eq!(swap(&swaps, 0x0454_1e89, |_| true), 0x0423_4f8a);
+        assert_eq!(swap(&swaps, 0x0454_1e89, |_| false), 0x0454_1e89);
+        // Snake's evm in w03b's demos is left alone.
+        assert_eq!(swap(&swaps, 0x0455_aaa5, |_| true), 0x0455_aaa5);
+        assert_eq!(swap(&swaps, 0, |_| true), 0);
     }
 }
