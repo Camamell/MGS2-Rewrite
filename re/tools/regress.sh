@@ -78,6 +78,8 @@ MGS2_FPV_TEST=1 MGS2_FPV_PITCH=41 check lamp "light 906464 shot" ge 1 w03a --ski
 MGS2_LIFE=25 MGS2_GIVE=0/5:1 MGS2_KEYS=N@2 check bandage "bandage used" ge 1 w01a --skip-cutscenes --shot-at 3
 MGS2_COLD=120 MGS2_GIVE=0/4:1 MGS2_KEYS=N@4 check cold "cold medicine used" ge 1 w01a --skip-cutscenes --shot-at 6
 MGS2_GOGGLES=1 check goggles "panicked" eq 0 w01a --skip-cutscenes --shot-at 3
+# Deck 2: the alert's "atcomm" brings in its four defenders (#3259e5).
+MGS2_GOD=1 MGS2_ALERT_AT=2 check defenders "trooper arrives" ge 4 w03a --skip-cutscenes --shot-at 8
 
 if [ "${1:-}" != quick ]; then
     for st in w00a w00b w00c w01a w01b w01c w01d w01e w01f w02a w03a w03b w04a w04b w04c; do

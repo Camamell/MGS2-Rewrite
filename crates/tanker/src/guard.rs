@@ -40,6 +40,10 @@ use crate::gcl::Spawn;
 use crate::player::{HEIGHT, Player, RADIUS, STEP_UP};
 
 pub const GUARD_ACTOR: u32 = 0xF7F777;
+/// The Deck-2 soldiers (w03a / w03b, `defender.c` `cmd_3259e5`): their own
+/// brain (`FUN_00272e68`, `FUN_0038b4f0` / `FUN_00392af8`) is not ported;
+/// they run the watcher's (assumed), and take a new route by message 3.
+pub const DEFENDER_ACTOR: u32 = 0x3259E5;
 /// A reinforcement trooper (`cmd_cc9a07`), created by the squad actor
 /// `0x5bb4d4` that the manager's `-a` proc makes when the alert starts.
 pub const TROOPER_ACTOR: u32 = 0xCC9A07;
@@ -776,6 +780,8 @@ pub struct Guard {
     pub dropped: [usize; 2],
     /// His actor name (the drop procs pick the item by it).
     pub name: i32,
+    /// A `defender.c` soldier (see [`DEFENDER_ACTOR`]).
+    pub defender: bool,
     /// His head turned from his facing (4096ths): now, and where a state
     /// points it this frame (body +0xf66 under controller +0x354 bit 0x800).
     /// See [`Guard::turn_head`].
@@ -891,6 +897,7 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         drops: [drop_list(s, b'q'), drop_list(s, b'a')],
         dropped: [0, 0],
         name: s.args.first().and_then(crate::gcl::Val::int).unwrap_or(0),
+        defender: s.kind == DEFENDER_ACTOR,
         head: 0.0,
         head_to: 0.0,
         stung: false,
@@ -940,6 +947,7 @@ pub fn patrol(route: usize, vision: f32, anim: Anim) -> Guard {
         drops: [Vec::new(), Vec::new()],
         dropped: [0, 0],
         name: 0,
+        defender: false,
         head: 0.0,
         head_to: 0.0,
         stung: false,
@@ -1345,7 +1353,19 @@ pub fn messages(mut game: ResMut<Game>, mut guards: Query<(&mut Guard, Option<&m
     }
     for (target, code, args) in std::mem::take(&mut game.guard_messages) {
         for (mut g, vis) in guards.iter_mut().filter(|(g, _)| (g.name as u32) & 0x00FF_FFFF == target) {
+            // A defender's route message is 3 `route [x y z map]`
+            // (`FUN_00273828`; its 0 / 1 set +0x328 to 6 / 1, 2 moves him,
+            // 4 / 5 its own flags: not ported).
             match code {
+                3 if g.defender => {
+                    let Some(&route) = args.first() else { continue };
+                    if args.len() >= 4 {
+                        g.post = Some(Vec3::new(args[1] as f32, args[2] as f32, args[3] as f32));
+                    }
+                    info!("guard {}: script gives route {route}", g.route);
+                    g.pending_route = Some((route.max(0) as usize, None));
+                }
+                _ if g.defender => {}
                 1 => {
                     let Some(&route) = args.first() else { continue };
                     let node = args.get(5).copied().filter(|n| (0..0xFF).contains(n)).map(|n| n as usize);
@@ -1393,6 +1413,7 @@ pub fn think(
     mut clock: Local<f32>,
     mut down: Local<std::collections::HashSet<Entity>>,
     mut tested: Local<std::collections::HashSet<usize>>,
+    mut forced: Local<bool>,
 ) {
     // The game's logic runs once per 60 Hz frame; counters advance by the
     // whole frames elapsed (movement uses the real time step).
@@ -1457,6 +1478,12 @@ pub fn think(
     let able = guards.iter().filter(|(_, g, _)| !g.asleep() && !g.inactive).count();
     let changed = std::mem::take(&mut phase.changed);
     let mut highest = 0i32;
+    // MGS2_ALERT_AT=seconds: the meter full once then (testing; for stages
+    // whose soldiers come only with the alert).
+    if !*forced && std::env::var("MGS2_ALERT_AT").ok().and_then(|s| s.parse::<f32>().ok()).is_some_and(|t| time.elapsed_secs() >= t) {
+        *forced = true;
+        highest = i32::from(METER_MAX);
+    }
 
     let shot = gunshot.0.take();
     let difficulty = game.banks.b16(crate::gcl::DIFFICULTY);

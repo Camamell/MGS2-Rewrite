@@ -885,3 +885,23 @@ he waits), 10 / action 0xf, the gaits, the Caution changes, the walking
 head look, actions 2 / 3 / 7 / 8 / 0xe / 0x10-0x14 / 0x16 / 0x17 / 0x19 /
 0x1a and the 0x40 / 0x80 motion forms, 0xa's effect and second motion,
 6's voices.
+
+## Deck-2 defenders (w03a / w03b)
+
+The enemy manager's `-a` proc `#a0402c` creates `#c7280a` "atcomm"
+(`atcomm.c`, w03a resident `cmd_c7280a`; init `FUN_00272b48` runs `-e` via
+`FUN_00272a78`, reads `-d` (up to 16 points x y z n), `-p`, `-t`, `-f`).
+Its `-e` proc `#67a9d9` creates four `#3259e5` soldiers (`defender.c`) on
+routes 0 / 8 / 8 / 4, or 1 / 3 / 2 / 13 when Au32:0xc4 is not "#cd9f50".
+Their message handler `FUN_00273828`: 0 / 1 set +0x328 to 6 / 1; 2 warps
+him (x y+1000 z, dir) when `FUN_002898e8` fails; 3 `route [x y z dir]`
+sets the route byte (+0xc0f) and the post point +0x2b0; 4 / 5 flags.
+Ported: creation through the manager's `-a` (taken to arrive after the
+troopers' delay and leave as they do: assumed), message 3. Not ported:
+their own brain (`FUN_00272e68`, `FUN_0038b4f0` / `FUN_00392af8`); they
+run the watcher's. Test: `MGS2_ALERT_AT=2` (meter full at 2 s) in w03a.
+Lead: a defender's `-p` (up to 4 procs, `FUN_0021a750` into +0x322c) is
+not yet traced to where it runs; w03a's fourth defender has
+`-p #67363a` (300 frames later message 3 route 3 to the third, As16:0xb4a
++= 1). `-t` (+0x330f) 2 / 3 set flags 0x10000100 on +0x3220, 0..1 start
+`FUN_003973f0`.

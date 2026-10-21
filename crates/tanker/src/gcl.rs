@@ -76,8 +76,9 @@ pub mod trap_event {
 /// as far as stage setup needs: `0xddf5ca` (enemy manager; `-w` creates the
 /// "wccomm" actor), `0x59eda8` "wccomm" (`-e` creates the guards) and
 /// `0x5bb4d4` (a reinforcement squad, `FUN_0029dcb8`: `-e` creates its
-/// troopers).
-const CALL_ON_CREATE: &[(u32, u8)] = &[(0xDDF5CA, b'w'), (0x59EDA8, b'e'), (0x5BB4D4, b'e')];
+/// troopers), `0xc7280a` "atcomm" (w03a / w03b, `atcomm.c` `FUN_00272b48` ->
+/// `FUN_00272a78`: `-e` creates the Deck-2 defenders).
+const CALL_ON_CREATE: &[(u32, u8)] = &[(0xDDF5CA, b'w'), (0x59EDA8, b'e'), (0x5BB4D4, b'e'), (0xC7280A, b'e')];
 /// Difficulty (bank B s16): 10 very easy ... 50 extreme.
 pub const DIFFICULTY: u16 = 0x8;
 /// Story marker (bank A u32) set by the stage that sent Snake here.

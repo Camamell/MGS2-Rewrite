@@ -292,6 +292,8 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      them out of play and back (w02a's door soldier); at their route points
      soldiers play the point's action, turn their heads to its look point
      or look left and right, and wait for a script signal or a radio line
-     as the point says; reaching a point can run a script event
-   - next: the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
+     as the point says; reaching a point can run a script event; on Deck 2
+     (w03a / w03b) the alert's "atcomm" brings in the four defenders, whom
+     the scripts send to other routes (they run the watcher's brain for now)
+   - next: the defenders' own brain (`defender.c`), the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects), the commandant's walk
