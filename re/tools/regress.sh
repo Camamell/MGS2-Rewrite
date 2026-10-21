@@ -80,15 +80,18 @@ check mirror "reflects 28dce6" ge 1 w00b --skip-cutscenes --shot-at 4
 MGS2_LIFE=25 MGS2_GIVE=0/5:1 MGS2_KEYS=N@2 check bandage "bandage used" ge 1 w01a --skip-cutscenes --shot-at 3
 MGS2_COLD=120 MGS2_GIVE=0/4:1 MGS2_KEYS=N@4 check cold "cold medicine used" ge 1 w01a --skip-cutscenes --shot-at 6
 MGS2_GOGGLES=1 check goggles "panicked" eq 0 w01a --skip-cutscenes --shot-at 3
-# Deck 2: the alert's "atcomm" brings in its four defenders (#3259e5).
-MGS2_GOD=1 MGS2_ALERT_AT=2 check defenders "trooper arrives" ge 4 w03a --skip-cutscenes --shot-at 8
+# Deck 2: the manager's "atcomm" comes with the stage, and its four
+# defenders (#3259e5) with it.
+check defenders "script created .* 4 guards" ge 1 w03a --skip-cutscenes --shot-at 3
 # In a held alert they run to atcomm's defence points and hold them.
 MGS2_GOD=1 MGS2_ALERT_AT=2-30 check defence_hold "defender [0-9]+ holds point" ge 3 w03a --skip-cutscenes --shot-at 30
 # Holding, the first two attack from their points (the pattern table in
 # the resident image): out from cover, a burst, and back.
 MGS2_GOD=1 MGS2_ALERT_AT=2-30 check defence_attack "defender [0-9]+ fires from point" ge 1 w03a --skip-cutscenes --snake-at=-19000,-5000,-127500 --shot-at 14
 # Snake out of sight within 10 m of the first: pattern 4, the grenade.
-MGS2_GOD=1 MGS2_ALERT_AT=2-30 check defence_grenade "soldier's grenade goes off" ge 1 w03a --skip-cutscenes --snake-at=-21000,-5000,-125000 --shot-at 14
+# (The two who would chase Snake from where their routes start are taken
+# down first.)
+MGS2_DOWN=1:d@1,13:d@1 MGS2_GOD=1 MGS2_ALERT_AT=2-30 check defence_grenade "soldier's grenade goes off" ge 1 w03a --skip-cutscenes --snake-at=-21000,-5000,-125000 --shot-at 20
 # With Snake at the front no point is nearer it than he is: they chase.
 MGS2_GOD=1 MGS2_ALERT_AT=2-20 check defence_chase "takes point" eq 0 w03a --skip-cutscenes --snake-at=8000,-5000,-127000 --shot-at 12
 

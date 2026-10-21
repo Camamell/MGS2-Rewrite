@@ -762,6 +762,7 @@ fn prepare(
     let mut attached = Vec::new();
     let mut crowd = Vec::new();
     let mut on_alert = None;
+    let mut atcomm = None;
     let mut rain_spec = None;
     let mut holds_timer = None;
     let mut song = 0;
@@ -841,6 +842,13 @@ fn prepare(
         on_alert = manager.and_then(|s| match s.opt(b'a')?.first()? {
             gcl::Val::Proc(p) => Some(*p),
             _ => None,
+        });
+        // Deck 2's "atcomm", which the manager's `-a` creates with the stage
+        // (its `-e` soldiers are among the stage's soldiers above).
+        atcomm = vm.spawns.iter().filter(|s| s.kind == guard::ATCOMM_ACTOR).find_map(|s| guard::Atcomm::from_spawn(s, nav.as_ref())).map(|mut a| {
+            a.patterns = data.resident.as_deref().map(guard::Atcomm::read_patterns).unwrap_or_default();
+            eprintln!("{name}: atcomm: {} defence points (kinds {:?}), front {}, path lengths {:?}, {} attack pattern kinds", a.points.len(), a.kinds, a.front, a.dist, a.patterns.len());
+            a
         });
         traps = vm.traps.iter().map(|t| (t.clone(), false)).collect();
         props = vm.spawns.iter().filter(|s| PROP_ACTORS.contains(&s.kind)).filter_map(|s| prop(s, &data)).collect();
@@ -1047,7 +1055,7 @@ fn prepare(
         codec_then: Vec::new(),
         on_alert,
         arrivals: Vec::new(),
-        atcomm: None,
+        atcomm,
         rain: rain_spec,
         timer: holds_timer,
         fog: fog_spec,
@@ -1656,14 +1664,10 @@ fn script_event(
     }
     apply_codec(game, &codec);
     game.new_items.extend(spawns.iter().filter(|s| s.kind == items::ITEM_ACTOR).cloned());
-    if let Some(mut a) = spawns.iter().filter(|s| s.kind == guard::ATCOMM_ACTOR).find_map(|s| guard::Atcomm::from_spawn(s, game.nav.as_ref())) {
-        a.patterns = game.data.resident.as_deref().map(guard::Atcomm::read_patterns).unwrap_or_default();
-        info!("atcomm: {} defence points (kinds {:?}), front {}, path lengths {:?}, {} attack pattern kinds", a.points.len(), a.kinds, a.front, a.dist, a.patterns.len());
-        game.atcomm = Some(a);
-    }
-    // Troopers, and the Deck-2 defenders an alert's "atcomm" creates (taken
-    // to arrive and leave as the troopers do: assumed).
-    game.arrivals.extend(spawns.into_iter().filter(|s| s.kind == guard::TROOPER_ACTOR || s.kind == guard::DEFENDER_ACTOR).map(|s| (s, TROOPER_DELAY)));
+    // Troopers. (The manager's `-a` proc, run again here when an alert
+    // starts, also makes Deck 2's atcomm and its defenders: those came
+    // with the stage, so they are left out.)
+    game.arrivals.extend(spawns.into_iter().filter(|s| s.kind == guard::TROOPER_ACTOR).map(|s| (s, TROOPER_DELAY)));
     let Some(mut next) = load else {
         game.banks = banks;
         return;

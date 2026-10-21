@@ -73,12 +73,14 @@ pub mod trap_event {
 }
 
 /// Actors that call one of their proc options as soon as they are created,
-/// as far as stage setup needs: `0xddf5ca` (enemy manager; `-w` creates the
-/// "wccomm" actor), `0x59eda8` "wccomm" (`-e` creates the guards) and
+/// as far as stage setup needs: `0xddf5ca` (enemy manager, `FUN_002181f0`:
+/// every `-w` proc, then every `-a` proc, through `FUN_0021a688`; `-w`
+/// creates the "wccomm" actor, `-a` a reinforcement squad or w03a / w03b's
+/// "atcomm"), `0x59eda8` "wccomm" (`-e` creates the guards) and
 /// `0x5bb4d4` (a reinforcement squad, `FUN_0029dcb8`: `-e` creates its
 /// troopers), `0xc7280a` "atcomm" (w03a / w03b, `atcomm.c` `FUN_00272b48` ->
 /// `FUN_00272a78`: `-e` creates the Deck-2 defenders).
-const CALL_ON_CREATE: &[(u32, u8)] = &[(0xDDF5CA, b'w'), (0x59EDA8, b'e'), (0x5BB4D4, b'e'), (0xC7280A, b'e')];
+const CALL_ON_CREATE: &[(u32, u8)] = &[(0xDDF5CA, b'w'), (0xDDF5CA, b'a'), (0x59EDA8, b'e'), (0x5BB4D4, b'e'), (0xC7280A, b'e')];
 /// Difficulty (bank B s16): 10 very easy ... 50 extreme.
 pub const DIFFICULTY: u16 = 0x8;
 /// Story marker (bank A u32) set by the stage that sent Snake here.
@@ -525,10 +527,15 @@ impl<'a> Vm<'a> {
                     .map(|(l, v)| (*l, v.iter().map(|x| if matches!(x, Value::Block(_)) { self.value(x, &block_args) } else { self.value(x, args) }).collect()))
                     .collect(),
             };
-            let on_create = CALL_ON_CREATE
+            let on_create: Vec<u32> = CALL_ON_CREATE
                 .iter()
-                .find(|(k, _)| *k == spawn.kind)
-                .and_then(|(_, l)| spawn.opt(*l)?.first().cloned());
+                .filter(|(k, _)| *k == spawn.kind)
+                .flat_map(|(_, l)| spawn.opt(*l).unwrap_or(&[]).iter())
+                .filter_map(|v| match v {
+                    Val::Proc(p) => Some(*p),
+                    _ => None,
+                })
+                .collect();
             let eager = (self.eager && EAGER.contains(&spawn.kind))
                 .then(|| spawn.opt(b'p').and_then(|v| v.first().cloned()))
                 .flatten();
@@ -549,7 +556,7 @@ impl<'a> Vm<'a> {
                 }
             }
             self.spawns.push(spawn);
-            if let Some(Val::Proc(p)) = on_create {
+            for p in on_create {
                 self.call(p, &[]);
             }
             if let Some(Val::Proc(p)) = eager {
