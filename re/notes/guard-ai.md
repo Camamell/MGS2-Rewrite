@@ -190,6 +190,23 @@ caution).
   search with the others in evasion, and walk back to their entry and leave
   once caution begins. Their own brain (`cmd_cc9a07`) and the squad's
   formation are not ported.
+- Leads (w00a dump, not ported): the trooper (`cmd_cc9a07`, 0x3310-byte
+  actor, update `FUN_0029b228`, init `FUN_0029b2f0`) is a soldier body at
+  +0x2ed0 run by the common `FUN_00257bc0` / `FUN_00257f50` /
+  `FUN_00258028`, with its own brain chosen at init from `-s` (+0x3220)
+  and the phase: bit 0x800000 -> `FUN_00227e00` (the route walker);
+  bit 0x40000000 (needs `-b`, a manager link at +0x3098) -> `FUN_003c5c40`
+  in Caution, else `FUN_003bbaf0`; otherwise `FUN_003c2fb8` in Caution,
+  else `FUN_003bbaf0`. Options: `-r` route (required), `-n`, `-l` (default
+  3000), `-f` (default 9), `-h` (default 12000), `-i` vision boxes (6000),
+  `-v` voice (default name % 4), `-e` kind (4 = 0xfbbaaf / 0xe8419b models,
+  1-2 a second weapon, 3 another), `-d` post, `-o` a second point. The
+  squad's act (`FUN_0029d9a8`) keeps its state at +0x228 (0 none, 1 alert,
+  2 evasion) from Bs16:0x112; in the alert `FUN_0029d040` counts members
+  seeing Snake (+0x18e / +0x1b6 == 3) into +0x20a and runs the leader /
+  follower planners `FUN_0029c1a0`, `FUN_0029caa8`, `FUN_0029cb40`,
+  `FUN_0029ce20`, `FUN_0029cff8`, `FUN_0029bfa0`; the evasion runs
+  `FUN_0029c1a0`, `FUN_0029bfa0`, `FUN_0029bec0` with `-a` at +0x23c.
 
 ## US Marines in the holds
 
