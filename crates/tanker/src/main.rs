@@ -22,6 +22,7 @@ mod usp_light;
 mod fog;
 mod footprint;
 mod fpv;
+mod reflect;
 mod thermal;
 mod gcl;
 mod grenade;
@@ -260,6 +261,8 @@ pub struct Game {
     pub crowd_procs: Vec<Option<u32>>,
     /// The crowd's `-p` points (`crowd::points`).
     pub crowd_points: Vec<(Vec3, f32, f32)>,
+    /// The stage's mirrors (`mirror.c`).
+    pub mirrors: Vec<reflect::Mirror>,
     /// Breakable lights (`brk_spotlgt.c`): (name, centre mm, proc run when
     /// shot, broken).
     pub brk_lights: Vec<(u32, Vec3, Option<u32>, bool)>,
@@ -766,6 +769,7 @@ fn prepare(
     let mut thunder_spec = None;
     let mut crowd_procs = Vec::new();
     let mut crowd_points = Vec::new();
+    let mut mirrors = Vec::new();
     let mut brk_lights = Vec::new();
     let mut crowd_name = None;
     let mut cameras = script_cam::Cameras::default();
@@ -895,6 +899,7 @@ fn prepare(
             };
             brk_lights.push((name, Vec3::new(v(b't', 0), v(b't', 1), v(b't', 2)), proc, false));
         }
+        mirrors = vm.spawns.iter().filter(|s| s.kind == reflect::MIRROR_ACTOR).filter_map(reflect::Mirror::from_spawn).collect();
         let crates: Vec<Prop> = vm.spawns.iter().filter(|s| s.kind == ORGA_OBJ).flat_map(|s| orga_objects(s, &data)).collect();
         // The crates stop Snake: a wall round each model's bounds (an
         // approximation of their own collision, which is not read).
@@ -1050,6 +1055,7 @@ fn prepare(
         crowd_alarm: false,
         crowd_procs,
         crowd_points,
+        mirrors,
         brk_lights,
         crowd_fired: 0,
         crowd_name,
@@ -1300,7 +1306,7 @@ fn main() -> Result<()> {
         app.add_systems(Update, (save::autosave, save::codec_save));
     }
     app.add_systems(Update, test_monitor);
-    app.add_plugins((pad::plugin, pause::plugin, scar::plugin, footprint::plugin, usp_light::plugin, thermal::plugin)).add_systems(Update, pad::rumble);
+    app.add_plugins((pad::plugin, pause::plugin, scar::plugin, footprint::plugin, usp_light::plugin, thermal::plugin, reflect::plugin)).add_systems(Update, pad::rumble);
     app.add_plugins(cbox::plugin);
     app.add_plugins(grenade::plugin);
     app.add_systems(Update, motion_sheet.after(player::control).before(body::skin));
@@ -1496,7 +1502,7 @@ fn spawn_level(
             if (1..=player.max_life).contains(&life) {
                 player.life = life;
             }
-            commands.entity(e).insert(player);
+            commands.entity(e).insert((player, reflect::ActorName(SNAKE_NAME)));
             weapons.extend(model_index(data, "m92").map(|m| (e, m, true, body::pistol_grip(), body::RIGHT_HAND, Vec3::ZERO)));
             usp_model = model_index(data, "usp").map(|m| (e, m));
         }
@@ -1506,7 +1512,8 @@ fn spawn_level(
     let mut radios = Vec::new();
     for (g, model, motions, pos, gun) in cast.guards {
         let e = spawn(&mut commands, model, Body::new(pos, 0.0, model, motions));
-        commands.entity(e).insert(g);
+        let name = reflect::ActorName(g.name as u32 & 0x00FF_FFFF);
+        commands.entity(e).insert((g, name));
         weapons.extend(gun.map(|m| (e, m, false, body::rifle_grip(), body::RIGHT_HAND, Vec3::ZERO)));
         radios.extend(radio.map(|m| (e, m)));
     }
@@ -2240,6 +2247,12 @@ fn prop_messages(
         return;
     }
     for (target, code, args) in std::mem::take(&mut game.prop_messages) {
+        // A mirror: 0 / 1 start / stop reflecting the named actor.
+        if let Some(actor) = args.first()
+            && reflect::message(&mut game.mirrors, target, code, *actor as u32)
+        {
+            continue;
+        }
         // A breakable light: 0 broken, 1 / 5 lit, 2 / 3 hide / show.
         if let Some(i) = game.brk_lights.iter().position(|l| l.0 == target) {
             let broken = match code {

@@ -74,6 +74,8 @@ check dart_stung "feels a dart" ge 1 w01a --skip-cutscenes --snake-at=6000,0,-30
 MGS2_GOD=1 check reload "reloads" ge 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 45
 # A dart fired up from first person breaks a w03a lamp.
 MGS2_FPV_TEST=1 MGS2_FPV_PITCH=41 check lamp "light 906464 shot" ge 1 w03a --skip-cutscenes --snake-at=-14800,-5000,-39250 --snake-dir=3072 --fire-at 2 --shot-at 4
+# The deck's mirror reflects Snake once he is on it (mirror.c messages).
+check mirror "reflects 28dce6" ge 1 w00b --skip-cutscenes --shot-at 4
 # Items: a bandage stops the bleeding; cold medicine ends the sneezing.
 MGS2_LIFE=25 MGS2_GIVE=0/5:1 MGS2_KEYS=N@2 check bandage "bandage used" ge 1 w01a --skip-cutscenes --shot-at 3
 MGS2_COLD=120 MGS2_GIVE=0/4:1 MGS2_KEYS=N@4 check cold "cold medicine used" ge 1 w01a --skip-cutscenes --shot-at 6

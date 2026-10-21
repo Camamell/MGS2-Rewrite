@@ -163,6 +163,9 @@ What works:
   prints' look is assumed), and blood drops (and a point of life every 3 s; keeping still instead wins back two points every 0.8 s) while Snake is under a third of
   his life after a hit (`blood_dp.c`); a soldier who sees either follows the
   trail.
+- Mirrors (`mirror.c`): the wet decks and floors reflect the characters
+  the stage script switches on (Snake, soldiers), drawn faint through the
+  mirror plane (the strength is assumed).
 - The USP's light: a pool of light where Snake aims it (look assumed).
 - Character shadows: Snake's own shadow model (`sna_shadow`), others their
   body, posed with the body and flattened onto the floor (the game draws a
