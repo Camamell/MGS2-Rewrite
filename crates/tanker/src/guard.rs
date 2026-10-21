@@ -52,8 +52,15 @@ pub const ATCOMM_ACTOR: u32 = 0xC7280A;
 /// defenders hold in an alert and what they defend.
 #[derive(Clone, Debug, Default)]
 pub struct Atcomm {
-    /// `-d`: up to 16 points, x y z n (n not read here).
+    /// `-d`: up to 16 points, x y z n.
     pub points: Vec<Vec3>,
+    /// Each point's n (+0xc): which of [`Atcomm::patterns`] the attack
+    /// from it runs (w03a: 6, the last 7).
+    pub kinds: Vec<u8>,
+    /// The attack patterns from the stage's resident image (w03a
+    /// `PTR_DAT_001f50e0`): per point kind six step lists of (action,
+    /// frames), each ending in action 0x1e. Empty: no attacks.
+    pub patterns: Vec<[Vec<(u8, u8)>; 6]>,
     /// `-f` (+0x4a0): the place defended.
     pub front: Vec3,
     /// Path length from the front to each point (+0x450, at most 9 000 000).
@@ -72,11 +79,84 @@ impl Atcomm {
         let v = |letter, i| s.opt_int(letter, i).unwrap_or(0) as f32;
         let n = s.opt(b'd').map_or(0, |d| (d.len() / 4).min(16));
         let points: Vec<Vec3> = (0..n).map(|i| Vec3::new(v(b'd', 4 * i), v(b'd', 4 * i + 1), v(b'd', 4 * i + 2))).collect();
+        let kinds = (0..n).map(|i| v(b'd', 4 * i + 3) as u8).collect();
         s.opt(b'f')?;
         let front = Vec3::new(v(b'f', 0), v(b'f', 1), v(b'f', 2));
         let dist = points.iter().map(|&p| nav.map_or(front.distance(p), |nav| nav.path_length(front, p, 9_000_000.0))).collect();
-        Some(Atcomm { points, front, dist, at_once: s.opt_int(b't', 0) == Some(1) })
+        Some(Atcomm { points, kinds, patterns: Vec::new(), front, dist, at_once: s.opt_int(b't', 0) == Some(1) })
     }
+
+    /// Finds the attack pattern table in a resident image: its first list
+    /// (kind 0, pattern 0) by its bytes, then the 8 x 6 pointers to the
+    /// lists (w03a: the lists at 0x1f5020.., the table at 0x1f50e0; w03b
+    /// has them elsewhere).
+    pub fn read_patterns(img: &[u8]) -> Vec<[Vec<(u8, u8)>; 6]> {
+        const BASE: usize = 0x001F_1480;
+        const FIRST: [u8; 16] = [1, 6, 0xf, 0x12, 5, 0, 0x15, 1, 6, 0, 0x10, 0x12, 1, 6, 0x1e, 0];
+        let u32_at = |o: usize| img.get(o..o + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize);
+        let Some(first) = img.windows(FIRST.len()).step_by(2).position(|w| w == FIRST).map(|p| p * 2 + BASE) else {
+            return Vec::new();
+        };
+        let Some(table) = (0..img.len() / 4).map(|i| i * 4).find(|&o| u32_at(o) == Some(first)) else {
+            return Vec::new();
+        };
+        let list = |addr: usize| -> Option<Vec<(u8, u8)>> {
+            let mut o = addr.checked_sub(BASE)?;
+            let mut steps = Vec::new();
+            while steps.len() < 32 {
+                let (&a, &f) = (img.get(o)?, img.get(o + 1)?);
+                steps.push((a, f));
+                if a == 0x1e {
+                    return Some(steps);
+                }
+                o += 2;
+            }
+            None
+        };
+        (0..8)
+            .map_while(|k| {
+                let lists: Option<Vec<_>> = (0..6).map(|p| list(u32_at(table + 4 * (k * 6 + p))?)).collect();
+                lists.and_then(|l| <[Vec<(u8, u8)>; 6]>::try_from(l).ok())
+            })
+            .collect()
+    }
+}
+
+/// The defenders' actions (`FUN_0028bd90`, into +0xfe4): the motion, and
+/// whether it plays once (`FUN_0028bb68`, which marks its end in +0xf58)
+/// rather than looping (`FUN_0028bca0` / `FUN_0028ba78`). Actions 0x15 and
+/// up shoot (`FUN_0028cdf8`). Motions with bits 0xc0000000 (0xb, 0xc,
+/// 0x18) are played mirrored by the game (model flags 0x300, the muzzle
+/// then on joint +0xca0): not done here; w03a's points never use them.
+/// 0x1a is 0x154 for soldiers with +0xf2c bit 0x4000, else 0x44 (taken).
+fn defend_action(action: u8) -> Option<(usize, bool)> {
+    Some(match action {
+        1 => (0, false),
+        2 => (0x45, false),
+        3 => (0x47, true),
+        4 => (0x46, true),
+        5 => (0x107, true),
+        6 => (0x108, true),
+        7 | 0xb => (0x10a, true),
+        8 | 0xc => (0x109, true),
+        9 => (0x10f, true),
+        10 => (0x110, true),
+        0xd => (99, false),
+        0xe => (0x4b, false),
+        0xf => (0x41, false),
+        0x10 => (0x40, false),
+        0x11 => (0x3c, false),
+        0x12 => (0x4e, true),
+        0x13 => (0x15, false),
+        0x15 => (0x10c, false),
+        0x16 | 0x18 => (0x10b, false),
+        0x17 => (0x111, false),
+        0x19 | 0x1b => (0x3d, false),
+        0x1a => (0x44, false),
+        0x1c => (0x10d, false),
+        0x1d => (0x10e, false),
+        _ => return None,
+    })
 }
 
 /// A defender's part in the defence (his unit, soldier +0x430).
@@ -96,7 +176,38 @@ pub struct Defend {
     chase: bool,
     /// Where he stands holding it (the point, or where walls stopped him).
     spot: Vec3,
+    /// The attack from the point (stance 0x1b), when running.
+    attack: Option<PointAttack>,
 }
+
+/// An attack from the point (`FUN_0028c640` starts it, `FUN_0028cdf8`
+/// runs it): a pattern's steps one after another.
+#[derive(Clone, Copy, Debug, Default)]
+struct PointAttack {
+    /// The point's kind (+8) and the pattern (+0x16).
+    kind: usize,
+    pattern: usize,
+    /// The step (+9), its frames (+0x1a) and the stance's frames (+0x338).
+    step: usize,
+    count: u32,
+    frames: u32,
+    /// Frames before he may fire again (+0x3a8 +0x20).
+    cooldown: u32,
+    /// Has fired in this step (for the log).
+    fired: bool,
+}
+
+/// The fire window of a shooting step (`FUN_0028dfc8`: +0x17 12, +0x18
+/// 48, +0x19 90): shots after 12 frames for 48, every 6 frames; a step
+/// of length 1 lasts the whole 150.
+const ATTACK_DELAY: u32 = 12;
+const ATTACK_FIRE: u32 = 48;
+const ATTACK_AFTER: u32 = 90;
+/// The line of fire's masks (`FUN_0028a448`: `FUN_0014f230` mode 0xf,
+/// walls 0x10000, floors 0x20, each with 0x40000 / 0x80000 added as for
+/// the photos' sight line).
+const FIRE_WALLS: u32 = 0x10000 | 0x40000 | 0x80000;
+const FIRE_FLOORS: u32 = 0x20 | 0x40000;
 /// A reinforcement trooper (`cmd_cc9a07`), created by the squad actor
 /// `0x5bb4d4` that the manager's `-a` proc makes when the alert starts.
 pub const TROOPER_ACTOR: u32 = 0xCC9A07;
@@ -232,6 +343,10 @@ pub struct Phase {
     /// The radios are jammed (`DAT_0017f48c` bit 0x10, set while chaff
     /// (`bomb_chaff.c`) is in the air): the port's chaff timer.
     pub jammed: bool,
+    /// Frames since a soldier last saw Snake (the squad's +0x214, which
+    /// `FUN_00275af8` counts up and zeroes on a new sighting; read by the
+    /// defenders, `FUN_0028c640` / `FUN_0028c8e8`).
+    pub unseen: u32,
     /// The manager's `-e`: (route, point, proc) run when a soldier reaches
     /// that point (0x3fe828, `FUN_002217f0` / `FUN_0021dc60`).
     route_events: Vec<(usize, usize, u32)>,
@@ -466,6 +581,7 @@ impl Default for Phase {
             no_answer: Vec::new(),
             report_at: Vec3::ZERO,
             jammed: false,
+            unseen: 0,
             route_events: Vec::new(),
             route_lines: Vec::new(),
         }
@@ -1562,6 +1678,16 @@ pub fn think(
         game.nav.as_ref().map_or(at.front.distance(snake_pos), |nav| nav.path_length(at.front, snake_pos, FRONT_REACH))
     });
     let mut taken: std::collections::HashSet<usize> = guards.iter().filter(|(_, g, _)| !g.asleep() && !g.dead()).filter_map(|(_, g, _)| g.defend.point).collect();
+    // The defenders' order (+0x3a8 +0x39, `FUN_00275af8`): sorted by
+    // +0x3a8 +0x28, taken to be the distance to Snake; the game's extra
+    // weights for soldiers busy otherwise are not ported. Only the first
+    // two attack from their points (`FUN_0028cbb0`).
+    let defenders: Vec<(Entity, f32)> = guards
+        .iter()
+        .filter(|(_, g, _)| g.defender && !g.asleep() && !g.dead() && !g.inactive)
+        .map(|(e, _, b)| (e, b.pos.distance(snake_pos)))
+        .collect();
+    let mut seen_now = false;
 
     let shot = gunshot.0.take();
     let difficulty = game.banks.b16(crate::gcl::DIFFICULTY);
@@ -1752,6 +1878,7 @@ pub fn think(
         // ranges (`FUN_002559C0`, camera mode 6).
         let sight = if first_person.active { 0.75 } else { 1.0 };
         g.level = perceive(&g, &body, snake_pos, snake_height, &game, sight);
+        seen_now |= g.level == 3;
         // Part of him showing past cover (stimulus 0x4000, `FUN_00230dd8`
         // tests his joints): head or feet in clear view within the near
         // range draws a look (state 6 says 0x140).
@@ -1965,7 +2092,8 @@ pub fn think(
         }
         match phase.kind {
             PhaseKind::Alert => {
-                let goal = if g.defender { defend(&mut g, &body, &game, snake_far, &mut taken, ticks) } else { None };
+                let rank = defenders.iter().find(|d| d.0 == me).map_or(0, |&(_, mine)| defenders.iter().filter(|d| d.0 != me && d.1 < mine).count());
+                let goal = if g.defender { defend(&mut g, &mut body, &game, snake_pos, snake_far, rank, &mut phase.unseen, &mut taken, ticks, &mut rng) } else { None };
                 if alert_brain(&mut g, &mut body, snake_pos, snake_dead, goal, dt, ticks, &game, &mut rng) {
                     let muzzle = body.pos + Vec3::Y * MUZZLE + body.forward() * 400.0;
                     let at = snake_pos + Vec3::Y * (snake_height * 0.6);
@@ -1997,6 +2125,7 @@ pub fn think(
         }
         highest = highest.max(i32::from(g.meter));
     }
+    phase.unseen = if seen_now { 0 } else { phase.unseen.saturating_add(ticks) };
 
     // Kicked awake: up in 20 frames (`FUN_00232938` sets his down timer
     // +0xf1a to 0x14); shaken: up at once (the shake is a hit of type
@@ -3103,11 +3232,24 @@ fn take_point(d: &mut Defend, at: &Atcomm, taken: &mut std::collections::HashSet
 /// is 4 m of path farther out than his point, and goes back to it when
 /// moved more than 250 mm off. Returns the point and whether he holds it;
 /// None: the chase (the alert brain, `FUN_00283498`).
-/// Not ported: `FUN_0028c8e8`'s other giving up (Snake unseen 300 frames
-/// and 10 m away), shooting on the move (`FUN_0028a280`), the re-entry of
+/// Holding, the first two in the defenders' order (`rank`) attack after
+/// 60 frames ([`attack`]); the others hold without firing.
+/// Not ported: shooting on the move (`FUN_0028a280`), the re-entry of
 /// a soldier down (`FUN_002733f0` / `FUN_002732a0`) and atcomm's modes
 /// (+0x2f0, from the manager's reinforcement counts).
-fn defend(g: &mut Guard, body: &Body, game: &Game, snake_far: f32, taken: &mut std::collections::HashSet<usize>, ticks: u32) -> Option<(Vec3, bool)> {
+#[allow(clippy::too_many_arguments)]
+fn defend(
+    g: &mut Guard,
+    body: &mut Body,
+    game: &Game,
+    snake: Vec3,
+    snake_far: f32,
+    rank: usize,
+    unseen: &mut u32,
+    taken: &mut std::collections::HashSet<usize>,
+    ticks: u32,
+    rng: &mut Rng,
+) -> Option<Defence> {
     let at = game.atcomm.as_ref()?;
     let d = &mut g.defend;
     if d.fixed || at.at_once || d.chase {
@@ -3139,7 +3281,7 @@ fn defend(g: &mut Guard, body: &Body, game: &Game, snake_far: f32, taken: &mut s
             if j != i {
                 info!("defender {} falls back to point {j}", g.route);
             }
-            return Some((at.points[j], false));
+            return Some(Defence::Run(at.points[j]));
         }
         // (Held too when walls keep him a little short of it for a second:
         // the port's collision is rounder than the game's. Not the game's.)
@@ -3151,23 +3293,205 @@ fn defend(g: &mut Guard, body: &Body, game: &Game, snake_far: f32, taken: &mut s
             d.spot = if off <= 100.0 { point } else { body.pos };
             info!("defender {} holds point {i}", g.route);
         }
-        return Some((point, d.holding));
+        return Some(if d.holding { Defence::Hold } else { Defence::Run(point) });
     }
     let point = d.spot;
+    if d.attack.is_some() {
+        return attack(g, body, game, snake, snake_far, rank, unseen, taken, ticks);
+    }
     if d.frames > 60 && at.dist[i] + 4000.0 < snake_far {
         take_point(d, at, taken, snake_far - 3000.0);
         let j = d.point?;
         if j != i {
             d.holding = false;
             info!("defender {} moves up to point {j}", g.route);
-            return Some((at.points[j], false));
+            return Some(Defence::Run(at.points[j]));
         }
     }
     if (point.x - body.pos.x).abs() > 250.0 || (point.z - body.pos.z).abs() > 250.0 {
         d.holding = false;
         d.frames = 0;
+        return Some(Defence::Run(at.points[i]));
     }
-    Some((point, d.holding))
+    // `FUN_0028cbb0`: after 60 frames the first two start an attack
+    // (`FUN_0028c640`): pattern 4 when Snake has been out of sight for 300
+    // frames and is within 10 m of the first, else one of 0..3 at random.
+    if rank < 2 && d.frames > 60 && at.kinds.get(i).is_some_and(|&k| (k as usize) < at.patterns.len()) {
+        let near = rank == 0 && *unseen > 300 && body.pos.distance(snake) < 10_000.0;
+        if near {
+            *unseen = 0;
+        }
+        let pattern = if near { 4 } else { (rng.next() >> 8) as usize & 3 };
+        d.attack = Some(PointAttack { kind: at.kinds[i] as usize, pattern, ..Default::default() });
+        info!("defender {} attacks from point {i} (pattern {pattern})", g.route);
+        return attack(g, body, game, snake, snake_far, rank, unseen, taken, ticks);
+    }
+    Some(Defence::Hold)
+}
+
+/// `FUN_0028e208` kind 3: from his hand (taken: 1400 mm up, 300 ahead) at
+/// the target 10 mm above Snake's feet in an arc a sixth of the distance
+/// high; with no clear line (the fire masks) at a point 1250 mm higher in
+/// an arc 1000 high, else 1000 mm to either side of it. (Kind 5, for
+/// sightings flagged 0x48, not ported.)
+fn throw_grenade(body: &Body, snake: Vec3, game: &Game) {
+    let hand = body.pos + Vec3::Y * 1400.0 + body.forward() * 300.0;
+    let to = snake + Vec3::Y * 10.0;
+    let clear = |p: Vec3| game.collision.as_ref().is_none_or(|c| c.ray_masked(hand, p, FIRE_WALLS, FIRE_FLOORS).is_none());
+    let height = hand.distance(to) / 6.0;
+    let side = Quat::from_rotation_y((to.x - hand.x).atan2(to.z - hand.z)) * Vec3::X * 1000.0;
+    let (at, height) = if clear(to) {
+        (to, height)
+    } else if clear(to + Vec3::Y * 1250.0) {
+        (to + Vec3::Y * 1250.0, 1000.0)
+    } else {
+        [to + side, to - side].into_iter().find(|p| clear(*p)).map_or((to, height), |p| (p, height))
+    };
+    crate::grenade::throw_frag(hand, at, height);
+}
+
+/// What a defender does this frame.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Defence {
+    /// Runs to the point.
+    Run(Vec3),
+    /// Holds it facing Snake (action 2, motion 0x45).
+    Hold,
+    /// Attacks from it (his motion set); fires a round when true.
+    Attack(bool),
+}
+
+/// The attack from the point (stance 0x1b, `FUN_0028cdf8`), `-t` 0 / 1:
+/// he faces Snake and plays the pattern's steps (action, frames): frames
+/// 0 = until the motion ends, 1 = the fire window's whole 150 frames,
+/// more = that many frames. A shooting step (action 0x15+) fires after
+/// [`ATTACK_DELAY`] frames for [`ATTACK_FIRE`], every 6 frames, while
+/// Snake's path length from the front is under his point's plus his near
+/// range plus 4 m (`FUN_0028ba30`) and nothing stands within 2 m short of
+/// Snake on the line from his gun (`FUN_0028a448`; else 12 frames' wait).
+/// Every 12 frames he gives up for the chase (`FUN_0028c8e8`) once he is
+/// no nearer the front than Snake less 2 m, or (the first in the order)
+/// once Snake has been unseen 300 frames and is 10 m off. The pattern
+/// over (action 0x1e), he holds again if within 500 mm of the point, else
+/// runs back to it.
+/// Pattern 4 throws a grenade ([`throw_grenade`]).
+/// Not ported: the aim's spread (+0x14, which nothing in w03a seems to
+/// set), the jump past step 0 under flag 4, the grenade in his hand from
+/// frame 0x21, mirrored motions.
+#[allow(clippy::too_many_arguments)]
+fn attack(
+    g: &mut Guard,
+    body: &mut Body,
+    game: &Game,
+    snake: Vec3,
+    snake_far: f32,
+    rank: usize,
+    unseen: &mut u32,
+    taken: &mut std::collections::HashSet<usize>,
+    ticks: u32,
+) -> Option<Defence> {
+    let at = game.atcomm.as_ref()?;
+    let i = g.defend.point?;
+    let mut a = g.defend.attack?;
+    let steps = &at.patterns.get(a.kind)?[a.pattern];
+    let dist = body.pos.distance(snake);
+    let length_of = |motion: usize| body.motions.and_then(|m| game.data.motions.get(m)).and_then(|(_, mar)| mar.motions.get(motion)).map_or(30, |m| m.length as u32);
+    let mut fire = false;
+    for _ in 0..ticks.max(1) {
+        if a.frames.is_multiple_of(12) {
+            let me = game.nav.as_ref().map_or(at.front.distance(body.pos), |nav| nav.path_length(at.front, body.pos, 5_000_000.0));
+            if me > snake_far - 2000.0 || (rank == 0 && *unseen > 300 && dist >= 10_000.0) {
+                taken.remove(&i);
+                g.defend.point = None;
+                g.defend.attack = None;
+                g.defend.holding = false;
+                g.defend.chase = true;
+                info!("defender {} leaves his point for the chase", g.route);
+                return None;
+            }
+        }
+        let (action, length) = steps.get(a.step).copied().unwrap_or((0x1e, 0));
+        if action >= 0x15
+            && a.count > ATTACK_DELAY
+            && a.count <= ATTACK_DELAY + ATTACK_FIRE
+            && a.frames.is_multiple_of(6)
+            && a.cooldown == 0
+            && snake_far < at.dist[i] + g.vision.distance + 4000.0
+        {
+            let muzzle = body.pos + Vec3::Y * MUZZLE;
+            let target = snake + Vec3::Y * 1000.0;
+            let len = muzzle.distance(target);
+            let ray = game.collision.as_ref().and_then(|c| c.ray_masked(muzzle, target, FIRE_WALLS, FIRE_FLOORS));
+            let clear = ray.is_none_or(|t| t * len >= len - 2000.0);
+            if clear {
+                fire = true;
+                if !a.fired {
+                    a.fired = true;
+                    info!("defender {} fires from point {i}", g.route);
+                }
+            } else {
+                a.cooldown = 12;
+            }
+        }
+        a.cooldown = a.cooldown.saturating_sub(1);
+        // Pattern 4's grenade (action 0x12, `FUN_0028eab0`): thrown on
+        // frame 0x60 of motion 0x4e at Snake (0x1ece00, +0xf80).
+        if action == 0x12 && a.count == 0x60 {
+            throw_grenade(body, snake, game);
+            info!("defender {} throws a grenade", g.route);
+        }
+        // The motion's own travel: 0x41 / 0x40 step about 540 mm to the
+        // side and back (out from cover and in again; 0x107 / 0x108 45 mm),
+        // which the game's root track moves him by.
+        if let Some(m) = defend_action(action).and_then(|(m, _)| body.motions.and_then(|i| game.data.motions.get(i)).and_then(|(_, mar)| mar.motions.get(m)))
+            && m.length > 0
+            && let (Some(p0), Some(p1)) = {
+                let f0 = (a.count % m.length) as f32;
+                (m.root_position(f0), m.root_position((f0 + 1.0).min(m.length as f32 - 1.0)))
+            }
+        {
+            let d = Quat::from_rotation_y(body.yaw) * Vec3::new(p1[0] - p0[0], 0.0, p1[2] - p0[2]);
+            let mut p = body.pos + d;
+            if let Some(col) = &game.collision {
+                p = col.push_out(p, RADIUS, HEIGHT, STEP_UP);
+                p.y = col.floor_below(p.x, p.z, p.y + STEP_UP).unwrap_or(body.pos.y);
+            }
+            body.pos = p;
+        }
+        a.frames += 1;
+        // (Steps of 0 frames end with their once-played motion, the game's
+        // +0xf58; counted here by the motion's length.)
+        a.count += 1;
+        let ended = match length {
+            0 => defend_action(action).is_none_or(|(m, _)| a.count >= length_of(m)),
+            1 => a.count > ATTACK_DELAY + ATTACK_FIRE + ATTACK_AFTER,
+            n => a.count >= u32::from(n),
+        };
+        if ended {
+            a.step += 1;
+            a.count = 0;
+            a.cooldown = 0;
+            a.fired = false;
+            if steps.get(a.step).is_none_or(|s| s.0 == 0x1e) {
+                g.defend.attack = None;
+                g.defend.frames = 0;
+                let spot = g.defend.spot;
+                if (spot.x - body.pos.x).abs() >= 500.0 || (spot.z - body.pos.z).abs() >= 500.0 {
+                    g.defend.holding = false;
+                    return Some(Defence::Run(at.points[i]));
+                }
+                return Some(Defence::Hold);
+            }
+        }
+    }
+    let (action, _) = steps.get(a.step).copied().unwrap_or((2, 0));
+    match defend_action(action) {
+        Some((m, true)) => body.play_once(m),
+        Some((m, false)) => body.play(m),
+        None => body.play(DEFEND_MOTION),
+    }
+    g.defend.attack = Some(a);
+    Some(Defence::Attack(fire))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3176,7 +3500,7 @@ fn alert_brain(
     body: &mut Body,
     snake: Vec3,
     snake_dead: bool,
-    goal: Option<(Vec3, bool)>,
+    goal: Option<Defence>,
     dt: f32,
     ticks: u32,
     game: &Game,
@@ -3236,9 +3560,10 @@ fn alert_brain(
         return false;
     }
     // A defender: on his way to his point he only runs; at it he holds
-    // the line facing Snake, and shoots as below when he sees him.
-    if let Some((point, holding)) = goal {
-        if !holding {
+    // the line facing Snake, or attacks from it ([`attack`], which plays
+    // his motions).
+    match goal {
+        Some(Defence::Run(point)) => {
             a.firing = false;
             a.aim = 0.0;
             if g.path.last() != Some(&point) {
@@ -3251,14 +3576,20 @@ fn alert_brain(
             }
             return false;
         }
-        g.path.clear();
-        if g.level != 3 || snake_dead {
+        Some(Defence::Hold) => {
+            g.path.clear();
             a.firing = false;
             a.aim = 0.0;
             body.play(DEFEND_MOTION);
             face(body, snake, dt);
             return false;
         }
+        Some(Defence::Attack(fire)) => {
+            g.path.clear();
+            face(body, snake, dt);
+            return fire && !snake_dead;
+        }
+        None => {}
     }
     if g.level == 3 && body.pos.distance(snake) < STRIKE_RANGE && !snake_dead && g.anim.knocked.is_some() {
         g.path.clear();

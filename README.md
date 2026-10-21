@@ -301,7 +301,10 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      defence points (the first free one nearer the front than Snake), hold
      them facing Snake and fire when they see him, fall back or move up as
      he does, and give up the point for the chase once Snake is as near
-     the front as they are
-   - next: the rest of the defenders' alert (their attack from the point,
-     a downed defender's return, atcomm's modes, w03b's held alert), the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
+     the front as they are; the two nearest Snake attack from their points
+     in the game's patterns (a side step out from cover, a burst of fire
+     when the line is clear, and back), and the nearest throws a grenade
+     at Snake when he has stayed out of sight for five seconds within 10 m
+   - next: the rest of the defenders' alert (a downed
+     defender's return, atcomm's modes, w03b's held alert), the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects), the commandant's walk

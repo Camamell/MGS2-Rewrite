@@ -1656,8 +1656,9 @@ fn script_event(
     }
     apply_codec(game, &codec);
     game.new_items.extend(spawns.iter().filter(|s| s.kind == items::ITEM_ACTOR).cloned());
-    if let Some(a) = spawns.iter().filter(|s| s.kind == guard::ATCOMM_ACTOR).find_map(|s| guard::Atcomm::from_spawn(s, game.nav.as_ref())) {
-        info!("atcomm: {} defence points, front {}, path lengths {:?}", a.points.len(), a.front, a.dist);
+    if let Some(mut a) = spawns.iter().filter(|s| s.kind == guard::ATCOMM_ACTOR).find_map(|s| guard::Atcomm::from_spawn(s, game.nav.as_ref())) {
+        a.patterns = game.data.resident.as_deref().map(guard::Atcomm::read_patterns).unwrap_or_default();
+        info!("atcomm: {} defence points (kinds {:?}), front {}, path lengths {:?}, {} attack pattern kinds", a.points.len(), a.kinds, a.front, a.dist, a.patterns.len());
         game.atcomm = Some(a);
     }
     // Troopers, and the Deck-2 defenders an alert's "atcomm" creates (taken

@@ -934,16 +934,104 @@ away; arriving (`FUN_00224ed8`) -> stance 0x14 `FUN_0028c498`: within
 `FUN_0028cbb0`: after 60 frames, if his point's length + 4000 < Snake's
 -> `FUN_0028ded8`; more than 250 mm off in x or z -> back to stance 0x13;
 else action 2 (motion 0x45, `FUN_0028bca0`) facing +0x18c, and after 60
-frames `FUN_0028c640` (the attack from the point: not read).
+frames, if his order +0x3a8 +0x39 is 0 or 1, `FUN_0028c640` (the attack
+from the point, below); the others keep holding.
 Sub-state 10 stance 4 (`FUN_0028d8a8`, a re-entered defender) holds only
 while atcomm's mode ctl+0 is 1: `FUN_00272820` sets it from the manager's
 reinforcement counts (global 0x3e62b8 used / 0x3e62ba allowed, `-b`;
 `FUN_00215930` hands them out) and to 2 after 3600 frames.
-Ported (`guard::defend`): the point picks, the run, the hold facing
-Snake (motion 0x45) with the alert's shooting when he sees Snake, the
-re-picks and giving up for the chase (checked each frame). Not ported:
-the unseen-for-300-frames giving up, shooting on the move
-(`FUN_0028a280`), `FUN_0028c640`'s own attack, the re-entry of a soldier
+
+#### The attack from the point (stance 0x1b)
+
+`FUN_0028c640` picks a pattern (unit +0x16): `-t` < 2: 4 when the squad's
+unseen count +0x214 > 300, he is first in the order (+0x39 0) and Snake is
+under 10 m (+0x188); that zeroes +0x214 and sets a target +0xf80 from
+DAT_001ecd00 (Snake's place); else rand & 3. (`-t` 2+: 4 under
+ctl+0x1f8 < 450 / +0x1fa 300 / order 2; 5 with ctl+3 and +0x1f0 0.) His
+point's kind (unit +8) = the `-d` point's 4th value (as a float,
+ctl+0x6c + 16i). Steps come from `PTR_DAT_001f50e0[kind * 6 + pattern]`
+(w03a; w03b's resident has the table elsewhere: the port finds it by the
+first list's bytes): pairs (action, frames) ending in action 0x1e.
+w03a's points are kind 6 (the last, 7):
+- kind 6: p0 `1/6 f/18 5/0 15/1 6/0 10/18 1/6`, p1 = p2 `1/6 f/36 1a/1
+  10/36 1/6`, p3 `1/6 f/36 19/1 10/36 1/6`, p4 `1/6 f/36 12/0 e/36 10/36
+  1/6`, p5 `2/6 19/1 2/6`
+- kind 7: p0 = p2 = p3 `1/6 10/36 19/1 f/36 1/6`, p1 `1/6 10/36 1a/1 f/36
+  1/6`, p4 `1/6 10/36 12/0 e/36 f/36 1/6`, p5 as kind 6
+- kinds 0-3 use 3/4/7/8/0x16/0x1c/0x1d too; 4 and 5 only `2/6`.
+Actions (`FUN_0028bd90` -> motion +0xfe4): 1 0, 2 0x45, 3 0x47, 4 0x46,
+5 0x107, 6 0x108, 7 0x10a, 8 0x109, 9 0x10f, 10 0x110, 0xb/0xc 0x10a/0x109
+mirrored (bits 0xc0000000 -> model flags 0x300; `FUN_0028bc60` then
+fires from joint +0xca0 instead of +0x7e0), 0xd 99, 0xe 0x4b, 0xf 0x41,
+0x10 0x40, 0x11 0x3c, 0x12 0x4e (`FUN_0028eab0`: makes an item, 6, in his
+hand at frame 0x21 and throws it: the grenade), 0x13 0x15, 0x15 0x10c,
+0x16 0x10b, 0x17 0x111, 0x18 0x10b mirrored, 0x19/0x1b 0x3d, 0x1a 0x154
+(+0xf2c bit 0x4000) or 0x44, 0x1c 0x10d, 0x1d 0x10e. 3-0xc play once
+(`FUN_0028bb68` sets +0xf58 at the end), the rest loop. Root travel:
+0x41 -537 mm in x, 0x40 +557 (the side steps out from cover and back),
+0x107 -45 / 0x108 +45.
+`FUN_0028cdf8` each frame (stance 0x1b, `-t` != 3): `-t` < 2 first
+`FUN_0028c8e8` (every 12 frames: his path length from the front, cap
+5 000 000, > Snake's - 2000, or +0x214 > 300 with Snake 10 m+ off, order
+0 and `-t` < 2 -> flag 0x10, action 0x19: the chase); faces Snake; the
+step counter +0x1a counts unless the step's frames are 0 (then the step
+ends on +0xf58); frames 1 = until +0x1a > +0x17 + +0x18 + +0x19 (12 + 48
++ 90, `FUN_0028dfc8`), else that many. Actions 0x15+ fire: +0x1a in
+(+0x17, +0x17 + +0x18], every 6 frames of +0x338, cooldown +0x3a8 +0x20
+0, `FUN_0028ba30` (`-t` < 2: Snake's length < his point's + his near range
++0x248 + 4000) -> aim (+0x14 spread, scaled by the window left and the
+distance / 6000: never set in w03a, it seems) -> `FUN_0028a448` (the ray
+from the muzzle joint, `FUN_0014f230` mode 0xf masks 0x10000 / 0x20:
+distance to a hit, else 100000) >= distance - 2000 -> `FUN_0028c0b0` ->
+`FUN_00223688` (the shot); else cooldown 12. Action 0x1e ends it: within
+500 mm (x and z) of the point -> sub-state 9 stance 4 again, else 10 /
+0x13. The order +0x39 (`FUN_00275af8`, after the squad's first 60
+frames; before that the index): the squad sorted by +0x3a8 +0x28 plus
+8000 / 20000 / 5000 for soldiers busy in some states.
+Ported (`guard::defend`, `guard::attack`): the point picks, the run, the
+hold facing Snake (motion 0x45), the attack from the point (patterns,
+steps, root travel, fire windows, line of fire, the 12-frame give-ups),
+the re-picks and giving up for the chase (checked each frame while
+running). Assumed: the order = distance to Snake (without the extra
+weights); the squad's unseen count zeroed whenever a soldier sees Snake.
+
+#### The soldiers' grenade (`sig_grd.c`)
+
+Action 0x12 (`FUN_0028eab0`, motion 0x4e): frame 0x21 makes the item
+(`FUN_00232ce0(.., 6, .., 0x1aaae)`) in his hand, frame 0x60 (99 for
+motion 0x152) throws (`FUN_0028e208(+0xf80, 3)`, 5 when the sighting
+record's +0x14 has 0x48; 3 always with +0xf2c bit 0x20). Kind 3: from the
+hand joint (+0x7e0) at the target (y = DAT_001ecd00 +0x90 + 10), arc
+height = distance / 6; if `FUN_0014f230` (0xf, 0x10000, 0x20) finds the
+line blocked, the target 1250 mm up with height 1000, else +-1000 mm to
+the side (rotated by the throw's direction); then `FUN_00290398(height,
+hand, target, 1, 0xb4, 0)` (kind 5: 500, fuse -1 = on landing, type 4).
+`FUN_002900f0`: model 0x1aaae (type 3: 0xb932da); vertical speed
+sqrt(18 h) mm/frame, flight T = 2 sqrt(18 h) / 9 frames, velocity
+(target - hand) / T plus that; fuse +0x1f8, type +0x202. `FUN_0028ff08`
+each frame: from frame T-1 on, +0x1ec = 1 (collision flags 0x3132);
+`FUN_0028fd58` moves it (`FUN_00106a08`, the ELF's physics) and spins it
+(+0x1e0 / +0x1e2 += 0x80 for types other than 3); gravity 9 mm/frame^2;
+`FUN_0028fb78` on a floor contact: the first sets vy to a tenth of its
+speed and halves x / z (sound 0x2b), the second stops it (0x2b); from
+T-1 x / z * 0.9, and * 0.5 while +0x1ec; at the fuse `FUN_0028fe18`:
+type 0 `FUN_0033cef0(+0x1b0 (the target), 1, 2000, 2000, 0x28 (0x50 under
+the 0x48 flag), 10, 0x11, 0x31)`, type 2 a stun (`FUN_002ee658`, sound
+0x42), 3 / 4 the same blast with 0x3c / 0x50.
+`blast.c` `FUN_0033cef0(pos, ?, size, size2, damage, ?, group, flags)`:
+two hit boxes of half the sizes (the damage halved unless flags & 4),
+group 1 << 0x11; flags & 0x10 clear: their corners pulled in to clear
+walls; & 2 clear: the bomb.c effect `FUN_00303750(pos, 2)`; & 1 clear:
+noise 11 (`FUN_0011b630`); & 8 clear: sound 0x41 (0x29 under
+DAT_001e6924 & 1). Its hits (`FUN_0033cd00`) need a clear line to the
+target (0x4f, 0x40, 0x2000040); the actor lasts one frame.
+Ported (`grenade::frags`, `guard::throw_grenade`): the throw, the flight,
+bounces, fuse and blast on Snake (damage 20, sound 0x41, no noise).
+Assumed: the hand 1400 mm up, 300 ahead; Snake hit when his middle (900
+mm up) is within 1000 mm in each axis with a clear line. Not done: the
+item in hand, the bomb.c effect, the blast on soldiers, kind 5.
+Not ported: shooting on the move (`FUN_0028a280`), the spread, flag 4's skip of step 0 (+0x12 bit
+4, distance under the near range - 250), mirrored motions, the re-entry of a soldier
 down (`FUN_002733f0` / `FUN_002732a0`, which decrements the allowed
 count and warps him back), atcomm's modes, `-t` 1 (w03b: phase held at
 Alert, defenders put on their points at once) and defenders' `-t` 2 / 3
