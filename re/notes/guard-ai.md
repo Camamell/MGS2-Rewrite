@@ -136,8 +136,10 @@ after the last sighting (+0x33C).
 Shooting (`FUN_00228710` / `FUN_00228F80`): a guard aims (action 4) when
 he sees Snake (+0x18E level 3) or Snake is within 0x5dd mm (+0x188), and
 `FUN_002285b0` agrees (only when DAT_001ecd40 bit 35 is set: Snake must be
-within ±0x400 of facing him); within 1000 mm and seen it switches to
-sub-state 6 instead (close quarters: alert action 5 or 9 when +0xf16 & 1,
+within ±0x400 of facing him); within 1000 mm and seen, with Snake on his
+feet (DAT_001ecd40 & 0x620 clear: not prone, thrown down or lying; every
+way in tests it, `FUN_002284b8` / `FUN_002290b0` also the soldier's legs,
++0xf16 & 0xc), it switches to sub-state 6 instead (close quarters: alert action 5 or 9 when +0xf16 & 1,
 table `FUN_002281e8`: `FUN_0025f810` with motion 0x55 / `FUN_0025fa48` 0xf3;
 for 0x55 a hit box on joint 20 (`FUN_00254248`) rides frames 2-5; when the
 motion ends, back to sub-state 3). The hit (`FUN_00254248`, frames 2-5
@@ -794,8 +796,23 @@ with "away" stands for `FUN_00253c38`'s pick; the rounds use the alert's
 bullet and sound; when the alert begins the caller switches to the chase
 (the game finishes the radio-away action first). A caller darted or
 knocked down mid-line raises no alert: the line is cut (`FUN_0021d0a8`)
-and HQ calls for him. Not ported: the arm-wound variants, 0x13's Snake-state test
-(DAT_001ecd40 & 0x620), sub 3's comrade check, the Marines (no radio motions: their "!" still raises the alert).
+and HQ calls for him. DAT_001ecd40 bits in 0x620 (the player's state flags, cleared each
+frame by `FUN_001544a8` and set through `FUN_0028d420`): 0x20 prone
+(`FUN_00269290`, stance +0xf40 == 2; 0x10 crouched), 0x400 thrown down
+and lying (`FUN_00285690` sets 0x420, `FUN_00285b28` 0x400; also
+`FUN_00286818`, not traced), 0x200 hit this frame (`FUN_002713e8` /
+`FUN_00271af0`). Ported for 0x13 / 0x20 (prone, thrown down, lying; the
+hit frame is not modelled).
+
+Lead (not ported): the soldier's second sight record (controller +0x19c
+.. +0x1b6, filled by `FUN_002559c0(c, guard + 0x266c)` in `FUN_00222978`
+only under DAT_001f39b0 bit 4) watches a second target: the manager's
+init sets that bit when `FUN_002d88c8()` (DAT_001f7750 + 0x70) is non-zero.
+No store to DAT_001f7750 is in the w00a dump (it sits between
+`foot_shadow.c` and `splash.c`; likely set by pointer from another
+stage's actor), so in the Tanker +0x1b6 is taken as never 3: the
+discovery's 0xf -> 0x18 (+0x348 bit 0x2000) and 0x18's 0x1c / 0x21
+(`FUN_00238758`) do not occur. Not ported: sub 3's comrade check, the Marines (no radio motions: their "!" still raises the alert).
 
 ## Head look (`FUN_00254f..` draw, `FUN_00111f40` / `FUN_00112448`)
 
@@ -912,16 +929,29 @@ manager's `-c` point (option 0x63: up to eight `x y z "#name"` entries at
 him! Send someone over now!" or 0x1c000006 "I'm under attack! Stay alert!"
 (which HQ answers); at its end the caution timer (`FUN_0021ee90(-h)`) and
 the state ends (state 8: +0x348 bit 0x10000 -> `FUN_00227b90`). So a
-jammed discovery raises Caution, not Alert. Both in-person subs also clear
-the shot-radio flag and call `FUN_00255978` (not traced).
+jammed discovery raises Caution, not Alert. The in-person subs also clear
+the shot-radio flag and call `FUN_00255978`, which clears the body's limb
+wounds (+0xf16 = 0, bytes +0xf1c..+0xf1f = 0; ported). It is also called
+by `FUN_0025f598` on frame 0xa0 of motions 0xbe / 0xbf (the discovery's
+action 0xc, motion 0xbf, used only by its sub 0x21 `FUN_00238bb0`, up
+to 0x1f5 frames then 0x18; 0x21 comes from 0x18 with the second sight
+record seeing (+0x1b6 == 3) and a wound (+0xf16 & 0xf), so not in the
+Tanker, see the lead below; other states' action 0xc are their own tables') and by a dozen other state subs (`FUN_00234df8`,
+`FUN_002360c0`, `FUN_0023d6e8`, `FUN_0023f340`, `FUN_002442c8`,
+`FUN_00245158`, `FUN_00245c80`, `FUN_0024c7e0`, `FUN_0024cbb8`,
+`FUN_0024edd8`, `FUN_003c62b0`; not checked).
 
 Ported (`radio_fails`, `run_to_report`, `say_in_person`; chaff = the
 port's `Jam` timer). Assumed: the run's reach (500 mm) and a 30 s cap,
 the hold-up's action 8 as motion 10. The shot radio is ported too (see
 "The radio"): `Guard::radio_shot`, cleared by the in-person subs, which
 brings the radio back on his belt (as clearing 0x10000 does in
-`FUN_00265fe0`). Not ported: 0x14's
-close-range 0x20 (Snake within 1 m), 0xf's 0x18 (+0x348 bit 0x2000), the
+`FUN_00265fe0`). The run's close range is ported too: 0x14 goes to 0x20
+(`FUN_00237e78`) when it has not arrived and Snake is seen (+0x18e == 3)
+within 1000 mm (+0x188), the soldier's legs are whole (+0xf16 & 0xc) and
+DAT_001ecd40 & 0x620 is clear; 0x20 is the rifle butt (+0xfdc = action 8,
+0xb with +0xf16 & 1) until the action ends (+0xf58) or 0x79 frames, then
+`FUN_00257388` and 0x14 again. Not ported: 0xf's 0x18 (+0x348 bit 0x2000), the
 runner's +0x348 bit 0x100 (it puts him in the manager's list of soldiers
 to see to, `FUN_0021e998`). Test: `MGS2_GRENADE_AT=<s>c` throws chaff.
 

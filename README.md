@@ -325,6 +325,8 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      film him, the stage camera from its side and the caught sequence;
      Snake flinches when a round hits him, and a rifle butt or a grenade
      knocks him down (he slides back, lies until a button, gets up), the
-     butt's hit as the game's (5 damage, a box on the soldier's joint)
+     butt's hit as the game's (5 damage, a box on the soldier's joint);
+     a soldier running to report in person butts Snake if he meets him on
+     the way (on his feet, within 1 m) and runs on
    - next: the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects)

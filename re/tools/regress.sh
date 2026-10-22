@@ -76,7 +76,9 @@ MGS2_GOD=1 check discovery_call "radios for backup|HQ answers" ge 2 w01a --skip-
 MGS2_GOD=1 MGS2_DOWN=3:s@air check discovery_cut "radio cut off|radios for backup" eq 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 16
 # Chaff jams the radio: the caller shakes it, runs to the manager's -c
 # point and reports in person (Caution, no alert); the comrade report too.
-MGS2_GOD=1 MGS2_GRENADE_AT=4c check discovery_jammed "reported Snake in person" ge 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 26
+# Snake stands in the runner's way: the rifle butt on the run (sub 0x20;
+# no MGS2_GOD, which skips the knock-down and so has him butted forever).
+MGS2_GRENADE_AT=4c check discovery_jammed "meets Snake on his run|Snake knocked down|reported Snake in person" ge 3 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 26
 MGS2_DOWN=7:s@1 MGS2_JAM=1 check comrade_jammed "Comrade0xd/" ge 1 w01d --skip-cutscenes --trace --shot-at 32
 # A dart into guard 3's radio from behind: his call fails the same way.
 MGS2_FPV_TEST=1 MGS2_FPV_AT=5893,762,3886 check radio_shot "radio shot|reported Snake in person" ge 2 w01a --skip-cutscenes --snake-at=6000,0,2000 --fire-at 1 --aim-for 0.2 --shot-at 26

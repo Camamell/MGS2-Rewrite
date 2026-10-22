@@ -1789,6 +1789,11 @@ pub fn think(
     let snake_pos = snake_body.pos;
     let snake_dead = player.dead();
     let snake_height = player.height();
+    // Snake open to the rifle butt (the discovery's and the alert's):
+    // `DAT_001ecd40 & 0x620`
+    // clear (0x20 prone, `FUN_00269290`; 0x400 thrown down or lying,
+    // `FUN_00285690` / `FUN_00285b28`; 0x200 hit this frame, not modelled).
+    let snake_open = !player.prone && !matches!(player.react, Some(crate::player::React { stage: crate::player::ReactStage::Blown | crate::player::ReactStage::Down, .. }));
     // The frame's loudest noise: levels 5, 6 and 9 send the nearest soldier
     // in earshot (twice as far for 9) to look, if he is within 3 m of its
     // height (`FUN_0021f958`).
@@ -2240,7 +2245,7 @@ pub fn think(
         if let State::Call { sub, timer, line, to } = g.state
             && phase.kind != PhaseKind::Alert
         {
-            let c = call(&mut g, &mut body, &mut phase, snake_pos, (sub, timer, line, to), dt, ticks, &game, &mut rng);
+            let c = call(&mut g, &mut body, &mut phase, (snake_pos, snake_open), (sub, timer, line, to), dt, ticks, &game, &mut rng);
             if c.fired {
                 let muzzle = body.pos + Vec3::Y * MUZZLE + body.forward() * 400.0;
                 let at = snake_pos + Vec3::Y * (snake_height * 0.6);
@@ -2283,7 +2288,7 @@ pub fn think(
                     let ph = &mut *phase;
                     defend(&mut g, &mut body, &game, snake_pos, snake_far, rank, &mut ph.unseen, &mut ph.atc, &mut taken, ticks, &mut rng)
                 } } else { None };
-                if alert_brain(&mut g, &mut body, snake_pos, snake_dead, goal, dt, ticks, &game, &mut rng) {
+                if alert_brain(&mut g, &mut body, snake_pos, (snake_dead, snake_open), goal, dt, ticks, &game, &mut rng) {
                     let muzzle = body.pos + Vec3::Y * MUZZLE + body.forward() * 400.0;
                     let at = snake_pos + Vec3::Y * (snake_height * 0.6);
                     bullet::fire(&mut commands, &mut rng, muzzle, at);
@@ -2747,8 +2752,10 @@ fn say_in_person(g: &mut Guard, body: &mut Body, phase: &mut Phase, line: u32, (
     body.play(g.anim.idle);
     if timer == 0 && t > 0 {
         info!("guard {} reports in person", g.route);
-        // The in-person subs clear the shot-radio flag on entry.
+        // The in-person subs clear the shot-radio flag on entry, and his
+        // limb wounds (`FUN_00255978`: +0xf16 and the counts +0xf1c-f).
         g.radio_shot = false;
+        g.wounds = 0;
         g.on_air = phase.speak(line, g);
     }
     let frames = phase.line_frames(line, g, REPORT_FRAMES);
@@ -2870,6 +2877,31 @@ fn holdup_call(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, (
     reported
 }
 
+/// The discovery's rifle butt (actions 8 / 0xb: `FUN_0025f810`, or
+/// `FUN_0025fa48` with the right arm hurt, +0xf16 & 1), facing Snake, its
+/// hit on the motion's frames 2-5 as the alert's; true at the motion's end.
+fn call_butt(g: &mut Guard, body: &mut Body, snake: Vec3, (timer, t): (u32, u32), dt: f32, game: &Game) -> bool {
+    let (motion, joint) = if g.wounds & 1 != 0 { (WOUNDED_STRIKE_MOTION, WOUNDED_STRIKE_JOINT) } else { (STRIKE_MOTION, STRIKE_JOINT) };
+    body.play_once(motion);
+    face(body, snake, dt);
+    if timer == 0 {
+        g.attack.strike = Some((0.0, false));
+    }
+    if let Some((_, false)) = g.attack.strike
+        && (timer..t.max(timer + 1)).any(|f| STRIKE_FRAMES.contains(&(f as f32)))
+        && strike_hits(game, body, joint, snake)
+    {
+        info!("guard {} strikes with the rifle butt", g.route);
+        g.attack.strike = Some((t as f32, true));
+        land_strike(body);
+    }
+    let done = t >= motion_length(game, body, motion, 40);
+    if done {
+        g.attack.strike = None;
+    }
+    done
+}
+
 /// What a frame of [`call`] did.
 #[derive(Default)]
 struct Called {
@@ -2916,15 +2948,16 @@ const BACK_OFF_FRAMES: u32 = 300;
 ///   (`FUN_00237d48`): "I'm under attack! Stay alert!" in person (HQ
 ///   replies), the caution timer and back to the route; no alert.
 ///
-/// Not ported: the arm-wound variants (+0xf16; the alert's strike has
-/// its own), 0x14's close-range 0x20,
-/// 0xf's 0x18, +0x348 bit 0x100 (the runner joins the manager's list of
+/// - 0x20 (`FUN_00237e78`, from 0x14 with Snake seen within 1 m): the
+///   rifle butt on the run, then 0x14 again.
+///
+/// Not ported: 0xf's 0x18, +0x348 bit 0x100 (the runner joins the manager's list of
 /// soldiers to see to), sub 3's
 /// comrade check (`FUN_0021eb20` / `FUN_0021d230` -> 10). The radio
 /// motions are state 2's (as for the hold-up call); the back-off runs
 /// (assumed).
 #[allow(clippy::too_many_arguments)]
-fn call(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, (sub, timer, line, to): (u8, u32, u32, Option<Vec3>), dt: f32, ticks: u32, game: &Game, rng: &mut Rng) -> Called {
+fn call(g: &mut Guard, body: &mut Body, phase: &mut Phase, (snake, open): (Vec3, bool), (sub, timer, line, to): (u8, u32, u32, Option<Vec3>), dt: f32, ticks: u32, game: &Game, rng: &mut Rng) -> Called {
     let mut out = Called::default();
     let Some(c) = g.anim.check else {
         g.meter = METER_MAX;
@@ -2944,7 +2977,7 @@ fn call(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, (sub, ti
             let away = if g.radio_dead { 0x14 } else { 0x15 };
             if frames.contains(&5) && !seen {
                 next = (away, 0, line, None);
-            } else if timer < 7 && seen && body.pos.distance(snake) < STRIKE_RANGE {
+            } else if timer < 7 && seen && open && body.pos.distance(snake) < STRIKE_RANGE && g.wounds & 0xC == 0 {
                 // Snake within 1 m on its first 7 frames: the rifle butt.
                 next = (0x13, 0, line, None);
             } else if t >= 7 {
@@ -2953,25 +2986,19 @@ fn call(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, (sub, ti
         }
         0x13 => {
             // `FUN_00237ef8`: action 8 (`FUN_0025f810`, the alert's strike,
-            // motion 0x55), then the back-off 0x15 (0x14 with the radio
-            // dead). The hit as in the alert brain's strike.
-            body.play_once(STRIKE_MOTION);
-            face(body, snake, dt);
-            if timer == 0 {
-                g.attack.strike = Some((0.0, false));
-            }
-            if let Some((_, false)) = g.attack.strike
-                && frames.clone().any(|f| STRIKE_FRAMES.contains(&(f as f32)))
-            {
-                if strike_hits(game, body, STRIKE_JOINT, snake) {
-                    info!("guard {} strikes with the rifle butt", g.route);
-                    g.attack.strike = Some((t as f32, true));
-                    land_strike(body);
-                }
-            }
-            if t >= motion_length(game, body, STRIKE_MOTION, 40) {
-                g.attack.strike = None;
+            // motion 0x55; 0xb with the right arm hurt), then the back-off
+            // 0x15 (0x14 with the radio dead).
+            if call_butt(g, body, snake, (timer, t), dt, game) {
                 next = (if g.radio_dead { 0x14 } else { 0x15 }, 0, line, None);
+            }
+        }
+        0x20 => {
+            // `FUN_00237e78`: the same strike on the run, until the action
+            // ends (+0xf58) or 0x79 frames; then the run again (0x14, its
+            // target set anew by `FUN_00257388`).
+            if call_butt(g, body, snake, (timer, t), dt, game) || t >= 0x79 {
+                g.path.clear();
+                next = (0x14, 0, line, None);
             }
         }
         9 => {
@@ -3045,10 +3072,14 @@ fn call(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, (sub, ti
             }
         }
         0x14 => {
-            // `FUN_00237c90`: to the report point (Snake seen within 1 m:
-            // 0x20, not ported), then 0x1e.
+            // `FUN_00237c90`: to the report point, then 0x1e; on the way,
+            // Snake seen within 1 m and on his feet (`DAT_001ecd40` &
+            // 0x620), his legs whole (+0xf16 & 0xc): the rifle butt, 0x20.
             if run_to_report(g, body, phase, (timer, t), dt, game) {
                 next = (0x1e, 0, line, None);
+            } else if seen && open && body.pos.distance(snake) < STRIKE_RANGE && g.wounds & 0xC == 0 {
+                info!("guard {} meets Snake on his run", g.route);
+                next = (0x20, 0, line, None);
             }
         }
         0x1e => {
@@ -3880,7 +3911,7 @@ fn alert_brain(
     g: &mut Guard,
     body: &mut Body,
     snake: Vec3,
-    snake_dead: bool,
+    (snake_dead, snake_open): (bool, bool),
     goal: Option<Defence>,
     dt: f32,
     ticks: u32,
@@ -3989,7 +4020,10 @@ fn alert_brain(
         }
         None => {}
     }
-    if g.level == 3 && body.pos.distance(snake) < STRIKE_RANGE && !snake_dead && g.anim.knocked.is_some() {
+    // Not at a Snake prone or down (`DAT_001ecd40 & 0x620`, tested by
+    // every way into sub-state 6: `FUN_002284b8`, `FUN_00228710`,
+    // `FUN_00228e40`, `FUN_002290b0`): he is shot at instead.
+    if g.level == 3 && body.pos.distance(snake) < STRIKE_RANGE && !snake_dead && snake_open && g.anim.knocked.is_some() {
         g.path.clear();
         a.strike = Some((0.0, false));
         a.firing = false;
