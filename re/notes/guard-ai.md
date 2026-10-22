@@ -522,9 +522,10 @@ normal-phase transition picks a state per bit (C+0x32c):
 | 0x4000000 | Snake within the 250 x 1500 x 250 bump box (`FUN_00230c20`) | |
 | 0x40 | a comrade down in sight (`FUN_00230a48`; 0x2000000 instead under +0x350 bit 0x8000000) | 2, `FUN_00233120` (below) |
 | 0x2000 | the USP's light (`FUN_00230b40`, below) | 6 |
-| 0x80 | `FUN_00230ad0`: `FUN_0021eaa8` -> `FUN_002224f0` finds something (+0x290; with +0x350 bit 0x8000000 also 0x2000000) | 4 |
+| 0x80 | `FUN_00230ad0`: `FUN_0021eaa8` -> `FUN_002224f0` sees an entry of the list at DAT_003fefa8 within his near range (+0x290 = its id; with +0x350 bit 0x8000000 also 0x2000000). Entries register through `FUN_00222410(actor + 0x2b0)` from `corps.c` (`FUN_002635f8`, `FUN_00263d90`): bodies. Not traced further; not ported | 4 |
 | 0x2000000 | a comrade down or 0x80, under +0x350 bit 0x8000000 (never in the Tanker: `-s` is 34 / 10 / 2) | 0xe |
 | 0x4000, 0x20000, 0x40000, 0x200000, 0x400000 | 0x230dd8, 0x2311f0, 0x2316b0, 0x230c20, 0x231418 | 6, 0xb, -, 7, 0xc |
+| (0x400000) | `FUN_00231418` needs Snake's equipped item (`FUN_001541f8`) to be 6, the B.D.U (Raiden's disguise; item names at ELF 0x19209c), and a story flag (+0x10c bit 0x40): the Plant's, never in the Tanker | 0xc |
 
 The USP's light (0x2000, `FUN_00230b40`): `FUN_0033e890` returns
 DAT_001f857c, which the weapon manager (`wp_mng.c`, `FUN_0033ca68`) sets
