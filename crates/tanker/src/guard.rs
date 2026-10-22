@@ -404,6 +404,13 @@ pub struct Phase {
     /// The manager's "no answer" slots (+0x17c / +0x19c): (soldier,
     /// frames left).
     no_answer: Vec<(usize, i32)>,
+    /// The priority of the soldier line on the air and its frames left
+    /// (`DAT_003fef7c`, which `FUN_0021d230` reads, -1 when none; the count
+    /// `DAT_003fef80` clears it).
+    on_air: Option<(u32, u32)>,
+    /// Where soldiers are who have called this discovery in (controller
+    /// +0x344 bit 8, set as sub-states 3 / 0x15 go to 0xe), this frame.
+    callers: Vec<Vec3>,
     /// The manager's `-c` point (0x3fea80; the first of up to eight, as
     /// `FUN_0021eeb0` reads it at index 0x3fea74, which only init sets): a
     /// soldier whose radio is dead runs there to report. Without `-c` the
@@ -548,9 +555,15 @@ impl Phase {
     /// Starts `line` (`FUN_0021cdb8`): queues its clip and the click.
     /// Returns the clip.
     fn speak(&mut self, line: u32, g: &Guard) -> Option<u32> {
-        let (id, _) = self.radio.line(line, g)?;
+        let (id, frames) = self.radio.line(line, g)?;
         self.play_line(line, id);
+        self.on_air = Some((line >> 28, frames));
         Some(id)
+    }
+
+    /// `FUN_0021d230`: the priority of the line on the air, -1 when none.
+    fn air_priority(&self) -> i32 {
+        self.on_air.map_or(-1, |(p, _)| p as i32)
     }
 
     fn play_line(&mut self, line: u32, id: u32) {
@@ -650,6 +663,8 @@ impl Default for Phase {
             say: Vec::new(),
             stop: None,
             no_answer: Vec::new(),
+            on_air: None,
+            callers: Vec::new(),
             report_at: Vec3::ZERO,
             jammed: false,
             atc: AtcommRun { left: 16, ..Default::default() },
@@ -1019,6 +1034,9 @@ pub struct Guard {
     /// His radio found dead in this call (controller +0x348 bit 4, set on
     /// frame 0x73 of the dead-radio action): he reports in person.
     radio_dead: bool,
+    /// He has called this discovery in (controller +0x344 bit 8: set as
+    /// sub-states 3 and 0x15 go to the radio, 0xe).
+    called: bool,
     /// His radio shot (`radio.c` +0xb4 bit 0x10000, `FUN_00265f50`): his
     /// calls fail as under chaff until he reports in person, which clears
     /// it (`FUN_00232050` / `FUN_0023a610` / `FUN_00237d48`).
@@ -1198,6 +1216,7 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         checked: false,
         radio_in_hand: false,
         radio_dead: false,
+        called: false,
         radio_shot: false,
         inactive: false,
         pending_route: None,
@@ -1250,6 +1269,7 @@ pub fn patrol(route: usize, vision: f32, anim: Anim) -> Guard {
         checked: false,
         radio_in_hand: false,
         radio_dead: false,
+        called: false,
         radio_shot: false,
         inactive: false,
         pending_route: None,
@@ -1898,6 +1918,7 @@ pub fn think(
                 .collect()
         })
         .unwrap_or_default();
+    phase.callers = guards.iter().filter(|(_, g, _)| g.called && matches!(g.state, State::Call { .. })).map(|(_, _, b)| b.pos).collect();
     for (me, mut g, mut body) in &mut guards {
         // Out of play (message 0x106): nothing runs (`FUN_00222978` skips
         // his senses under +0x350 bit 1).
@@ -2178,6 +2199,7 @@ pub fn think(
                 // Its sub-state 3 (`FUN_00237918`): no "!" line, a turn,
                 // then the call ([`call`]).
                 g.path.clear();
+                g.called = false;
                 g.state = if g.anim.check.is_some() {
                     crate::sfx::play(0x53, Some(body.pos));
                     State::Call { sub: 3, timer: 0, line: LINE_SIGHTED, to: Some(at) }
@@ -2351,6 +2373,7 @@ pub fn think(
         }
         manager(&mut phase, highest);
         phase.no_answer_tick();
+        phase.on_air = phase.on_air.and_then(|(p, f)| (f > 1).then_some((p, f - 1)));
     }
 }
 
@@ -2935,6 +2958,11 @@ const BACK_OFF_FRAMES: u32 = 300;
 /// - 3 (`FUN_00237918`, a shot heard, entered here instead of the "!"):
 ///   0x1f frames, then action 2 (the "!" motion) facing the noise, then 0xe
 ///   with 0x2c000000 (0x2c000004 under DAT_001f39b0 bit 0, not traced);
+///   0x14 with his radio known dead; 10 when a comrade within his hearing
+///   has called it in (+0x344 bit 8) and no line of priority 2 or more is
+///   on the air;
+/// - 10 (`FUN_00237b10`): the "!" again, then the meter to 0x400 (the
+///   alert) without a call;
 /// - 0xe (`FUN_00237528`): the radio out (action 5), then 6 with Snake in
 ///   sight, else 7; 0xf when the radio is jammed (`DAT_0017f48c` bit 0x10;
 ///   a shot radio, +0xb4 bit 0x10000, is not ported);
@@ -2952,8 +2980,7 @@ const BACK_OFF_FRAMES: u32 = 300;
 ///   rifle butt on the run, then 0x14 again.
 ///
 /// Not ported: 0xf's 0x18, +0x348 bit 0x100 (the runner joins the manager's list of
-/// soldiers to see to), sub 3's
-/// comrade check (`FUN_0021eb20` / `FUN_0021d230` -> 10). The radio
+/// soldiers to see to). The radio
 /// motions are state 2's (as for the hold-up call); the back-off runs
 /// (assumed).
 #[allow(clippy::too_many_arguments)]
@@ -3039,6 +3066,8 @@ fn call(g: &mut Guard, body: &mut Body, phase: &mut Phase, (snake, open): (Vec3,
             };
             next = if arrived || t >= BACK_OFF_FRAMES {
                 g.path.clear();
+                g.called = true;
+                phase.callers.push(body.pos);
                 (0xe, 0, LINE_ENEMY, None)
             } else {
                 (0x15, t, line, to)
@@ -3052,8 +3081,37 @@ fn call(g: &mut Guard, body: &mut Body, phase: &mut Phase, (snake, open): (Vec3,
             } else {
                 body.play_once(g.anim.exclaim);
                 if t >= 0x1F + motion_length(game, body, g.anim.exclaim, EXCLAIM_FRAMES) {
-                    next = (0xe, 0, LINE_SIGHTED, None);
+                    // With his radio known dead (+0x348 bit 4): the run to
+                    // report, 0x14. A comrade within his hearing (+0x24c)
+                    // who has called it in (`FUN_0021eb20(.., 8, ..)`)
+                    // while no line of priority 2 or more is on the air
+                    // (`FUN_0021d230`): 10, no call of his own.
+                    let near = phase.callers.iter().map(|p| p.distance(body.pos)).fold(f32::INFINITY, f32::min);
+                    next = if g.radio_dead {
+                        (0x14, 0, line, None)
+                    } else if near < g.hearing && phase.air_priority() < 2 {
+                        info!("guard {} leaves the call to a comrade", g.route);
+                        (10, 0, line, to)
+                    } else {
+                        g.called = true;
+                        phase.callers.push(body.pos);
+                        (0xe, 0, LINE_SIGHTED, None)
+                    };
                 }
+            }
+        }
+        10 => {
+            // `FUN_00237b10`: action 2 (the "!" motion, effect 0x53 again)
+            // facing the noise; at its end the meter goes to 0x400 (the
+            // alert) and the state's sub 0.
+            let at = to.unwrap_or(snake);
+            face(body, at, dt);
+            if timer == 0 {
+                crate::sfx::play(0x53, Some(body.pos));
+            }
+            body.play_once(g.anim.exclaim);
+            if t >= motion_length(game, body, g.anim.exclaim, EXCLAIM_FRAMES) {
+                out.alert = true;
             }
         }
         0xe => {
@@ -3397,6 +3455,7 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
                 // Soldiers without the radio motions (the Marines) raise
                 // the alert at once, as before.
                 if g.anim.check.is_some() {
+                    g.called = false;
                     g.state = State::Call { sub: 8, timer: 0, line: LINE_ENEMY, to: None };
                     return;
                 }

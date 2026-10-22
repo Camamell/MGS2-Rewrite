@@ -763,8 +763,18 @@ constants). So (sub-states):
 - 3 (`FUN_00237918`, a shot heard): mark and effect 0x53, 0x1f frames,
   then action 2 facing the noise; then 0xe with 0x2c000000 ("Possible
   hostile sighted. Send backup.", 0x2c000004 under DAT_001f39b0 bit 0)
-  unless `FUN_0021eb20(.., 8, ..)` finds something within +0x24c and
-  `FUN_0021d230()` < 2 (-> 10; not traced, not ported).
+  unless `FUN_0021eb20(.., 8, ..)` finds a comrade within +0x24c and
+  `FUN_0021d230()` < 2 (-> 10). Before that, +0x348 bit 4 (radio known
+  dead) or both arms hurt (+0xf16 & 3 == 3) -> 0x14, the run to report.
+  `FUN_0021eb20(self, 8, &d)` walks the manager's groups (0x3fe730 ..)
+  for the nearest other soldier with controller +0x344 bit 8 (set as 3
+  and 0x15 go to 0xe: he has called this in), by straight distance
+  (`FUN_0022de78`); `FUN_0021d230` is DAT_003fef7c, the on-air line's
+  priority (its top nibble; `FUN_0021cdb8` sets it, -1 when the line's
+  count DAT_003fef80 runs out). Sub 10 (`FUN_00237b10`): action 2 and
+  effect 0x53 again, facing the noise; at the action's end the meter to
+  0x400 and sub 0. Ported (assumed: bit 8 lasts the state; the port's
+  on-air priority is the soldiers' lines only).
 - 0xe (`FUN_00237528`): action 5 (radio out) until +0xf58 == 3, then 6
   (Snake seen) or 7; 0xf when the radio was shot (+0xb4 0x10000) or
   DAT_0017f48c bit 4.
@@ -812,7 +822,7 @@ No store to DAT_001f7750 is in the w00a dump (it sits between
 `foot_shadow.c` and `splash.c`; likely set by pointer from another
 stage's actor), so in the Tanker +0x1b6 is taken as never 3: the
 discovery's 0xf -> 0x18 (+0x348 bit 0x2000) and 0x18's 0x1c / 0x21
-(`FUN_00238758`) do not occur. Not ported: sub 3's comrade check, the Marines (no radio motions: their "!" still raises the alert).
+(`FUN_00238758`) do not occur. Sub 3's comrade check is ported (above). Not ported: the Marines (no radio motions: their "!" still raises the alert).
 
 ## Head look (`FUN_00254f..` draw, `FUN_00111f40` / `FUN_00112448`)
 

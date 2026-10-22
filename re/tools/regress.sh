@@ -79,6 +79,9 @@ MGS2_GOD=1 MGS2_DOWN=3:s@air check discovery_cut "radio cut off|radios for backu
 # Snake stands in the runner's way: the rifle butt on the run (sub 0x20;
 # no MGS2_GOD, which skips the knock-down and so has him butted forever).
 MGS2_GRENADE_AT=4c check discovery_jammed "meets Snake on his run|Snake knocked down|reported Snake in person" ge 3 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 26
+# A shot heard by soldiers near each other: one calls, the next leaves
+# the call to him and raises the alert after his "!" (sub 3 -> 10).
+MGS2_GOD=1 MGS2_USP=1 check shot_comrade "leaves the call to a comrade|alert: running" ge 2 w01d --skip-cutscenes --snake-at=1200,9000,-11000 --fire-at 3 --shot-at 11
 MGS2_DOWN=7:s@1 MGS2_JAM=1 check comrade_jammed "Comrade0xd/" ge 1 w01d --skip-cutscenes --trace --shot-at 32
 # A dart into guard 3's radio from behind: his call fails the same way.
 MGS2_FPV_TEST=1 MGS2_FPV_AT=5893,762,3886 check radio_shot "radio shot|reported Snake in person" ge 2 w01a --skip-cutscenes --snake-at=6000,0,2000 --fire-at 1 --aim-for 0.2 --shot-at 26

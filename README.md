@@ -327,6 +327,8 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      knocks him down (he slides back, lies until a button, gets up), the
      butt's hit as the game's (5 damage, a box on the soldier's joint);
      a soldier running to report in person butts Snake if he meets him on
-     the way (on his feet, within 1 m) and runs on
+     the way (on his feet, within 1 m) and runs on; a soldier who hears a
+     shot while a comrade within earshot has already called it in leaves
+     the call to him and raises the alert after his "!"
    - next: the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects)
