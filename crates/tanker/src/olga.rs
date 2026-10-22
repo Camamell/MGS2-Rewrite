@@ -74,11 +74,8 @@ const WALK_SPEED: f32 = 1300.0;
 const TURN_RATE: f32 = 5.0;
 /// Her stamina (+0xfb2, set to 0x80 at start).
 pub const STAMINA: i32 = 0x80;
-/// Dart damage by hit zone: her table at 0x1f6090 (eleven zones: head and
-/// neck 32, the eight limb zones 8, the body 10; each entry's +0x1c >> 17).
-pub const DART_HEAD: i32 = 32;
-pub const DART_BODY: i32 = 10;
-pub const DART_LIMB: i32 = 8;
+// Dart damage by hit zone: her zone table at 0x1f6090 (head and heart 32,
+// the eight limb zones 8, the body 10), read by `bullet::OlgaZones`.
 
 #[derive(Component, Debug)]
 pub struct Olga {
@@ -166,7 +163,7 @@ pub fn from_spawn(s: &Spawn) -> Option<(u32, u32, Vec3, f32)> {
     Some((model, motions, Vec3::new(p(0), p(1), p(2)), yaw))
 }
 
-fn word(img: &[u8], addr: u32) -> Option<u32> {
+pub fn word(img: &[u8], addr: u32) -> Option<u32> {
     let o = addr.checked_sub(RESIDENT_BASE)? as usize;
     img.get(o..o + 4).map(|b| u32::from_le_bytes(b.try_into().unwrap()))
 }

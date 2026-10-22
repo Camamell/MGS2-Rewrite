@@ -12,14 +12,8 @@ use crate::guard::{Guard, Zone};
 use crate::olga::Olga;
 use crate::player::{HEIGHT, Player, RADIUS};
 
-/// Hits above this height (mm over the feet) count as head shots.
 /// A dart striking someone (stage-independent effect).
 const DART_HIT: u32 = 0x86;
-const HEAD_HEIGHT: f32 = 1500.0;
-/// Below this the legs (mm above the feet; assumed).
-const HIP_HEIGHT: f32 = 850.0;
-/// Further than this from the centre line, an arm (mm; assumed).
-const ARM_OFFSET: f32 = 170.0;
 
 pub const SPEED: f32 = 1000.0 * 60.0;
 pub const RANGE: f32 = 20000.0;
@@ -91,23 +85,121 @@ fn hit_point(a: Vec3, b: Vec3, base: Vec3, height: f32) -> Option<Vec3> {
     })
 }
 
-/// The game tests hit spheres on the skeleton (three head and neck zones,
-/// one body, eight limb zones); here by height and by distance from the
-/// centre line across the guard (proportions assumed).
-fn zone(p: Vec3, body: &Body) -> Zone {
-    let h = p.y - body.pos.y;
-    let fwd = body.forward();
-    let right = Vec3::new(fwd.z, 0.0, -fwd.x);
-    let side = (p - body.pos).dot(right);
-    let left = u8::from(side >= 0.0);
-    if h > HEAD_HEIGHT {
-        Zone::Head
-    } else if h < HIP_HEIGHT {
-        Zone::Limb(2 + left)
-    } else if side.abs() > ARM_OFFSET {
-        Zone::Limb(left)
-    } else {
-        Zone::Body
+/// A soldier's hit zone (`FUN_0025b608`: `FUN_00107da0(zone, 0x2004011,
+/// 1, 2, half extents, offset)`), riding a joint of his model
+/// (`FUN_00258028` copies object `(offset - 0xc0) / 0x130`'s matrix in
+/// each frame). Kind bit 0x4000 turns the offset by the joint's matrix,
+/// and `FUN_00108f28` tests the box's corners through it: a box in the
+/// joint's space.
+struct ZoneBox {
+    joint: usize,
+    half: Vec3,
+    offset: Vec3,
+}
+
+const fn zb(joint: usize, half: [f32; 3], offset: [f32; 3]) -> ZoneBox {
+    ZoneBox { joint, half: Vec3::from_array(half), offset: Vec3::from_array(offset) }
+}
+
+/// +0x3a0: life 0 at once. The head (joint 12), a box at the chest's side
+/// (joint 2) and one below the hips (joint 0); the last two get flag
+/// 0x80000 under body +0xf2c bit 0x1000 (not traced; taken as clear).
+const HEAD_ZONES: [ZoneBox; 3] = [zb(12, [96.0, 130.0, 96.0], [0.0, 30.0, 0.0]), zb(2, [50.0, 65.0, 165.0], [100.0, 100.0, 0.0]), zb(0, [100.0, 65.0, 150.0], [0.0, -150.0, 0.0])];
+/// +0x640: the arms' upper and lower parts (joints 4, 5 and 8, 9), then the
+/// legs' (13, 14 and 17, 18); zones 2n and 2n+1 wound limb n.
+const LIMB_ZONES: [ZoneBox; 8] = [
+    zb(4, [75.0, 150.0, 75.0], [0.0, -130.0, 0.0]),
+    zb(5, [75.0, 150.0, 75.0], [0.0, -130.0, 0.0]),
+    zb(8, [75.0, 150.0, 75.0], [0.0, -130.0, 0.0]),
+    zb(9, [75.0, 150.0, 75.0], [0.0, -130.0, 0.0]),
+    zb(13, [85.0, 200.0, 120.0], [-10.0, -200.0, -10.0]),
+    zb(14, [85.0, 250.0, 120.0], [-20.0, -250.0, -20.0]),
+    zb(17, [85.0, 200.0, 120.0], [-10.0, -200.0, -10.0]),
+    zb(18, [85.0, 250.0, 120.0], [-20.0, -250.0, -20.0]),
+];
+/// +0xd40: the body (joint 2).
+const BODY_ZONE: ZoneBox = zb(2, [200.0, 300.0, 200.0], [0.0, 0.0, 0.0]);
+
+/// Where the segment `a`..`b` first meets one of a soldier's zones (0..1)
+/// and the zone it strikes. A round is a swept segment (`FUN_0036c798` ->
+/// `FUN_00108050`, its frame's start and end); the collision pass
+/// (`FUN_00109fb0`) tests a soldier's zone groups in their order (+0x100,
+/// all flagged 0x80000 and skipped; the head group; the limbs; the body)
+/// with the bare segment in each zone's space (`FUN_00109b10` ->
+/// `FUN_001094c8`), strikes every zone of a group it passes and stops at
+/// the first group struck; the damage handler `FUN_0024a1e8` takes the
+/// group's lowest zone (`FUN_0024a108`). `None` for a model without the
+/// soldier's skeleton.
+fn zone_hit(game: &Game, body: &Body, a: Vec3, b: Vec3) -> Option<(f32, Zone)> {
+    let (t, group, i) = struck(game, body, &[&HEAD_ZONES, &LIMB_ZONES, std::slice::from_ref(&BODY_ZONE)], a, b)?;
+    let zone = match group {
+        0 => Zone::Head,
+        1 => Zone::Limb(i as u8 / 2),
+        _ => Zone::Body,
+    };
+    Some((t, zone))
+}
+
+/// The zone groups' test (see [`zone_hit`]): where the segment first meets
+/// a zone (0..1), the first group it strikes and that group's lowest zone.
+fn struck(game: &Game, body: &Body, groups: &[&[ZoneBox]], a: Vec3, b: Vec3) -> Option<(f32, usize, usize)> {
+    let model = &game.data.models[body.model].1;
+    if model.objects.len() < 19 {
+        return None;
+    }
+    let motion = body.motions.and_then(|m| game.data.motions[m].1.motions.get(body.motion));
+    let joints = mgs2_bevy::anim::pose_turned(model, motion, body.frame, false, body.turn);
+    let owner = Quat::from_rotation_y(body.yaw);
+    let test = |z: &ZoneBox| -> Option<f32> {
+        let (_, rot, pos) = joints.get(z.joint)?.to_scale_rotation_translation();
+        let rot = owner * rot;
+        let centre = body.pos + owner * pos + rot * z.offset;
+        let inv = rot.inverse();
+        segment_box(inv * (a - centre), inv * (b - centre), Vec3::ZERO, z.half)
+    };
+    groups.iter().enumerate().find_map(|(g, zones)| {
+        let hits: Vec<(usize, f32)> = zones.iter().enumerate().filter_map(|(i, z)| test(z).map(|t| (i, t))).collect();
+        let t = hits.iter().map(|h| h.1).fold(f32::INFINITY, f32::min);
+        hits.first().map(|&(i, _)| (t, g, i))
+    })
+}
+
+/// Olga's zones (w00b `FUN_0025f510`, 0x2014011 boxes on her
+/// joints): eleven 0x20-byte entries at 0x1f6090 (half extents, the joint
+/// as a float, the offset, then a float whose integer >> 17 is the dart's
+/// damage), in groups of 2, 8 and 1 (0x3bb778): head and heart, the limbs,
+/// the body. (The damage can come from her script's options instead,
+/// `FUN_00152920`; not read.)
+pub struct OlgaZones {
+    groups: [Vec<(ZoneBox, i32)>; 3],
+}
+
+impl OlgaZones {
+    const TABLE: u32 = 0x1F_6090;
+    const COUNTS: u32 = 0x3B_B778;
+
+    pub fn read(img: &[u8]) -> Option<Self> {
+        let f = |addr: u32| crate::olga::word(img, addr).map(f32::from_bits);
+        let mut addr = Self::TABLE;
+        let mut groups: [Vec<(ZoneBox, i32)>; 3] = Default::default();
+        for (g, group) in groups.iter_mut().enumerate() {
+            let n = crate::olga::word(img, Self::COUNTS + 4 * g as u32)?;
+            for _ in 0..n.min(16) {
+                let v = |o: u32| -> Option<[f32; 3]> { Some([f(addr + o)?, f(addr + o + 4)?, f(addr + o + 8)?]) };
+                let zone = zb(f(addr + 0xc)? as usize, v(0)?, v(0x10)?);
+                group.push((zone, (f(addr + 0x1c)? as u32 >> 17) as i32));
+                addr += 0x20;
+            }
+        }
+        Some(Self { groups })
+    }
+
+    /// The dart's damage where `a`..`b` strikes her.
+    fn hit(&self, game: &Game, body: &Body, a: Vec3, b: Vec3) -> Option<i32> {
+        let boxes: Vec<Vec<ZoneBox>> = self.groups.iter().map(|g| g.iter().map(|(z, _)| zb(z.joint, z.half.to_array(), z.offset.to_array())).collect()).collect();
+        let refs: Vec<&[ZoneBox]> = boxes.iter().map(Vec::as_slice).collect();
+        let (_, g, i) = struck(game, body, &refs, a, b)?;
+        Some(self.groups[g][i].1)
     }
 }
 
@@ -118,11 +210,12 @@ pub fn fly(
     game: Res<Game>,
     mut bullets: Query<(Entity, &mut Bullet)>,
     mut snake: Query<(&Body, &mut Player), Without<Guard>>,
-    mut guards: Query<(&Body, &mut Guard), (Without<Player>, Without<Olga>)>,
+    mut guards: Query<(Entity, &Body, &mut Guard), (Without<Player>, Without<Olga>)>,
     mut olgas: Query<(&Body, &mut Olga), (Without<Player>, Without<Guard>)>,
     radios: Query<(&crate::body::Held, &Transform), With<crate::guard::radio::Radio>>,
 ) {
     let dt = time.delta_secs().min(0.05);
+    let olga_zones = if olgas.is_empty() { None } else { game.data.resident.as_deref().and_then(OlgaZones::read) };
     let Ok((sb, mut player)) = snake.single_mut() else { return };
     'bullets: for (e, mut b) in &mut bullets {
         let step = SPEED * dt;
@@ -146,13 +239,24 @@ pub fn fly(
             // pieces (`FUN_00265f50`: any of damage 0x800000004801e, darts
             // included, sets +0xb4 bit 0x10000; the effect `FUN_002b9ca8`
             // is not ported).
-            // (The radio sits inside the port's 300 mm body cylinder, so
-            // the order is judged against a torso core instead.)
-            let body_t = guards.iter().filter(|(_, g)| !g.dead() && !g.inactive).filter_map(|(gb, _)| core_t(b.pos, end, gb.pos)).fold(f32::INFINITY, f32::min);
+            // The nearest soldier struck, by his zones (the cylinder for
+            // other models).
+            let struck = guards
+                .iter()
+                .filter(|(_, _, g)| !g.dead() && !g.inactive)
+                .filter_map(|(ge, gb, _)| match zone_hit(&game, gb, b.pos, end) {
+                    Some((t, z)) => Some((t, z, ge)),
+                    None if game.data.models[gb.model].1.objects.len() < 19 => {
+                        hit_point(b.pos, end, gb.pos, HEIGHT).map(|p| ((p - b.pos).length() / (end - b.pos).length().max(1e-3), Zone::Body, ge))
+                    }
+                    None => None,
+                })
+                .min_by(|x, y| x.0.total_cmp(&y.0));
+            let body_t = struck.map_or(f32::INFINITY, |s| s.0);
             let radio = radios
                 .iter()
                 .filter_map(|(h, t)| {
-                    let g = guards.get(h.owner).ok()?.1;
+                    let g = guards.get(h.owner).ok()?.2;
                     if g.dead() || g.inactive || g.radio_shot || h.hidden {
                         return None;
                     }
@@ -162,48 +266,42 @@ pub fn fly(
                 .min_by(|x, y| x.0.total_cmp(&y.0));
             if let Some((t, owner)) = radio
                 && t <= body_t
-                && let Ok((_, mut g)) = guards.get_mut(owner)
+                && let Ok((_, _, mut g)) = guards.get_mut(owner)
             {
                 info!("guard {}'s radio shot", g.route);
                 g.radio_shot = true;
                 commands.entity(e).despawn();
                 continue 'bullets;
             }
-            for (gb, mut g) in &mut guards {
-                if g.dead() || g.inactive {
-                    continue;
-                }
-                if let Some(p) = hit_point(b.pos, end, gb.pos, HEIGHT) {
-                    if b.lethal {
-                        // Hit voice (base 0x100); down for good once his
-                        // life is gone, else he knows where Snake is.
-                        crate::sfx::play(0x100 + g.voice(), Some(gb.pos));
-                        if !g.shot(zone(p, gb)) {
-                            g.last_seen = Some(sb.pos);
-                            g.meter = crate::guard::METER_MAX;
-                        }
-                    } else {
-                        let was_down = g.asleep();
-                        // The dart's impact (effect 0x86, `FUN_0024f490`).
-                        crate::sfx::play(DART_HIT, Some(gb.pos));
-                        g.dart(zone(p, gb));
-                        info!("guard {} darted (asleep: {})", g.route, g.asleep());
-                        if !was_down && g.asleep() {
-                            crate::sfx::play(crate::sfx::GUARD_ASLEEP + g.voice(), Some(gb.pos));
-                        }
+            if let Some((t, zone, ge)) = struck
+                && let Ok((_, gb, mut g)) = guards.get_mut(ge)
+            {
+                let h = b.pos.lerp(end, t).y - gb.pos.y;
+                if b.lethal {
+                    // Hit voice (base 0x100); down for good once his
+                    // life is gone, else he knows where Snake is.
+                    crate::sfx::play(0x100 + g.voice(), Some(gb.pos));
+                    info!("guard {} shot ({zone:?}, {h:.0} mm up)", g.route);
+                    if !g.shot(zone) {
+                        g.last_seen = Some(sb.pos);
+                        g.meter = crate::guard::METER_MAX;
                     }
-                    commands.entity(e).despawn();
-                    continue 'bullets;
+                } else {
+                    let was_down = g.asleep();
+                    // The dart's impact (effect 0x86, `FUN_0024f490`).
+                    crate::sfx::play(DART_HIT, Some(gb.pos));
+                    g.dart(zone);
+                    info!("guard {} darted ({zone:?}, {h:.0} mm up, asleep: {})", g.route, g.asleep());
+                    if !was_down && g.asleep() {
+                        crate::sfx::play(crate::sfx::GUARD_ASLEEP + g.voice(), Some(gb.pos));
+                    }
                 }
+                commands.entity(e).despawn();
+                continue 'bullets;
             }
             for (ob, mut o) in &mut olgas {
-                if let Some(p) = hit_point(b.pos, end, ob.pos, HEIGHT) {
-                    use crate::olga::{DART_BODY, DART_HEAD, DART_LIMB};
-                    let damage = match zone(p, ob) {
-                        Zone::Head => DART_HEAD,
-                        Zone::Body => DART_BODY,
-                        Zone::Limb(_) => DART_LIMB,
-                    };
+                if let Some(damage) = olga_zones.as_ref().and_then(|z| z.hit(&game, ob, b.pos, end)) {
+                    info!("Olga darted ({damage})");
                     // The dart's impact (0x86, also in `FUN_002680e0`).
                     crate::sfx::play(DART_HIT, Some(ob.pos));
                     if !o.down() {
@@ -306,26 +404,4 @@ fn segment_box(a: Vec3, b: Vec3, c: Vec3, h: Vec3) -> Option<f32> {
         }
     }
     Some(t0)
-}
-
-/// The torso's core radius, for whether a radio on the belt or a body is
-/// struck first (mm; assumed: the game's hit spheres are not ported).
-const CORE: f32 = 150.0;
-
-/// Where along `a`..`b` (0..1) the segment enters the upright cylinder of
-/// radius [`CORE`] over the feet at `base`, if it does.
-fn core_t(a: Vec3, b: Vec3, base: Vec3) -> Option<f32> {
-    let (p, d) = (a.xz() - base.xz(), (b - a).xz());
-    let (qa, qb, qc) = (d.dot(d), 2.0 * p.dot(d), p.dot(p) - CORE * CORE);
-    let t = if qc <= 0.0 {
-        0.0
-    } else {
-        let disc = qb * qb - 4.0 * qa * qc;
-        if qa < 1e-6 || disc < 0.0 {
-            return None;
-        }
-        (-qb - disc.sqrt()) / (2.0 * qa)
-    };
-    let y = a.y + (b.y - a.y) * t;
-    ((0.0..=1.0).contains(&t) && y > base.y && y < base.y + HEIGHT).then_some(t)
 }

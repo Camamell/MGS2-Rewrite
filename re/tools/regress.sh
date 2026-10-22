@@ -84,11 +84,15 @@ MGS2_GRENADE_AT=4c check discovery_jammed "meets Snake on his run|Snake knocked 
 MGS2_GOD=1 MGS2_USP=1 check shot_comrade "leaves the call to a comrade|alert: running" ge 2 w01d --skip-cutscenes --snake-at=1200,9000,-11000 --fire-at 3 --shot-at 11
 MGS2_DOWN=7:s@1 MGS2_JAM=1 check comrade_jammed "Comrade0xd/" ge 1 w01d --skip-cutscenes --trace --shot-at 32
 # A dart into guard 3's radio from behind: his call fails the same way.
-MGS2_FPV_TEST=1 MGS2_FPV_AT=5893,762,3886 check radio_shot "radio shot|reported Snake in person" ge 2 w01a --skip-cutscenes --snake-at=6000,0,2000 --fire-at 1 --aim-for 0.2 --shot-at 26
+MGS2_FPV_TEST=1 MGS2_FPV_AT=5893,800,3886 check radio_shot "radio shot|reported Snake in person" ge 2 w01a --skip-cutscenes --snake-at=6000,0,2000 --fire-at 1 --aim-for 0.2 --shot-at 26
 # Out of sight on the radio he looks about (sub 7: +-0x200 head turns).
 MGS2_GOD=1 check radio_look "looks about on the radio" ge 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 12
 # Darted from beyond earshot and still awake: he turns to look (state 7).
-check dart_stung "feels a dart" ge 1 w01a --skip-cutscenes --snake-at=6000,0,-3000 --snake-dir=0 --fire-at 1 --shot-at 4
+# (A body hit: aimed from first person at the right of his chest.)
+MGS2_FPV_TEST=1 MGS2_FPV_AT=5900,880,4020 check dart_stung "feels a dart" ge 1 w01a --skip-cutscenes --snake-at=6000,0,-3000 --snake-dir=0 --fire-at 1 --aim-for 0.2 --shot-at 4
+# Guard 3 crouches at his first point: a dart at muzzle height meets his
+# head zone (joint 12), not his body.
+check dart_head "darted \(Head" ge 1 w01a --skip-cutscenes --snake-at=6000,0,-3000 --snake-dir=0 --fire-at 1 --shot-at 4
 # A guard empties his magazine at an invulnerable Snake and reloads (the
 # alert starts once his call for backup ends).
 MGS2_GOD=1 check reload "reloads" ge 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 45
@@ -96,6 +100,8 @@ MGS2_GOD=1 check reload "reloads" ge 1 w01a --skip-cutscenes --snake-at=6000,0,0
 MGS2_FPV_TEST=1 MGS2_FPV_PITCH=41 check lamp "light 906464 shot" ge 1 w03a --skip-cutscenes --snake-at=-14800,-5000,-39250 --snake-dir=3072 --fire-at 2 --shot-at 4
 # The deck's mirror reflects Snake once he is on it (mirror.c messages).
 check mirror "reflects 28dce6" ge 1 w00b --skip-cutscenes --shot-at 4
+# Olga's own zones (w00b 0x1f6090): a dart in the head takes 32.
+MGS2_FPV_TEST=1 MGS2_FPV_AT=-18900,15000,-14200 check olga_head "Olga darted \(32\)" ge 1 w00b --skip-cutscenes --snake-at=-18900,12750,-17500 --fire-at 3 --aim-for 0.2 --shot-at 5
 # Items: a bandage stops the bleeding; cold medicine ends the sneezing.
 MGS2_LIFE=25 MGS2_GIVE=0/5:1 MGS2_KEYS=N@2 check bandage "bandage used" ge 1 w01a --skip-cutscenes --shot-at 3
 MGS2_COLD=120 MGS2_GIVE=0/4:1 MGS2_KEYS=N@4 check cold "cold medicine used" ge 1 w01a --skip-cutscenes --shot-at 6

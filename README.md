@@ -221,7 +221,7 @@ Olga's USP comes empty (its rounds lie in the later stages; `MGS2_USP=1`
 starts with it and 15 rounds, for tests).
 
 Assumptions (not taken from the game yet): the USP is heard within 10 m,
-the reload pause and where on the body a round or dart lands (hit zones by height). In the holds, the
+the reload pause. In the holds, the
 camera is always available, a photo goes to the first empty album slot (else
 over the worst one).
 
@@ -329,6 +329,9 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      a soldier running to report in person butts Snake if he meets him on
      the way (on his feet, within 1 m) and runs on; a soldier who hears a
      shot while a comrade within earshot has already called it in leaves
-     the call to him and raises the alert after his "!"
+     the call to him and raises the alert after his "!"; rounds and darts
+     strike the soldiers' own hit zones (boxes on the joints: head, heart
+     and groin kill, arms and legs wound, the body), taken in the game's
+     order, and Olga's (her zone table, each with its dart damage)
    - next: the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects)

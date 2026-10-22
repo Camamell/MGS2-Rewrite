@@ -107,8 +107,50 @@ A lethal hit is matched against three groups of hit zones on the skeleton:
 - a hit with no zone: -1000.
 Life at 0 plays motion 0x71 (113, the fall); otherwise a hit reaction
 (motion 0x7b or `FUN_0025db68`). While the counter at +0xf25 lasts, a hit
-pings instead (effect 0x27, sparks: `FUN_00248f68`). The port picks the zone
-by hit height and distance from the guard's centre line.
+pings instead (effect 0x27, sparks: `FUN_00248f68`).
+
+The zones (`FUN_0025b608`, the body setup): 0xc0-byte collision records made
+by `FUN_00107da0(zone, 0x2004011, 1, 2, half extents, offset)` and linked as
+groups to the soldier's main box (+0x10, kind 0x2000010) by `FUN_00108098(main,
+group, count, order)`. Each frame `FUN_00258028` copies a joint's matrix
+into every record (`FUN_00107f38(zone, *(body+0xf44) + 0xc0 + 0x130 * joint)`):
+
+| Group | Zone | Joint | Half extents (mm) | Offset (joint space) |
+|---|---|---|---|---|
+| +0x100 (order 0) | 3 zones | 0, 12, 12 | | always flag 0x80000 |
+| +0x3a0 head (1) | head | 12 | 96 130 96 | 0 30 0 |
+| | heart (left chest) | 2 | 50 65 165 | 100 100 0 |
+| | groin | 0 | 100 65 150 | 0 -150 0 |
+| +0x640 limbs (2) | right arm 0, 1 | 4, 5 | 75 150 75 | 0 -130 0 |
+| | left arm 2, 3 | 8, 9 | 75 150 75 | 0 -130 0 |
+| | right leg 4, 5 | 13, 14 | 85 200 120 / 85 250 120 | -10 -200 -10 / -20 -250 -20 |
+| | left leg 6, 7 | 17, 18 | as the right | |
+| +0xd40 body (3) | body | 2 | 200 300 200 | 0 0 0 |
+
+(Joints of `gbs_def`: 0 hips, 2 chest, 4 / 5 and 8 / 9 the upper and lower
+arms on -x and +x, 12 head, 13 / 14 and 17 / 18 thighs and shins; the model
+faces +z, so -x is his right.) The heart and groin zones get flag 0x80000
+under body +0xf2c bit 0x1000 (not traced). Kind bit 0x4000 turns the offset
+by the joint's matrix and tests in the zone's own space (`FUN_00108f28`,
+`FUN_001094c8`): boxes on the joints. A round is a swept segment (its box
++0x1c0 gets the frame's start and end, `FUN_00108050`; kind bit 0x10000);
+the collision pass `FUN_00109fb0`, once the segment meets a box with linked
+groups (bit 0x40000), walks the groups by order, skips zones flagged
+0x80000, tests the bare segment against each zone (`FUN_00109b10` ->
+`FUN_001094c8`), strikes all it passes and stops after the first group
+with a strike (DAT_001b7210). So a round through the head, heart or groin
+kills even when it also passes the body. Ported (`bullet::zone_hit`) for
+models with the soldier's skeleton (others, if any, count a body hit).
+
+Olga (w00b `FUN_0025f510`) builds hers from a table: eleven 0x20-byte
+entries at 0x1f6090 (half extents, the joint as a float in +0xc, the
+offset, and a float at +0x1c whose integer >> 17 is the dart's damage,
+low 16 bits signed by 0x10000 kept beside it), kind 0x2014011, in groups
+of 2 / 8 / 1 (counts at 0x3bb778; option 99 of her script can override
+them, and `FUN_00152920` the damage: not read). Head (joint 12) and heart
+(joint 2) 32, the limbs 8 (arms 45 x 150 x 65), the body on joint 1
+(200 x 300 x 100) 10. Ported (`bullet::OlgaZones`, read from the resident
+image).
 
 ## Blows, sleep and knock-outs
 
