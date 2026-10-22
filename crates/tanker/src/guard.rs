@@ -334,6 +334,31 @@ pub mod radio {
     }
 }
 
+/// The binoculars (`sougan`) of route action 0xa (route action 4,
+/// `FUN_002237e0`): motion 6, and on its frame 0x12 a `sougan` model held
+/// on joint 10 (the left hand; `FUN_0022f358(.., 10, offset 0x1f3a60,
+/// turn 0x1f3a58, "sougan")`, both zero); when motion 6 has played, motion
+/// 7 for the rest of the wait; the model goes when the action ends
+/// (`FUN_0022d610`).
+pub mod binoculars {
+    use bevy::prelude::*;
+
+    pub const JOINT: usize = 10;
+    pub const FRAME: u32 = 0x12;
+    pub const LOOP: usize = 7;
+
+    /// Marks a soldier's binoculars model.
+    #[derive(Component)]
+    pub struct Binoculars;
+
+    /// Shows each soldier's binoculars while he holds them.
+    pub fn place(guards: Query<&super::Guard>, mut held: Query<&mut crate::body::Held, With<Binoculars>>) {
+        for mut h in &mut held {
+            h.hidden = guards.get(h.owner).is_ok_and(|g| !g.binoculars);
+        }
+    }
+}
+
 mod motion {
     pub const IDLE: usize = 0;
     pub const WALK: usize = 1;
@@ -1119,6 +1144,8 @@ pub struct Guard {
     checked: bool,
     /// The radio in his left hand (radio flag 0x2) during a call.
     pub radio_in_hand: bool,
+    /// The binoculars in his left hand (route action 0xa, [`binoculars`]).
+    pub binoculars: bool,
     /// His radio found dead in this call (controller +0x348 bit 4, set on
     /// frame 0x73 of the dead-radio action): he reports in person.
     radio_dead: bool,
@@ -1309,6 +1336,7 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         knocked: false,
         checked: false,
         radio_in_hand: false,
+        binoculars: false,
         radio_dead: false,
         called: false,
         radio_shot: false,
@@ -1365,6 +1393,7 @@ pub fn patrol(route: usize, vision: f32, anim: Anim) -> Guard {
         knocked: false,
         checked: false,
         radio_in_hand: false,
+        binoculars: false,
         radio_dead: false,
         called: false,
         radio_shot: false,
@@ -2145,6 +2174,9 @@ pub fn think(
             }
             g.path.clear();
             g.state = State::Patrol;
+        }
+        if !matches!(g.state, State::Wait(_)) {
+            g.binoculars = false;
         }
         if !matches!(g.state, State::Comrade { .. } | State::HoldupCall { .. } | State::Call { .. } | State::CheckIn { .. }) {
             g.radio_in_hand = false;
@@ -3639,8 +3671,14 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
             let playing = action_motion(action).filter(|&m| t < motion_length(game, body, m, 0));
             match playing {
                 Some(m) => body.play_once(m),
+                None if action == 0xA && g.anim.check.is_some() => body.play(binoculars::LOOP),
                 None => body.play(g.anim.idle),
             }
+            let held = action == 0xA && g.anim.check.is_some() && t >= binoculars::FRAME;
+            if held && !g.binoculars {
+                info!("guard {} takes out his binoculars", g.route);
+            }
+            g.binoculars = held;
             g.blind = playing.is_some() && point_blind(action, t);
             // Action 6's voice (`FUN_00260320`): on frames 70, 226 and 393 of
             // its motion, sound 0x11c + his voice (0x36e under the body's

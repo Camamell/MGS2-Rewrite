@@ -1443,6 +1443,7 @@ fn main() -> Result<()> {
     app.add_systems(Update, body::skin_evm.after(body::skin));
     app.add_systems(Update, aim_cameras.after(guard::think));
     app.add_systems(Update, guard::radio::place.after(guard::think).before(body::hold));
+    app.add_systems(Update, guard::binoculars::place.after(guard::think).before(body::hold));
     app.add_systems(Update, (body::add_shadows, body::update_shadows.after(body::skin)));
     app.add_systems(Update, boss_defeat.after(olga::think).run_if(codec::idle).run_if(demo::idle));
     app.add_systems(Update, death_events);
@@ -1653,10 +1654,17 @@ fn spawn_level(
         let weapon = when_aiming.then_some(0);
         commands.entity(e).insert(body::Held { owner, object, when_aiming, grip, offset, weapon, hidden: false });
     }
+    // Each soldier's binoculars, hidden until he takes them out.
+    let binoculars = model_index(data, "sougan");
     for (owner, model) in radios {
         let e = scene::spawn_model(&mut commands, &data.models[model].1, data, &mut cache, &mut meshes, &mut images, &mut materials, unlit, LevelEntity);
         let held = body::Held { owner, object: guard::radio::JOINT, when_aiming: false, grip: guard::radio::turn(), offset: guard::radio::OFFSET, weapon: None, hidden: false };
         commands.entity(e).insert((held, guard::radio::Radio));
+        if let Some(m) = binoculars {
+            let e = scene::spawn_model(&mut commands, &data.models[m].1, data, &mut cache, &mut meshes, &mut images, &mut materials, unlit, LevelEntity);
+            let held = body::Held { owner, object: guard::binoculars::JOINT, when_aiming: false, grip: Quat::IDENTITY, offset: Vec3::ZERO, weapon: None, hidden: true };
+            commands.entity(e).insert((held, guard::binoculars::Binoculars));
+        }
     }
     if let Some((owner, m)) = usp_model {
         let e = scene::spawn_model(&mut commands, &data.models[m].1, data, &mut cache, &mut meshes, &mut images, &mut materials, unlit, LevelEntity);

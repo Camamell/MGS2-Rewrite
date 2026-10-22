@@ -1171,6 +1171,16 @@ point) and 10 (`-s` 0x40), the walking head look, actions 3 / 7 / 8 / 0xe / 0x10
 0x40 / 0x80 motion forms, 0xa's effect and second motion, 6's voices.
 Test hook: `MGS2_CAUTION_AT=secs` sets the caution timer.
 
+### Binoculars (action 0xa, `FUN_002237e0`)
+
+Route action 4 -> 0xa (21 Tanker points): motion 6; on its frame 0x12 an
+effect actor (`FUN_0022f358`, `FUN_0022f280`) holds model `sougan`
+(binoculars; in every Tanker stage) on joint 10, the left hand, with
+offset 0x1f3a60 and turn 0x1f3a58 (both zero); once motion 6 has played
+(its flag 1), motion 7 for the rest of the wait; the model is released
+when the action changes (`FUN_0022d610`). Body flag 1 only (he still
+sees). Ported (`guard::binoculars`).
+
 ### Blind actions (body flag 0x1000)
 
 The body runs its action step after clearing +0xf98 (`FUN_00247bb8`), and

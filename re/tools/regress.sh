@@ -117,6 +117,8 @@ MGS2_ROUTE=1:5 check gait_side "guard 5 at point 1: gait 3" ge 1 w03a --skip-cut
 # it, then seen.
 MGS2_GOD=1 MGS2_ROUTE=3:6:3 check blind_point "Discovery" eq 0 w01a --skip-cutscenes --trace --snake-at=3250,0,2250 --shot-at 6
 MGS2_GOD=1 MGS2_ROUTE=3:6:3 check blind_point_after "Discovery" ge 1 w01a --skip-cutscenes --trace --snake-at=3250,0,2250 --shot-at 11
+# Route action 4 (0xa): binoculars from frame 0x12 (w02a guard 17, point 2).
+MGS2_ROUTE=17:17:2 check binoculars "guard 17 takes out his binoculars" ge 1 w02a --skip-cutscenes --shot-at 4
 # Darted from beyond earshot and still awake: he turns to look (state 7).
 # (A body hit: aimed from first person at the right of his chest.)
 MGS2_FPV_TEST=1 MGS2_FPV_AT=5900,880,4020 check dart_stung "feels a dart" ge 1 w01a --skip-cutscenes --snake-at=6000,0,-3000 --snake-dir=0 --fire-at 1 --aim-for 0.2 --shot-at 4
