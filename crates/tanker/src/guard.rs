@@ -769,6 +769,10 @@ pub enum State {
     /// Let go of a hold-up: he calls it in (see [`holdup_call`]). `to`:
     /// where he turns (his target heading +0xf54, last set toward Snake).
     HoldupCall { sub: u8, timer: u32, to: Vec3 },
+    /// Normal 0xf (stimulus 0x8000000, `FUN_00245db0` / `FUN_00245d18`):
+    /// his check-in at a route point with the radio shot or jammed (see
+    /// [`check_in`]).
+    CheckIn { sub: u8, timer: u32 },
     /// After the discovery "!": the call for backup (see [`call`]); `sub`
     /// is the discovery table's sub-state (+0x330), `timer` its frames,
     /// `line` the call it will make (+0x310), `to` where he backs off to.
@@ -1663,6 +1667,79 @@ fn signed_angle(a: f32) -> f32 {
 /// A route point's `-f` line: no click (0x40000), panned from him
 /// (0x4000000), its length from the `-f` table (0x20000).
 const ROUTE_LINE: u32 = 0x0406_0000;
+/// The check-in's `-f` line (`FUN_00224530`): the same, with the click.
+const CHECK_IN_LINE: u32 = 0x0402_0000;
+
+/// Normal state 0xf (`FUN_00245d18`), a check-in with no radio:
+/// - 1 (`FUN_00245d18` case 1): the radio out (action 2), then 0, or 2 if
+///   it is still shot or jammed;
+/// - 0 (`FUN_00245a00`): "The situation is normal." (0xc000012) on the
+///   radio; cut short by a shot or jam (`FUN_0021d0a8`) -> 2; at the radio
+///   away's end -> 6;
+/// - 2 (`FUN_00245b70`): the dead radio (action 4; frame 0x73 he knows it),
+///   then the run (gait 7) to the manager's `-c` point;
+/// - 3 (`FUN_00245c08`): the run, until there (`FUN_00256910`);
+/// - 4 (`FUN_00245c80`): there, the shot-radio flag and his limb wounds
+///   cleared (`FUN_00255978`); 0x79 frames without a line, then 6 with
+///   +0x348 cleared;
+/// - 6: the state ends; he walks back to his route (assumed: to the point
+///   he left, whose check-in then runs again).
+fn check_in(g: &mut Guard, body: &mut Body, phase: &mut Phase, (sub, timer): (u8, u32), dt: f32, ticks: u32, game: &Game) {
+    let Some(c) = g.anim.check else {
+        g.state = State::Return;
+        return;
+    };
+    let t = timer + ticks;
+    let next = |sub| State::CheckIn { sub, timer: 0 };
+    g.state = match sub {
+        1 => {
+            if !radio_out(g, body, c, t, game) {
+                State::CheckIn { sub, timer: t }
+            } else if no_radio(g, phase) {
+                next(2)
+            } else {
+                next(0)
+            }
+        }
+        0 => {
+            let frames = phase.line_frames(LINE_ALL_CLEAR, g, REPORT_FRAMES);
+            if t < frames && no_radio(g, phase) {
+                cut_short(g, phase);
+                next(2)
+            } else {
+                let (_, away) = radio_talk(g, body, phase, c, LINE_ALL_CLEAR, (timer, t), game);
+                if away { next(6) } else { State::CheckIn { sub, timer: t } }
+            }
+        }
+        2 => {
+            if radio_fails(g, body, c, t, game) { next(3) } else { State::CheckIn { sub, timer: t } }
+        }
+        3 => {
+            if run_to_report(g, body, phase, (timer, t), dt, game) { next(4) } else { State::CheckIn { sub, timer: t } }
+        }
+        4 => {
+            body.play(g.anim.idle);
+            if timer == 0 {
+                info!("guard {} reports in person (check-in)", g.route);
+                g.radio_shot = false;
+                g.wounds = 0;
+            }
+            if t >= 0x79 {
+                g.radio_dead = false;
+                next(6)
+            } else {
+                State::CheckIn { sub, timer: t }
+            }
+        }
+        _ => {
+            g.radio_in_hand = false;
+            if let Some(wp) = waypoint(game, g.route, g.node) {
+                plan(g, body.pos, Vec3::from(wp.position), game);
+            }
+            State::Return
+        }
+    };
+}
 
 /// The point of `route` nearest to `at` (where `FUN_00257210` starts a
 /// route given no point).
@@ -1939,14 +2016,28 @@ pub fn think(
                 _ => g.fall_asleep(),
             }
         }
-        if !matches!(g.state, State::Comrade { .. } | State::HoldupCall { .. } | State::Call { .. }) {
+        // MGS2_ROUTE=from:to: that soldier walks route `to` from its first
+        // point instead (testing; once).
+        if let Some((from, to)) = std::env::var("MGS2_ROUTE").ok().and_then(|v| {
+            let (a, b) = v.split_once(':')?;
+            Some((a.parse::<usize>().ok()?, b.parse::<usize>().ok()?))
+        }) && g.route == from
+            && tested.insert(usize::MAX)
+        {
+            info!("test: guard {from} takes route {to}");
+            g.route = to;
+            g.node = 0;
+            g.path.clear();
+            g.state = State::Patrol;
+        }
+        if !matches!(g.state, State::Comrade { .. } | State::HoldupCall { .. } | State::Call { .. } | State::CheckIn { .. }) {
             g.radio_in_hand = false;
             g.radio_dead = false;
         }
         // His radio line cut short (out of the call before its end:
         // knocked down, darted, held up; `FUN_0021d0a8`).
         if let Some(id) = g.on_air
-            && !matches!(g.state, State::Comrade { sub: 0xc | 0xe, .. } | State::HoldupCall { sub: 7 | 9, .. } | State::Call { sub: 6 | 7 | 0x1e, .. })
+            && !matches!(g.state, State::Comrade { sub: 0xc | 0xe, .. } | State::HoldupCall { sub: 7 | 9, .. } | State::Call { sub: 6 | 7 | 0x1e, .. } | State::CheckIn { sub: 0, .. })
         {
             g.on_air = None;
             phase.cut(id, g.route);
@@ -2177,6 +2268,18 @@ pub fn think(
             if let Some(&(target, at, _)) = seen {
                 g.path.clear();
                 g.state = State::Comrade { target, at, sub: 5, timer: 0 };
+            }
+        }
+        if let State::CheckIn { sub, timer } = g.state {
+            if g.level == 3 {
+                // Seen meanwhile: the normal transitions still run
+                // (`FUN_00227520`), taken as discovery.
+                g.radio_in_hand = false;
+                g.state = State::Discovery { timer: 0 };
+            } else {
+                check_in(&mut g, &mut body, &mut phase, (sub, timer), dt, ticks, &game);
+                highest = highest.max(i32::from(g.meter));
+                continue;
             }
         }
         if let State::HoldupCall { sub, timer, to } = g.state {
@@ -3356,6 +3459,47 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
             let t = g.point_frames.saturating_add(ticks);
             g.point_frames = t;
             let action = point_action(&wp);
+            // Action 0x19 (route action 23: w02a's door soldier, route 43
+            // point 1): his check-in, `FUN_00224530` on each frame of the
+            // wait. With his radio shot or jammed on the first frame,
+            // stimulus 0x8000000: [`check_in`]. Else the radio comes out
+            // (+0xf58 == 3), he says the manager's `-f` line for the point
+            // (`FUN_0021c9e0(.., 0x4020000)`: with the click; the wait is
+            // its length, 0xf0 frames without one) and puts the radio away
+            // (action 0x1a); the -1 wait ends with that motion.
+            let check = g.anim.check.filter(|_| action == 0x19);
+            if let Some(c) = check {
+                if t == ticks && no_radio(g, phase) {
+                    info!("guard {}: no radio for the check-in", g.route);
+                    g.state = State::CheckIn { sub: 1, timer: 0 };
+                    return;
+                }
+                let out = motion_length(game, body, c.radio_out, 99);
+                let node = g.node % game.data.collision.as_ref().and_then(|r| r.routes.get(g.route)).map_or(1, |r| r.points.len().max(1));
+                let (clip, frames) = phase.route_line(g.route, node).unwrap_or((0, 0xF0));
+                let away = motion_length(game, body, c.radio_away, 129);
+                if t < out {
+                    radio_out(g, body, c, t, game);
+                } else if t < out + frames {
+                    if t - ticks < out && clip != 0 {
+                        info!("guard {} checks in: line {clip:#x}", g.route);
+                        phase.play_line(CHECK_IN_LINE, clip);
+                    }
+                    body.play(c.radio_talk);
+                    g.radio_in_hand = true;
+                } else {
+                    body.play_once(c.radio_away);
+                    g.radio_in_hand = t < out + frames + 62;
+                }
+                body.yaw = turn_toward(body.yaw, f32::from(wp.direction) * ANGLE, TURN_RATE * dt);
+                g.state = if t >= out + frames + away {
+                    g.node += 1;
+                    State::Patrol
+                } else {
+                    State::Wait(left)
+                };
+                return;
+            }
             match action_motion(action) {
                 Some(m) if t < motion_length(game, body, m, 0) => body.play_once(m),
                 _ => body.play(g.anim.idle),
@@ -3521,7 +3665,7 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
             }
         }
         State::Chase | State::Search { .. } => g.state = State::Return,
-        State::Asleep { .. } | State::Dead { .. } | State::Comrade { .. } | State::HeldUp { .. } | State::HoldupCall { .. } | State::Call { .. } | State::Hurt { .. } => {}
+        State::Asleep { .. } | State::Dead { .. } | State::Comrade { .. } | State::HeldUp { .. } | State::HoldupCall { .. } | State::CheckIn { .. } | State::Call { .. } | State::Hurt { .. } => {}
     }
 }
 
@@ -4342,6 +4486,7 @@ pub fn trace(
             State::Wait(w) => format!("Wait{w:.1}"),
             State::Comrade { sub, timer, .. } => format!("Comrade{sub:#x}/{timer}"),
             State::Call { sub, timer, .. } => format!("Call{sub:#x}/{timer}"),
+            State::CheckIn { sub, timer } => format!("CheckIn{sub:#x}/{timer}"),
             s => format!("{s:?}"),
         };
         eprint!(" r{} ({:.0},{:.0},{:.0}) {} L{} m{} |", g.route, b.pos.x, b.pos.y, b.pos.z, st, g.level, g.meter);

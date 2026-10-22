@@ -101,6 +101,11 @@ MGS2_GOD=1 check comrade_call "heard a comrade's call" ge 1 w01d --skip-cutscene
 MGS2_USP=1 MGS2_GIVE=1/2:0 check usp_light "sees the USP's light" ge 1 w03a --skip-cutscenes --snake-at=-16750,-5000,-104000 --snake-dir=2048 --fire-at 1 --aim-for 3 --shot-at 5
 MGS2_USP=1 MGS2_GIVE=1/2:0 check usp_light_away "sees the USP's light" eq 0 w03a --skip-cutscenes --snake-at=-16750,-5000,-104000 --snake-dir=0 --fire-at 1 --aim-for 3 --shot-at 5
 MGS2_USP=1 MGS2_GIVE=1/2:0 check usp_no_light "sees the USP's light" eq 0 w01a --skip-cutscenes --snake-at=6000,0,-3000 --snake-dir=0 --fire-at 1 --aim-for 3 --shot-at 6
+# A check-in at a route point (action 0x19: w02a route 43 point 1, its
+# `-f` line), and with the radio jammed: the dead radio, the run, in person
+# (normal state 0xf). MGS2_ROUTE puts guard 22 on route 43.
+MGS2_ROUTE=22:43 check check_in "checks in: line 0x2000d82b" ge 1 w02a --skip-cutscenes --shot-at 25
+MGS2_JAM=1 MGS2_ROUTE=22:43 check check_in_jammed "reports in person \(check-in\)" ge 1 w02a --skip-cutscenes --shot-at 62
 # Darted from beyond earshot and still awake: he turns to look (state 7).
 # (A body hit: aimed from first person at the right of his chest.)
 MGS2_FPV_TEST=1 MGS2_FPV_AT=5900,880,4020 check dart_stung "feels a dart" ge 1 w01a --skip-cutscenes --snake-at=6000,0,-3000 --snake-dir=0 --fire-at 1 --aim-for 0.2 --shot-at 4

@@ -1163,6 +1163,28 @@ head look, actions 2 / 3 / 7 / 8 / 0xe / 0x10-0x14 / 0x16 / 0x17 / 0x19 /
 0x1a and the 0x40 / 0x80 motion forms, 0xa's effect and second motion,
 6's voices.
 
+### The check-in (action 0x19, `FUN_00224530`) and normal state 0xf
+
+Route action 23 maps to 0x19 (w02a route 43 point 1, the door soldier's
+route; w04c's walkers have four, but no radio motions). Each frame of the
+wait `FUN_00224618` calls `FUN_00224530`: +0x344 |= 0x1000; on the first
+frame the wait becomes 600 and, with the radio shot (+0xb4 0x10000) or
+jammed (DAT_0017f48c 0x10), stimulus 0x8000000; once the radio is out
+(+0xf58 == 3) the wait becomes `FUN_0021c9e0(route, point, 0x4020000)`:
+the manager's `-f` entry for the point (table 0x401e48; w02a `-f 43 1
+536926251 2633`) said with the click, its length the wait (0xf0 without
+a length, -1 without an entry); at 0 the action becomes 0x1a (radio
+away), whose end closes the -1 wait. Stimulus 0x8000000 -> normal state
+0xf (`FUN_00245db0`, sub-states `FUN_00245d18`): 1 radio out (action 2),
+then 0 or, still dead, 2; 0 (`FUN_00245a00`) "The situation is normal."
+(0xc000012), cut by a shot or jam -> 2, at its end -> 6; 2
+(`FUN_00245b70`) the dead radio, then the run to `-c` (gait 7); 3
+(`FUN_00245c08`) the run; 4 (`FUN_00245c80`) there: the shot flag and
+wounds cleared, 0x79 frames, +0x348 = 0; 6 the end. Ported
+(`State::Wait` for 0x19, `guard::check_in`); assumed: after 6 he returns
+to the point and checks in again; FUN_002245f0's action 0x1c in the last
+100 frames of a wait is not ported. Test: `MGS2_ROUTE=22:43` in w02a.
+
 ## Deck-2 defenders (w03a / w03b)
 
 The enemy manager's `-a` proc `#a0402c` creates `#c7280a` "atcomm"

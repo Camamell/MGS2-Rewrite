@@ -335,6 +335,8 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      shot is heard within twice each soldier's hearing range, and a
      soldier's "!" within it, sending the others to look; on Deck 2
      the USP's light, aimed at a soldier or in his view, draws him to look
-     (the light is the game's only there)
+     (the light is the game's only there); at a check-in point a soldier
+     radios in his line, and with his radio jammed or shot he shakes it,
+     runs to the report point and reports in person
    - next: the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects)
