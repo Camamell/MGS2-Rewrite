@@ -137,9 +137,19 @@ by the joint's matrix and tests in the zone's own space (`FUN_00108f28`,
 the collision pass `FUN_00109fb0`, once the segment meets a box with linked
 groups (bit 0x40000), walks the groups by order, skips zones flagged
 0x80000, tests the bare segment against each zone (`FUN_00109b10` ->
-`FUN_001094c8`), strikes all it passes and stops after the first group
-with a strike (DAT_001b7210). So a round through the head, heart or groin
-kills even when it also passes the body. Ported (`bullet::zone_hit`) for
+`FUN_001094c8`) and stops after the first group with a strike
+(DAT_001b7210). So a round through the head, heart or groin kills even
+when it also passes the body. A round's kind is 0x5010400 (`FUN_0036d450`
+region, 0x313067: 0x5050400 with its flag 0x100): bit 0x4000000 makes
+every hit shorten the segment to its entry and remember the record
+(DAT_001b7200, `FUN_00109760` / `FUN_00109b10`), and only that nearest one
+is struck at the end (`FUN_00109fb0`'s tail). So one zone of the group is
+struck (the nearest), and of a soldier and his radio the nearer. His main
+box (+0x10, kind 0x2000010, half extents 400 x 1000 x 400 at w00a
+0x1f3b80, on his position) always holds the radio, and the body zone (400
+mm deep) nearly does: the radio is struck from behind only where it
+stands out past the body zone. (Which of the two is tested first is not
+traced; it matters only for a head-group zone behind the radio.) Ported (`bullet::zone_hit`) for
 models with the soldier's skeleton (others, if any, count a body hit).
 
 Olga (w00b `FUN_0025f510`) builds hers from a table: eleven 0x20-byte
@@ -458,6 +468,23 @@ dropped its "running is heard" rule for this. The hearing range is the
 soldier's `-h` (`FUN_00222f60` -> `FUN_00259618`, guard+0x271c = controller
 +0x24c; default 12000, 1000 with controller flag 0x40): w00a 4000, w01b
 6000, w02a 4500 (As16:0x1c2 minus A:0xb3a).
+
+Each soldier's own check (`FUN_0021e7a8`, jump table w00a 0x3f0250 by the
+level 3..11; the noise block is 0x3fe730: level +0x70, area bytes +0x78..
++0x7a, +0x74 a distance) returns the level he heard, or 0 (all of it off
+under body +0xf2c bit 0x200):
+- 3: `FUN_002541c8` (Snake covering him) and `FUN_00252e28`;
+- 5: the same area (+0x138 / +0x13a / +0x13c against +0x78..+0x7a) and
+  +0x74 within a quarter of his range (+0x24c, or 1000 under `-s` bit 0x40);
+- 6, 9: the same area only;
+- 8, 10: the straight distance to the noise (DAT_001ccd30, `FUN_0022de78`)
+  within his range, doubled for 10; under body +0xf2c bit 0x200000 (not
+  traced) also within 3000 mm up or down;
+- 4, 7, 11: heard as is.
+`FUN_00230830` turns 5 / 6 / 8 / 9 into stimulus 1, 10 into 0x800, 11 into
+0x1000. Ported: level 10 (the USP; the port's 10 m was an assumption).
+Not ported: level 8 (a soldier's "!" heard by the others: stimulus 1, normal
+state 3; sub 2 says 0xc040020 "What's going on!?" for it).
 
 Crowd event 3 ("a Marine heard something", `FUN_00224a58`, the member's
 position as `$1..$3`) runs from the member update (w04c 0x225xxx) while its

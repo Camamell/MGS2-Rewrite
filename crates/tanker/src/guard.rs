@@ -1088,13 +1088,10 @@ pub struct Guard {
     pub anim: Anim,
 }
 
-/// A shot Snake made for the guards to hear: where, and how far it carries
-/// (mm): the USP.
+/// Where Snake fired an unsuppressed shot (the USP: noise level 10) for the
+/// guards to hear.
 #[derive(Resource, Default)]
-pub struct Gunshot(pub Option<(Vec3, f32)>);
-
-/// How far the USP is heard (mm; not from the game).
-pub const GUNSHOT_RANGE: f32 = 10_000.0;
+pub struct Gunshot(pub Option<Vec3>);
 
 /// Shooting (`FUN_00228710`/`FUN_00228F80`): aim for 21 frames, then a
 /// burst with one shot every 4 frames and a 1-in-3 chance to stop after
@@ -2185,30 +2182,29 @@ pub fn think(
                 continue;
             }
         }
-        // A noise within earshot draws a look (ranges assumed).
-        if let Some((at, range)) = shot
+        // An unsuppressed shot (noise 10) is heard as an attack: stimulus
+        // 0x800 (`FUN_00230830`), straight to discovery (`FUN_00227520` ->
+        // `FUN_00238f68`). Every soldier hears it within twice his hearing
+        // range, in a straight line (`FUN_0021e7a8`, the level 8 / 10 case:
+        // `FUN_0022de78` against +0x24c, doubled for 10; 1000 mm under `-s`
+        // bit 0x40, which no Tanker soldier has; only 3 m up or down under
+        // body +0xf2c bit 0x200000, not traced: taken as clear).
+        if let Some(at) = shot
             && g.level < 2
-            && body.pos.distance(at) < range
+            && body.pos.distance(at) <= g.hearing * 2.0
             && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Investigate { .. })
         {
-            // An unsuppressed shot (noise 10) is heard as an attack: stimulus
-            // 0x800, straight to discovery (`FUN_00227520` ->
-            // `FUN_00238f68`).
-            if range >= GUNSHOT_RANGE {
-                g.last_seen = Some(at);
-                // Its sub-state 3 (`FUN_00237918`): no "!" line, a turn,
-                // then the call ([`call`]).
-                g.path.clear();
-                g.called = false;
-                g.state = if g.anim.check.is_some() {
-                    crate::sfx::play(0x53, Some(body.pos));
-                    State::Call { sub: 3, timer: 0, line: LINE_SIGHTED, to: Some(at) }
-                } else {
-                    State::Discovery { timer: 0 }
-                };
+            g.last_seen = Some(at);
+            // Its sub-state 3 (`FUN_00237918`): no "!" line, a turn,
+            // then the call ([`call`]).
+            g.path.clear();
+            g.called = false;
+            g.state = if g.anim.check.is_some() {
+                crate::sfx::play(0x53, Some(body.pos));
+                State::Call { sub: 3, timer: 0, line: LINE_SIGHTED, to: Some(at) }
             } else {
-                g.state = State::Investigate { target: at, sub: 0, timer: 0, asks: false };
-            }
+                State::Discovery { timer: 0 }
+            };
         }
         // Footprints in clear view within his near range: he goes to the
         // newest he sees and leaves the older ones (`FUN_00230948`,

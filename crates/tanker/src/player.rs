@@ -522,7 +522,7 @@ pub fn control(
             if usp {
                 crate::bullet::fire_round(&mut commands, muzzle, f);
                 crate::sfx::play(crate::sfx::USP, Some(body.pos));
-                gunshot.0 = Some((body.pos, crate::guard::GUNSHOT_RANGE));
+                gunshot.0 = Some(body.pos);
                 crate::guard::noise(10, body.pos);
             } else {
                 crate::bullet::fire_dart(&mut commands, muzzle, f);

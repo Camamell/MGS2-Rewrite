@@ -220,8 +220,7 @@ Snake starts with the darts the title script gives a new Tanker game (106 /
 Olga's USP comes empty (its rounds lie in the later stages; `MGS2_USP=1`
 starts with it and 15 rounds, for tests).
 
-Assumptions (not taken from the game yet): the USP is heard within 10 m,
-the reload pause. In the holds, the
+Assumptions (not taken from the game yet): the reload pause. In the holds, the
 camera is always available, a photo goes to the first empty album slot (else
 over the worst one).
 
@@ -332,6 +331,7 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      the call to him and raises the alert after his "!"; rounds and darts
      strike the soldiers' own hit zones (boxes on the joints: head, heart
      and groin kill, arms and legs wound, the body), taken in the game's
-     order, and Olga's (her zone table, each with its dart damage)
+     order, and Olga's (her zone table, each with its dart damage); a USP
+     shot is heard within twice each soldier's hearing range
    - next: the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects)

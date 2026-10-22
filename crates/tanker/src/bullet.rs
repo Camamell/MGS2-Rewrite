@@ -120,16 +120,18 @@ const LIMB_ZONES: [ZoneBox; 8] = [
 /// +0xd40: the body (joint 2).
 const BODY_ZONE: ZoneBox = zb(2, [200.0, 300.0, 200.0], [0.0, 0.0, 0.0]);
 
-/// Where the segment `a`..`b` first meets one of a soldier's zones (0..1)
-/// and the zone it strikes. A round is a swept segment (`FUN_0036c798` ->
-/// `FUN_00108050`, its frame's start and end); the collision pass
-/// (`FUN_00109fb0`) tests a soldier's zone groups in their order (+0x100,
-/// all flagged 0x80000 and skipped; the head group; the limbs; the body)
-/// with the bare segment in each zone's space (`FUN_00109b10` ->
-/// `FUN_001094c8`), strikes every zone of a group it passes and stops at
-/// the first group struck; the damage handler `FUN_0024a1e8` takes the
-/// group's lowest zone (`FUN_0024a108`). `None` for a model without the
-/// soldier's skeleton.
+/// Where the segment `a`..`b` meets a soldier's zone (0..1) and the zone
+/// it strikes. A round is a swept segment (`FUN_0036c798` ->
+/// `FUN_00108050`, its frame's start and end) of kind 0x5010400; the
+/// collision pass (`FUN_00109fb0`), once it meets his main box (+0x10,
+/// 400 x 1000 x 400 mm), tests his zone groups in their order (+0x100, all
+/// flagged 0x80000 and skipped; the head group; the limbs; the body) with
+/// the bare segment in each zone's space (`FUN_00109b10` ->
+/// `FUN_001094c8`) and stops after the first group it passes. Kind bit
+/// 0x4000000 keeps only the nearest record struck: each hit shortens the
+/// segment to it, and the nearest is struck once all are tested (so the
+/// nearest zone of the group, and a radio only when nearer than it).
+/// `None` for a model without the soldier's skeleton.
 fn zone_hit(game: &Game, body: &Body, a: Vec3, b: Vec3) -> Option<(f32, Zone)> {
     let (t, group, i) = struck(game, body, &[&HEAD_ZONES, &LIMB_ZONES, std::slice::from_ref(&BODY_ZONE)], a, b)?;
     let zone = match group {
@@ -140,8 +142,8 @@ fn zone_hit(game: &Game, body: &Body, a: Vec3, b: Vec3) -> Option<(f32, Zone)> {
     Some((t, zone))
 }
 
-/// The zone groups' test (see [`zone_hit`]): where the segment first meets
-/// a zone (0..1), the first group it strikes and that group's lowest zone.
+/// The zone groups' test (see [`zone_hit`]): the first group the segment
+/// passes and the zone of it the segment meets first, with where (0..1).
 fn struck(game: &Game, body: &Body, groups: &[&[ZoneBox]], a: Vec3, b: Vec3) -> Option<(f32, usize, usize)> {
     let model = &game.data.models[body.model].1;
     if model.objects.len() < 19 {
@@ -158,9 +160,7 @@ fn struck(game: &Game, body: &Body, groups: &[&[ZoneBox]], a: Vec3, b: Vec3) -> 
         segment_box(inv * (a - centre), inv * (b - centre), Vec3::ZERO, z.half)
     };
     groups.iter().enumerate().find_map(|(g, zones)| {
-        let hits: Vec<(usize, f32)> = zones.iter().enumerate().filter_map(|(i, z)| test(z).map(|t| (i, t))).collect();
-        let t = hits.iter().map(|h| h.1).fold(f32::INFINITY, f32::min);
-        hits.first().map(|&(i, _)| (t, g, i))
+        zones.iter().enumerate().filter_map(|(i, z)| test(z).map(|t| (t, g, i))).min_by(|x, y| x.0.total_cmp(&y.0))
     })
 }
 

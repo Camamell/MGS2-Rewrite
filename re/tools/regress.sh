@@ -84,9 +84,13 @@ MGS2_GRENADE_AT=4c check discovery_jammed "meets Snake on his run|Snake knocked 
 MGS2_GOD=1 MGS2_USP=1 check shot_comrade "leaves the call to a comrade|alert: running" ge 2 w01d --skip-cutscenes --snake-at=1200,9000,-11000 --fire-at 3 --shot-at 11
 MGS2_DOWN=7:s@1 MGS2_JAM=1 check comrade_jammed "Comrade0xd/" ge 1 w01d --skip-cutscenes --trace --shot-at 32
 # A dart into guard 3's radio from behind: his call fails the same way.
-MGS2_FPV_TEST=1 MGS2_FPV_AT=5893,800,3886 check radio_shot "radio shot|reported Snake in person" ge 2 w01a --skip-cutscenes --snake-at=6000,0,2000 --fire-at 1 --aim-for 0.2 --shot-at 26
+MGS2_FPV_TEST=1 MGS2_FPV_AT=5893,800,3886 check radio_shot "radio shot|reported Snake in person" ge 2 w01a --skip-cutscenes --snake-at=6000,0,2000 --fire-at 1 --aim-for 0.4 --shot-at 26
 # Out of sight on the radio he looks about (sub 7: +-0x200 head turns).
 MGS2_GOD=1 check radio_look "looks about on the radio" ge 1 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 12
+# A USP shot is heard within twice the soldier's hearing range (w01a: 6000,
+# so 12 m): guard 3 turns to it from 11 m (sub 3 of the discovery), not 13 m.
+MGS2_USP=1 MGS2_GOD=1 check usp_heard "Call0x3/" ge 1 w01a --skip-cutscenes --trace --snake-at=6000,0,-7000 --snake-dir=2048 --fire-at 1 --shot-at 4
+MGS2_USP=1 MGS2_GOD=1 check usp_unheard "Call0x3/" eq 0 w01a --skip-cutscenes --trace --snake-at=6000,0,-9000 --snake-dir=2048 --fire-at 1 --shot-at 4
 # Darted from beyond earshot and still awake: he turns to look (state 7).
 # (A body hit: aimed from first person at the right of his chest.)
 MGS2_FPV_TEST=1 MGS2_FPV_AT=5900,880,4020 check dart_stung "feels a dart" ge 1 w01a --skip-cutscenes --snake-at=6000,0,-3000 --snake-dir=0 --fire-at 1 --aim-for 0.2 --shot-at 4
