@@ -341,6 +341,8 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      soldiers walk their routes at the Caution walk and their route points
      turn to looking about (the game's Caution changes); soldiers walk each
      leg of their route in the gait its point gives (the careful walk
-     toward a look point, side steps on Deck 2)
+     toward a look point, side steps on Deck 2); while a soldier plays
+     some of his posts' actions (the game's flag 0x1000; one shuts his
+     eyes for a while, with a voice) he sees nothing
    - next: the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects)

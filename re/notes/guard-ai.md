@@ -1171,6 +1171,22 @@ point) and 10 (`-s` 0x40), the walking head look, actions 3 / 7 / 8 / 0xe / 0x10
 0x40 / 0x80 motion forms, 0xa's effect and second motion, 6's voices.
 Test hook: `MGS2_CAUTION_AT=secs` sets the caution timer.
 
+### Blind actions (body flag 0x1000)
+
+The body runs its action step after clearing +0xf98 (`FUN_00247bb8`), and
+the sight `FUN_002559c0` reads flag 0x1000 as nothing seen (level 0, the
+bump box included; also `FUN_00252c70`, the joints test). Route actions
+whose step sets it: 4, 5, 0xe, 0x12-0x14, 0x18 (`FUN_00223980`, every
+frame until the motion ends: motions 15 (559 frames), 16 (440), 0x68) and
+6 / 0xc (`FUN_00260320`, motion 17 / 0xe8: frames 0x3d-0x1e6, with
+0x200000000000000; it also sets the eyes, +0xf4c +0x10: 5 shut at frames
+30, 38, 60, 0 open at 34, 42, 1 at 0x1e7, not ported, and says 0x11c +
+voice at frames 70, 226, 393, ported). In the Tanker: route actions 1 / 2
+/ 3 (21 / 9 / 27 points) and 17. Other steps set it too (the hurt and
+blow steps 0x24a938.., normal state 7 / 10 steps 0x23ce48 / 0x240a00,
+0x243b00): not ported. Ported (`point_blind`, `Guard::blind`). Test:
+`MGS2_ROUTE=from:to:point` places a guard at a point.
+
 ### The check-in (action 0x19, `FUN_00224530`) and normal state 0xf
 
 Route action 23 maps to 0x19 (w02a route 43 point 1, the door soldier's

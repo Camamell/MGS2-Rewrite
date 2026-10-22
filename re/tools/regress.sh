@@ -112,6 +112,11 @@ MGS2_CAUTION_AT=0.5 check caution_point "guard 17 at point 2: action 0xd" ge 1 w
 # The gaits by route point: w03a route 5 side-steps along points 1-4
 # (action 0x1e -> gait 3).
 MGS2_ROUTE=1:5 check gait_side "guard 5 at point 1: gait 3" ge 1 w03a --skip-cutscenes --shot-at 15
+# Route actions that blind (body flag 0x1000): w01a route 6 point 3,
+# action 5 (motion 16, 440 frames): Snake 3 m in front is not seen during
+# it, then seen.
+MGS2_GOD=1 MGS2_ROUTE=3:6:3 check blind_point "Discovery" eq 0 w01a --skip-cutscenes --trace --snake-at=3250,0,2250 --shot-at 6
+MGS2_GOD=1 MGS2_ROUTE=3:6:3 check blind_point_after "Discovery" ge 1 w01a --skip-cutscenes --trace --snake-at=3250,0,2250 --shot-at 11
 # Darted from beyond earshot and still awake: he turns to look (state 7).
 # (A body hit: aimed from first person at the right of his chest.)
 MGS2_FPV_TEST=1 MGS2_FPV_AT=5900,880,4020 check dart_stung "feels a dart" ge 1 w01a --skip-cutscenes --snake-at=6000,0,-3000 --snake-dir=0 --fire-at 1 --aim-for 0.2 --shot-at 4

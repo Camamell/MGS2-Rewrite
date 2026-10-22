@@ -398,6 +398,19 @@ fn gait_motion(g: &Guard, gait: u8) -> (usize, f32, f32) {
     }
 }
 
+/// Whether a route point's action leaves him blind on frame `t` of its
+/// motion (body flag 0x1000, which `FUN_002559c0` reads as nothing seen):
+/// the step `FUN_00223980` of actions 4, 5, 0xe, 0x12-0x14 and 0x18 sets
+/// it on every frame; `FUN_00260320` (actions 6 and 0xc) on frames 0x3d
+/// to 0x1e6 (with 0x200000000000000), the dozing part of motion 17.
+fn point_blind(action: u16, t: u32) -> bool {
+    match action {
+        4 | 5 | 0xE | 0x12..=0x14 | 0x18 => true,
+        6 | 0xC => (0x3D..0x3D + 0x1AA).contains(&t),
+        _ => false,
+    }
+}
+
 /// A route point's action and wait (`FUN_00224870`): in Caution (Bs16:0x112
 /// == 3) flags 0x800 make the action 2, flags 0x1000 and actions 4-6 make
 /// it 0xd (the head swing), and then a wait of -1 is 180 frames.
@@ -1130,6 +1143,10 @@ pub struct Guard {
     point_frames: u32,
     /// The gait for the leg to the next route point ([`pick_gait`]).
     gait: u8,
+    /// His eyes off Snake this frame: body flag 0x1000 from the action his
+    /// route point plays ([`point_blind`]), which the sight
+    /// (`FUN_002559c0`) reads as nothing seen.
+    blind: bool,
     /// The body's turn from the way he walks while side-stepping (gaits 2
     /// / 3), taken off again before he moves on.
     side_turn: f32,
@@ -1301,6 +1318,7 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         signal_now: false,
         point_frames: 0,
         gait: 0,
+        blind: false,
         side_turn: 0.0,
         on_air: None,
         stuck: 0.0,
@@ -1356,6 +1374,7 @@ pub fn patrol(route: usize, vision: f32, anim: Anim) -> Guard {
         signal_now: false,
         point_frames: 0,
         gait: 0,
+        blind: false,
         side_turn: 0.0,
         on_air: None,
         stuck: 0.0,
@@ -2106,17 +2125,24 @@ pub fn think(
                 _ => g.fall_asleep(),
             }
         }
-        // MGS2_ROUTE=from:to: that soldier walks route `to` from its first
-        // point instead (testing; once).
-        if let Some((from, to)) = std::env::var("MGS2_ROUTE").ok().and_then(|v| {
-            let (a, b) = v.split_once(':')?;
-            Some((a.parse::<usize>().ok()?, b.parse::<usize>().ok()?))
+        // MGS2_ROUTE=from:to[:point]: that soldier walks route `to` from its
+        // first point instead, or stands at `point` (testing; once).
+        if let Some((from, to, at)) = std::env::var("MGS2_ROUTE").ok().and_then(|v| {
+            let mut it = v.split(':').map(|x| x.parse::<usize>().ok());
+            Some((it.next()??, it.next()??, it.next().flatten()))
         }) && g.route == from
             && tested.insert(usize::MAX)
         {
             info!("test: guard {from} takes route {to}");
             g.route = to;
-            g.node = 0;
+            g.node = at.unwrap_or(0);
+            if let Some(wp) = at.and_then(|n| waypoint(&game, to, n)) {
+                body.pos = Vec3::from(wp.position);
+                body.yaw = f32::from(wp.direction) * ANGLE;
+                // Placed there, he arrives this frame: as if his point's
+                // action were already under way.
+                g.blind = point_blind(point_action(&wp), 0);
+            }
             g.path.clear();
             g.state = State::Patrol;
         }
@@ -2272,7 +2298,9 @@ pub fn think(
         // In first person the soldiers see Snake at three quarters of their
         // ranges (`FUN_002559C0`, camera mode 6).
         let sight = if first_person.active { 0.75 } else { 1.0 };
-        g.level = perceive(&g, &body, snake_pos, snake_height, &game, sight);
+        // Body flag 0x1000 (set by his route point's action step, which the
+        // body runs before the sight reads it): nothing is seen.
+        g.level = if std::mem::take(&mut g.blind) { 0 } else { perceive(&g, &body, snake_pos, snake_height, &game, sight) };
         seen_now |= g.level == 3;
         // Part of him showing past cover (stimulus 0x4000, `FUN_00230dd8`
         // tests his joints): head or feet in clear view within the near
@@ -3525,6 +3553,8 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
                 if action != 0 || wait < 0 {
                     info!("guard {} at point {node}: action {action:#x}, wait {wait}", g.route);
                 }
+                // The action starts now: its blindness from this frame.
+                g.blind = action_motion(action).is_some() && point_blind(action, 0);
                 let gait = pick_gait(&wp, action, phase);
                 if gait != g.gait {
                     info!("guard {} at point {node}: gait {gait}", g.route);
@@ -3606,9 +3636,17 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
                 };
                 return;
             }
-            match action_motion(action) {
-                Some(m) if t < motion_length(game, body, m, 0) => body.play_once(m),
-                _ => body.play(g.anim.idle),
+            let playing = action_motion(action).filter(|&m| t < motion_length(game, body, m, 0));
+            match playing {
+                Some(m) => body.play_once(m),
+                None => body.play(g.anim.idle),
+            }
+            g.blind = playing.is_some() && point_blind(action, t);
+            // Action 6's voice (`FUN_00260320`): on frames 70, 226 and 393 of
+            // its motion, sound 0x11c + his voice (0x36e under the body's
+            // flag 0x80000 via +0xfa8, not traced).
+            if action == 6 && playing.is_some() && [0x46u32, 0xE2, 0x189].iter().any(|&f| t - ticks.min(t) < f && f <= t) {
+                crate::sfx::play(0x11C + g.voice(), Some(body.pos));
             }
             // He faces the point's direction (+0xc04 -> +0xf54); his head
             // looks at its look point, or swings for action 0xd.
