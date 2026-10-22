@@ -283,6 +283,8 @@ pub struct Game {
     pub impact_sounds: u16,
     /// Materials (bits) whose struck surfaces take bullet holes (`#0acf09`).
     pub impact_scars: u16,
+    /// The USP's light is on while Snake aims it (`command #f6ada8`).
+    pub weapon_light: bool,
     /// The spoken line's volume (`#339bd9`, 0-63), with its line id.
     pub speech_volume: Option<(u32, u8)>,
     /// Sound driver commands from the script, for `music::update`.
@@ -1126,6 +1128,7 @@ fn prepare(
         sound_tables: Vec::new(),
         impact_sounds: 0,
         impact_scars: 0,
+        weapon_light: false,
         sound_cmds: Vec::new(),
         photos: photos.0,
         photo_done: photos.1,
@@ -2095,6 +2098,10 @@ fn apply_codec(game: &mut Game, reqs: &[gcl::CodecReq]) {
             CodecReq::Speech { id, then } => game.speech = Some((id, then, SPEECH_SECONDS)),
             CodecReq::ImpactSound(n) => game.impact_sounds |= 1 << n,
             CodecReq::ImpactScars(n) => game.impact_scars |= 1 << n,
+            CodecReq::WeaponLight => {
+                eprintln!("the USP's light is allowed here (#f6ada8)");
+                game.weapon_light = true;
+            }
             CodecReq::SoundTable(None) => game.sound_tables.clear(),
             CodecReq::SoundTable(Some(t)) => {
                 game.sound_tables.retain(|o| (o.table, o.sound) != (t.table, t.sound));

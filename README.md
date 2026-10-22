@@ -166,7 +166,7 @@ What works:
 - Mirrors (`mirror.c`): the wet decks and floors reflect the characters
   the stage script switches on (Snake, soldiers), drawn faint through the
   mirror plane (the strength is assumed).
-- The USP's light: a pool of light where Snake aims it (look assumed).
+- The USP's light: a pool of light where Snake aims it, on Deck 2 (w03a / w03b, whose script allows it: `command #f6ada8`; look assumed).
 - Character shadows: Snake's own shadow model (`sna_shadow`), others their
   body, posed with the body and flattened onto the floor (the game draws a
   shadow volume; here straight down, assumed).
@@ -333,7 +333,8 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      and groin kill, arms and legs wound, the body), taken in the game's
      order, and Olga's (her zone table, each with its dart damage); a USP
      shot is heard within twice each soldier's hearing range, and a
-     soldier's "!" within it, sending the others to look; the USP's
-     light, aimed at a soldier or in his view, draws him to look
+     soldier's "!" within it, sending the others to look; on Deck 2
+     the USP's light, aimed at a soldier or in his view, draws him to look
+     (the light is the game's only there)
    - next: the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects)

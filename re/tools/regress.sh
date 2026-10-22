@@ -94,10 +94,13 @@ MGS2_USP=1 MGS2_GOD=1 check usp_unheard "Call0x3/" eq 0 w01a --skip-cutscenes --
 # A soldier's "!" is noise 8: the w01d lookout (route 28, 3 m below)
 # hears the deck soldiers spot Snake and goes to look.
 MGS2_GOD=1 check comrade_call "heard a comrade's call" ge 1 w01d --skip-cutscenes --snake-at=1200,9000,-14000 --shot-at 14
-# Snake aims the USP (empty) at guard 3 from 7 m: its light draws him to
-# look (stimulus 0x2000); the M9 has no light.
-MGS2_USP=1 MGS2_GIVE=1/2:0 check usp_light "sees the USP's light" ge 1 w01a --skip-cutscenes --snake-at=6000,0,-3000 --snake-dir=0 --fire-at 1 --aim-for 3 --shot-at 6
-check m9_no_light "sees the USP's light" eq 0 w01a --skip-cutscenes --snake-at=6000,0,-3000 --snake-dir=0 --fire-at 1 --aim-for 3 --shot-at 6
+# The USP's light (stimulus 0x2000) only where the script allows it
+# (`command #f6ada8`: w03a / w03b). In w03a, aimed (empty) at r1 from 11 m,
+# beyond his sight, it draws him; aimed away it does not; in w01a there is
+# no light.
+MGS2_USP=1 MGS2_GIVE=1/2:0 check usp_light "sees the USP's light" ge 1 w03a --skip-cutscenes --snake-at=-16750,-5000,-104000 --snake-dir=2048 --fire-at 1 --aim-for 3 --shot-at 5
+MGS2_USP=1 MGS2_GIVE=1/2:0 check usp_light_away "sees the USP's light" eq 0 w03a --skip-cutscenes --snake-at=-16750,-5000,-104000 --snake-dir=0 --fire-at 1 --aim-for 3 --shot-at 5
+MGS2_USP=1 MGS2_GIVE=1/2:0 check usp_no_light "sees the USP's light" eq 0 w01a --skip-cutscenes --snake-at=6000,0,-3000 --snake-dir=0 --fire-at 1 --aim-for 3 --shot-at 6
 # Darted from beyond earshot and still awake: he turns to look (state 7).
 # (A body hit: aimed from first person at the right of his chest.)
 MGS2_FPV_TEST=1 MGS2_FPV_AT=5900,880,4020 check dart_stung "feels a dart" ge 1 w01a --skip-cutscenes --snake-at=6000,0,-3000 --snake-dir=0 --fire-at 1 --aim-for 0.2 --shot-at 4

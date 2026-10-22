@@ -528,8 +528,16 @@ normal-phase transition picks a state per bit (C+0x32c):
 
 The USP's light (0x2000, `FUN_00230b40`): `FUN_0033e890` returns
 DAT_001f857c, which the weapon manager (`wp_mng.c`, `FUN_0033ca68`) sets
-while Snake aims (DAT_001ecd40 & 0x800) a weapon whose light it makes
-(`FUN_00399d20`). Within 3 x his near range (+0x188 < 3 x +0x248), a
+while Snake aims (DAT_001ecd40 & 0x800) weapon 1 or 9 of its own numbering
+(+0x258: 1 the USP, 2 the SOCOM, 5 the AKS, by the suppressors it pairs
+with them: items 0x23 USP.SUPR, 0x1d SCM.SUPR, 0x1e AK.SUPR, item names at
+ELF 0x19209c; the scripts' weapon numbers differ: 1 M9, 2 USP) when
+DAT_00191a14 == 1, making its light (`FUN_00399d20`). DAT_00191a14 is
+cleared at every stage start (`FUN_00154218`) and set only by resident
+function `#f6ada8` (w00a 0x33e880), which `command #f6ada8` calls
+(`command` = `#082bc9`, `FUN_0010a848`: a resident function by name);
+only w03a / w03b's proc `#c4bdfe` (from main's map setup) does, so the
+light exists on Deck 2 alone. Within 3 x his near range (+0x188 < 3 x +0x248), a
 soldier notices it when, within 2 x, Snake faces him within 0x200
 (`FUN_0022df10(bearing + 0x800, Snake +0x22)`), or else when Snake is
 within his view (`FUN_0022df10(+0x240, +0x18c) < +0x244`), with a clear

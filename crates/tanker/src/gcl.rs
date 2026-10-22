@@ -145,6 +145,11 @@ const IMPACT_SOUND: u32 = 0x41CF4E;
 /// `#0acf09 -n <material>` (`cmd_0acf09`): rounds striking that material
 /// leave a bullet hole (`FUN_002d7498`, `wall_scar.c`'s own placement).
 const IMPACT_SCARS: u32 = 0x0ACF09;
+/// `command #f6ada8` (w03a / w03b's proc `#c4bdfe`; `command` calls a
+/// resident function by name, `FUN_0010a848`): sets DAT_00191a14, which
+/// lets the weapon manager (`FUN_0033ca68`) light the USP while Snake aims
+/// it. Cleared at each stage's start (`FUN_00154218`).
+const WEAPON_LIGHT: u32 = 0xF6ADA8;
 /// `#542b2d -a <n> -r <times> -d <values..> -e {block}` (`cmd_542b2d`):
 /// runs the block `times` times, each with the next `n` values as `$1..`.
 const REPEAT: u32 = 0x542B2D;
@@ -300,6 +305,8 @@ pub enum CodecReq {
     ImpactSound(u8),
     /// Rounds striking this material leave bullet holes (`#0acf09`).
     ImpactScars(u8),
+    /// The USP's light is allowed in this stage (`#f6ada8`).
+    WeaponLight,
     /// The volume (0-63) of the spoken line `handle`.
     Volume { handle: u32, vol: u8 },
     Reset,
@@ -836,7 +843,7 @@ impl<'a> Vm<'a> {
         };
         let known = CALL_AFTER.contains(&id)
             || CODEC_THEN.contains(&id)
-            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, VOLUME, SOUND_TABLE, ACTOR_POS, IMPACT_SOUND, IMPACT_SCARS, REPEAT, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand"), SIN, COS, ABS, DISTANCE, ATAN, SONG].contains(&id);
+            || [FILL_ARRAY, PHOTO_TARGET, PHOTO_DONE, SPEECH, VOLUME, SOUND_TABLE, ACTOR_POS, IMPACT_SOUND, IMPACT_SCARS, WEAPON_LIGHT, REPEAT, SOUND, WHEN_FREE, TIMER_LEFT, str_code(b"rand"), SIN, COS, ABS, DISTANCE, ATAN, SONG].contains(&id);
         known.then_some(id)
     }
 
@@ -982,6 +989,8 @@ impl<'a> Vm<'a> {
             if let Some(n) = opt(self, b'n').first().and_then(Val::int).filter(|n| (0..16).contains(n)) {
                 self.codec.push(if id == IMPACT_SOUND { CodecReq::ImpactSound(n as u8) } else { CodecReq::ImpactScars(n as u8) });
             }
+        } else if id == WEAPON_LIGHT {
+            self.codec.push(CodecReq::WeaponLight);
         } else if id == VOLUME {
             if let Some(h) = a.get(1).and_then(|v| self.value(v, args).int()) {
                 let vol = opt(self, b'v').first().and_then(Val::int).unwrap_or(0x3F);

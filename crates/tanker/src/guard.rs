@@ -1810,7 +1810,7 @@ pub fn think(
     let snake_dead = player.dead();
     let snake_height = player.height();
     // The USP's light is on (as `usp_light`).
-    let light_on = player.aiming && inv.usp && inv.weapon == 1;
+    let light_on = game.weapon_light && player.aiming && inv.usp && inv.weapon == 1;
     // Snake open to the rifle butt (the discovery's and the alert's):
     // `DAT_001ecd40 & 0x620`
     // clear (0x20 prone, `FUN_00269290`; 0x400 thrown down or lying,
@@ -2106,8 +2106,9 @@ pub fn think(
             g.state = State::Investigate { target: snake_pos, sub: 0, timer: 0, asks: true };
         }
         // The USP's light (stimulus 0x2000, `FUN_00230b40`): while Snake
-        // aims it (`DAT_001f857c`, which the weapon manager `FUN_0033ca68`
-        // sets while he aims a weapon with its light on), a soldier within
+        // aims it where the script allows it (`DAT_001f857c`, which the
+        // weapon manager `FUN_0033ca68` sets while he aims the USP after
+        // `command #f6ada8`: w03a / w03b), a soldier within
         // three times his near range notices it if, within twice that,
         // Snake points it his way (within 0x200) or else it is within his
         // own field of view, with a clear line (`FUN_00252e28` ->

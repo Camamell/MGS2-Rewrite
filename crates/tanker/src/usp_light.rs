@@ -1,6 +1,8 @@
-//! The USP's light (Snake: "a light-equipped USP"): while he aims it, a
+//! The USP's light (Snake: "a light-equipped USP"): while he aims it, in
+//! the stages whose script allows it (`command #f6ada8`: w03a / w03b), a
 //! pool of light where the line of fire meets a wall or floor. Its size,
-//! reach and colour are assumed (the game's light effect is not ported).
+//! reach and colour are assumed (the game's light effect, `FUN_00399d20`
+//! from the weapon manager `FUN_0033ca68`, is not ported).
 
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
@@ -44,7 +46,7 @@ fn update(
     mut pool: Query<(&mut Transform, &mut Visibility), With<Pool>>,
 ) {
     let Ok((mut t, mut vis)) = pool.single_mut() else { return };
-    let lit = player.single().ok().filter(|(_, p)| p.aiming && inv.usp && inv.weapon == 1 && !p.dead());
+    let lit = player.single().ok().filter(|(_, p)| game.weapon_light && p.aiming && inv.usp && inv.weapon == 1 && !p.dead());
     let hit = lit.and_then(|(b, _)| {
         let f = b.forward();
         let from = b.pos + Vec3::Y * MUZZLE + f * 400.0;
