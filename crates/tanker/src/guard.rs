@@ -357,15 +357,44 @@ const RUN_SPEED: f32 = 4050.0;
 const CAUTION_WALK: usize = 99;
 const CAUTION_WALK_SPEED: f32 = 960.0 / 54.0 * 60.0;
 
-/// The walk to his next route point (`FUN_00224c28`, the gait +0xf5a by
-/// the point's action): in Caution gait 5, [`CAUTION_WALK`]. Not ported:
-/// gait 1 for point flags 0xa, 2 / 3 / 7 / 9 for actions 0x1d / 0x1e /
-/// 0x25 / 0x26 (no Tanker point uses them), 10 under `-s` bit 0x40.
-fn route_gait(g: &Guard, phase: &Phase) -> (usize, f32) {
-    if phase.kind == PhaseKind::Caution && g.anim.check.is_some() {
-        (CAUTION_WALK, CAUTION_WALK_SPEED)
-    } else {
-        (g.anim.walk, g.anim.walk_speed)
+/// The gait (+0xf5a) for the leg to his next route point, picked on
+/// arrival at a point from its action and flags (`FUN_00224c28`): for the
+/// waiting actions (below 0x1d) 1 with look flags 0x2 / 0x8, else 5 in
+/// Caution, else 0 (10 under `-s` bit 0x40: no Tanker soldier); action
+/// 0x1d 2, 0x1e 3, 0x25 7, 0x26 9.
+fn pick_gait(wp: &mgs2_formats::hzx::Waypoint, action: u16, phase: &Phase) -> u8 {
+    let raw = if wp.flags & 0xC0 != 0 { 0 } else { POINT_ACTIONS.get(wp.action.max(0) as usize).copied().unwrap_or(0) };
+    match raw {
+        0x1D => 2,
+        0x1E => 3,
+        0x25 => 7,
+        0x26 => 9,
+        _ if action < 0x1D && wp.flags & 0xA != 0 => 1,
+        _ if phase.kind == PhaseKind::Caution => 5,
+        _ => 0,
+    }
+}
+
+/// A gait's motion, speed (mm/s) and the body's turn from the way he goes
+/// (`FUN_0025dfd8`; the forms under body flags 8 / 0x40 / 0x4000 are not
+/// used here). Speeds by the motions' root tracks, as the walk's (2110 mm
+/// in 95 frames) and the run's (2160 in 32) give the port's: gait 1 motion
+/// 0x12 (1150 mm in 53), 5 [`CAUTION_WALK`], 2 / 3 the side steps 0x65 /
+/// 0x66 (740 mm in 90, facing the way less / plus 0x400), 7 the run
+/// (assumed: `FUN_0025daa0`'s motion). Gait 9 (motion 0x3c) is not used in
+/// the Tanker: the walk. Soldiers only (the Marines keep their walk).
+fn gait_motion(g: &Guard, gait: u8) -> (usize, f32, f32) {
+    if g.anim.check.is_none() {
+        return (g.anim.walk, g.anim.walk_speed, 0.0);
+    }
+    let side = 740.0 / 90.0 * 60.0;
+    match gait {
+        1 => (0x12, 1150.0 / 53.0 * 60.0, 0.0),
+        2 => (0x65, side, -std::f32::consts::FRAC_PI_2),
+        3 => (0x66, side, std::f32::consts::FRAC_PI_2),
+        5 => (CAUTION_WALK, CAUTION_WALK_SPEED, 0.0),
+        7 => (g.anim.run, RUN_SPEED, 0.0),
+        _ => (g.anim.walk, g.anim.walk_speed, 0.0),
     }
 }
 
@@ -1099,6 +1128,11 @@ pub struct Guard {
     signal_now: bool,
     /// Frames he has spent at his current route point.
     point_frames: u32,
+    /// The gait for the leg to the next route point ([`pick_gait`]).
+    gait: u8,
+    /// The body's turn from the way he walks while side-stepping (gaits 2
+    /// / 3), taken off again before he moves on.
+    side_turn: f32,
     /// The radio line he is saying (its clip), until it ends.
     on_air: Option<u32>,
     /// Seconds spent walking without getting anywhere.
@@ -1266,6 +1300,8 @@ pub fn from_spawn(s: &Spawn, default_vision: f32) -> Option<(Guard, Vec3)> {
         signal: false,
         signal_now: false,
         point_frames: 0,
+        gait: 0,
+        side_turn: 0.0,
         on_air: None,
         stuck: 0.0,
         post: post_at,
@@ -1319,6 +1355,8 @@ pub fn patrol(route: usize, vision: f32, anim: Anim) -> Guard {
         signal: false,
         signal_now: false,
         point_frames: 0,
+        gait: 0,
+        side_turn: 0.0,
         on_air: None,
         stuck: 0.0,
         post: None,
@@ -3440,14 +3478,18 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
             g.state = State::Return;
         }
     }
+    if !matches!(g.state, State::Patrol) {
+        g.side_turn = 0.0;
+    }
     match g.state.clone() {
         State::Patrol => {
             let Some(wp) = waypoint(game, g.route, g.node) else {
                 body.play(g.anim.idle);
                 return;
             };
-            let (walk, walk_speed) = route_gait(g, phase);
+            let (walk, walk_speed, side) = gait_motion(g, g.gait);
             body.play(walk);
+            body.yaw -= std::mem::take(&mut g.side_turn);
             if g.path.is_empty() {
                 g.path = vec![Vec3::from(wp.position)];
             }
@@ -3463,7 +3505,12 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
                 g.stuck = 0.0;
                 return;
             }
-            if follow(g, body, walk_speed, 150.0, dt, game) {
+            let arrived = follow(g, body, walk_speed, 150.0, dt, game);
+            if !arrived && side != 0.0 {
+                body.yaw += side;
+                g.side_turn = side;
+            }
+            if arrived {
                 // At the point (`FUN_002244f0`): the manager's `-e` event
                 // for it runs (`FUN_0021dc60`, the soldier's name as $1).
                 let node = g.node % game.data.collision.as_ref().and_then(|c| c.routes.get(g.route)).map_or(1, |r| r.points.len().max(1));
@@ -3478,6 +3525,11 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
                 if action != 0 || wait < 0 {
                     info!("guard {} at point {node}: action {action:#x}, wait {wait}", g.route);
                 }
+                let gait = pick_gait(&wp, action, phase);
+                if gait != g.gait {
+                    info!("guard {} at point {node}: gait {gait}", g.route);
+                }
+                g.gait = gait;
                 // A route of one point is a post: he stands there.
                 let posts = game.data.collision.as_ref().and_then(|c| c.routes.get(g.route)).is_some_and(|r| r.points.len() <= 1);
                 g.state = match wait {
@@ -3712,7 +3764,9 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
             g.state = State::Discovery { timer };
         }
         State::Return => {
-            let (walk, walk_speed) = route_gait(g, phase);
+            // Back to the route with his gait (the side steps as the walk;
+            // assumed).
+            let (walk, walk_speed, _) = gait_motion(g, if matches!(g.gait, 2 | 3) { 0 } else { g.gait });
             body.play(walk);
             if follow(g, body, walk_speed, 300.0, dt, game) {
                 g.path.clear();

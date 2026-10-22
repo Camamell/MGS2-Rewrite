@@ -339,6 +339,8 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      radios in his line, and with his radio jammed or shot he shakes it,
      runs to the report point and reports in person; in Caution the
      soldiers walk their routes at the Caution walk and their route points
-     turn to looking about (the game's Caution changes)
+     turn to looking about (the game's Caution changes); soldiers walk each
+     leg of their route in the gait its point gives (the careful walk
+     toward a look point, side steps on Deck 2)
    - next: the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects)

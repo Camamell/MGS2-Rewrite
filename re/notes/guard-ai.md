@@ -1158,13 +1158,16 @@ swing of 0xd, the head turned to the look point (yaw only; the +0x354
 modes 0x100 / 0x200 / 0x400 are not told apart), the body to the
 direction, waits -1 / -2 / -3 / -4, `-e` events (the soldier's name as
 $1) and `-f` lines; action 2 (the "!" motion 0x5c, route action 18);
-the Caution changes (`point_plan`) and the Caution gait 5 (`FUN_0025dfd8`:
-motion 99, whose root track gives 960 mm per 54 frames, ~1067 mm/s; the
-walk's and run's tracks match the port's 1330 / 4050); action 0x19 (the
-check-in, below). Not ported: the turn sub-state 6 (the body turns as he
-waits), 10 / action 0xf, the other gaits (1 for flags 0xa, 2 / 3 / 7 / 9
-for actions 0x1d / 0x1e / 0x25 / 0x26, 10 under `-s` 0x40), the walking
-head look, actions 3 / 7 / 8 / 0xe / 0x10-0x14 / 0x16 / 0x17 and the
+the Caution changes (`point_plan`); the gaits (`pick_gait`, on arrival
+at a point for the leg to the next, `FUN_00224d20` -> `FUN_00224c28`;
+`gait_motion` from `FUN_0025dfd8`, speeds by the motions' root tracks:
+the walk's 2110 mm / 95 frames and the run's 2160 / 32 match the port's
+1330 / 4050 mm/s): 1 motion 0x12 (1150 / 53), 5 motion 99 (960 / 54), 2 /
+3 the side steps 0x65 / 0x66 (740 / 90) with the body at the heading less
+/ plus 0x400 (w03a route 5's points 1-4, route action 21), 7 the run;
+action 0x19 (the check-in, below). Not ported: the turn sub-state 6 (the
+body turns as he waits), 10 / action 0xf, gait 9 (motion 0x3c; no Tanker
+point) and 10 (`-s` 0x40), the walking head look, actions 3 / 7 / 8 / 0xe / 0x10-0x14 / 0x16 / 0x17 and the
 0x40 / 0x80 motion forms, 0xa's effect and second motion, 6's voices.
 Test hook: `MGS2_CAUTION_AT=secs` sets the caution timer.
 

@@ -109,6 +109,9 @@ MGS2_JAM=1 MGS2_ROUTE=22:43 check check_in_jammed "reports in person \(check-in\
 # In Caution (MGS2_CAUTION_AT) a point's flags 0x1000 make its action the
 # head swing 0xd: w02a guard 17's point 2 (else action 0xa).
 MGS2_CAUTION_AT=0.5 check caution_point "guard 17 at point 2: action 0xd" ge 1 w02a --skip-cutscenes --shot-at 25
+# The gaits by route point: w03a route 5 side-steps along points 1-4
+# (action 0x1e -> gait 3).
+MGS2_ROUTE=1:5 check gait_side "guard 5 at point 1: gait 3" ge 1 w03a --skip-cutscenes --shot-at 15
 # Darted from beyond earshot and still awake: he turns to look (state 7).
 # (A body hit: aimed from first person at the right of his chest.)
 MGS2_FPV_TEST=1 MGS2_FPV_AT=5900,880,4020 check dart_stung "feels a dart" ge 1 w01a --skip-cutscenes --snake-at=6000,0,-3000 --snake-dir=0 --fire-at 1 --aim-for 0.2 --shot-at 4
