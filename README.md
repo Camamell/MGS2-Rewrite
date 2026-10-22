@@ -345,5 +345,7 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      some of his posts' actions (the game's flag 0x1000; one shuts his
      eyes for a while, with a voice) he sees nothing; at some posts they
      look through binoculars
-   - next: the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
-     (needs her cover objects)
+   - next: the troopers' own brain, Olga's sequence selector (needs her
+     cover objects), the one-point posts' arrive / wait cycle (and action
+     0x16's blindness with it), bodies seen (`corps.c`, stimulus 0x80);
+     leads in `re/notes/guard-ai.md`
