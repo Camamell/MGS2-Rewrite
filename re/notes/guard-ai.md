@@ -482,9 +482,12 @@ under body +0xf2c bit 0x200):
   traced) also within 3000 mm up or down;
 - 4, 7, 11: heard as is.
 `FUN_00230830` turns 5 / 6 / 8 / 9 into stimulus 1, 10 into 0x800, 11 into
-0x1000. Ported: level 10 (the USP; the port's 10 m was an assumption).
-Not ported: level 8 (a soldier's "!" heard by the others: stimulus 1, normal
-state 3; sub 2 says 0xc040020 "What's going on!?" for it).
+0x1000. Ported: level 10 (the USP; the port's 10 m was an assumption) and
+level 8 (a soldier's "!", emitted at his place as the "!" begins: the
+others within their range look into it as normal state 3, and say
+0xc040020 "What's going on!?" when they hear one again while at it, the
+port's rule for the second noise). Not ported: 5 / 6 / 9 by this check
+(the port keeps the manager's nearest-soldier pick, `FUN_0021f958`).
 
 Crowd event 3 ("a Marine heard something", `FUN_00224a58`, the member's
 position as `$1..$3`) runs from the member update (w04c 0x225xxx) while its
@@ -518,7 +521,21 @@ normal-phase transition picks a state per bit (C+0x32c):
 | 0x10000 | a footprint (`foot_print.c`, type 0x12) or blood (`blood_sp.c`, type 10) marker group in view (`FUN_00230948`) | 10 |
 | 0x4000000 | Snake within the 250 x 1500 x 250 bump box (`FUN_00230c20`) | |
 | 0x40 | a comrade down in sight (`FUN_00230a48`; 0x2000000 instead under +0x350 bit 0x8000000) | 2, `FUN_00233120` (below) |
-| 0x2000, 0x4000, 0x20000, 0x40000, 0x200000, 0x400000 | 0x230b40, 0x230dd8, 0x2311f0, 0x2316b0, 0x230c20, 0x231418 | various |
+| 0x2000 | the USP's light (`FUN_00230b40`, below) | 6 |
+| 0x80 | `FUN_00230ad0`: `FUN_0021eaa8` -> `FUN_002224f0` finds something (+0x290; with +0x350 bit 0x8000000 also 0x2000000) | 4 |
+| 0x2000000 | a comrade down or 0x80, under +0x350 bit 0x8000000 (never in the Tanker: `-s` is 34 / 10 / 2) | 0xe |
+| 0x4000, 0x20000, 0x40000, 0x200000, 0x400000 | 0x230dd8, 0x2311f0, 0x2316b0, 0x230c20, 0x231418 | 6, 0xb, -, 7, 0xc |
+
+The USP's light (0x2000, `FUN_00230b40`): `FUN_0033e890` returns
+DAT_001f857c, which the weapon manager (`wp_mng.c`, `FUN_0033ca68`) sets
+while Snake aims (DAT_001ecd40 & 0x800) a weapon whose light it makes
+(`FUN_00399d20`). Within 3 x his near range (+0x188 < 3 x +0x248), a
+soldier notices it when, within 2 x, Snake faces him within 0x200
+(`FUN_0022df10(bearing + 0x800, Snake +0x22)`), or else when Snake is
+within his view (`FUN_0022df10(+0x240, +0x18c) < +0x244`), with a clear
+line (`FUN_00252e28` -> `FUN_0014f230`). State 6's init (`FUN_0023c568`)
+then targets Snake's place (`FUN_002571d8`) rather than the sight record.
+Ported (the port's light is the USP's while aimed).
 
 Level 8 is the soldier's own "!" call (`FUN_00237128`), so nearby soldiers
 hear a discovery. Marker groups register through `FUN_00117798`.
@@ -762,7 +779,10 @@ Leads for the other radio lines (not ported):
   (else 0x16, else 0xd). Sub 0x15 (`FUN_0023b300`, action 0xf) says
   0xc040034 "Are you going to shoot me?" on its first entry and
   0xc040035 "If you're gonna do it, then do it..." on its third
-  (+0x340 counts entries). What sets +0x350 bit 0x20000000 is not traced.
+  (+0x340 counts entries). +0x350 bit 0x20000000 is only ever read: +0x350
+  is the soldier's `-s` option (34 / 10 / 2 in w00a / w00c / w02a) and
+  script messages set only bits 0x80000000, 0x100 and 1 (`FUN_00257df8`),
+  so in the Tanker sub 3 always goes to 0xd and these lines are not said.
 - A radio line cut short (`FUN_0021d0a8(soldier)`: called when the
   speaker is interrupted, e.g. from the hold-up's init `FUN_0023b8a8`):
   unless the line had bit 0x8000 or 0x40000 (no click), the manager opens
@@ -785,9 +805,11 @@ Leads for the other radio lines (not ported):
   `FUN_00252688`, which switch him to brain 4), so a soldier darted or
   knocked down mid-call opens a slot. Ported (kind 1, the port's two
   radio calls): the clip stops, HQ says 0x1ca at 600 and the lost-contact
-  clip at 300 (w01d "We've lost contact with Deck-D."); not ported: the
-  follow-up 0x1081400e (its condition `FUN_00221098` reads body +0xf28
-  bit 0x200000000, not traced), the end click (bit 0x800000), the slot's
+  clip at 300 (w01d "We've lost contact with Deck-D."); the follow-up
+  0x1081400e never comes in the Tanker: `FUN_00221098` looks for a soldier
+  with `FUN_002527d0` (body +0xf28 & 0x2002200000000 == 0x200000000),
+  never true here (see "Discovery call"), so HQ always takes 0x914100;
+  not ported: the end click (bit 0x800000), the slot's
   end (stimulus 0x40000), kinds 2 / 4 / 8 / 0x20.
 - State 10 (footprints and blood, `FUN_00240670`, init `FUN_00240858`)
   reports only from sub 0x12 (`FUN_0023fff8`, reached from sub 5

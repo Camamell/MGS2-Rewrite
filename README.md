@@ -332,6 +332,8 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      strike the soldiers' own hit zones (boxes on the joints: head, heart
      and groin kill, arms and legs wound, the body), taken in the game's
      order, and Olga's (her zone table, each with its dart damage); a USP
-     shot is heard within twice each soldier's hearing range
+     shot is heard within twice each soldier's hearing range, and a
+     soldier's "!" within it, sending the others to look; the USP's
+     light, aimed at a soldier or in his view, draws him to look
    - next: the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects)

@@ -66,7 +66,7 @@ MGS2_DOWN=7:s@1 check radio_line "radio line 0x20" ge 2 w01d --skip-cutscenes --
 MGS2_DOWN=7:s@1,18:s@air check radio_cut "HQ waits for an answer" ge 1 w01d --skip-cutscenes --shot-at 18
 # Snake glimpsed (state 6): the guard turns, pauses and asks who is there;
 # a dart's noise behind him (state 3) brings him over without a word.
-check investigate_line "radio line 0x20" ge 1 w01a --skip-cutscenes --snake-at=6000,0,-2000 --fire-at 3 --shot-at 8
+MGS2_FPV_TEST=1 MGS2_FPV_AT=6000,0,3000 check investigate_line "radio line 0x20" ge 1 w01a --skip-cutscenes --snake-at=6000,0,-2000 --fire-at 3 --aim-for 0.4 --shot-at 8
 check noise_quiet "radio line 0x20" eq 0 w01a --skip-cutscenes --snake-at=9000,0,4100 --snake-dir=0 --fire-at 2 --shot-at 8
 # A hold-up let go (empty M9): Snake walks off, the guard radios it in.
 MGS2_WALK_DIR=2048 MGS2_GIVE=1/1:0 check holdup_call "radios in the hold-up" ge 1 w01a --skip-cutscenes --snake-at=6000,0,2500 --snake-dir=0 --fire-at 1 --aim-for 6 --walk-from 7.6 --auto-walk 3 --shot-at 16
@@ -91,6 +91,13 @@ MGS2_GOD=1 check radio_look "looks about on the radio" ge 1 w01a --skip-cutscene
 # so 12 m): guard 3 turns to it from 11 m (sub 3 of the discovery), not 13 m.
 MGS2_USP=1 MGS2_GOD=1 check usp_heard "Call0x3/" ge 1 w01a --skip-cutscenes --trace --snake-at=6000,0,-7000 --snake-dir=2048 --fire-at 1 --shot-at 4
 MGS2_USP=1 MGS2_GOD=1 check usp_unheard "Call0x3/" eq 0 w01a --skip-cutscenes --trace --snake-at=6000,0,-9000 --snake-dir=2048 --fire-at 1 --shot-at 4
+# A soldier's "!" is noise 8: the w01d lookout (route 28, 3 m below)
+# hears the deck soldiers spot Snake and goes to look.
+MGS2_GOD=1 check comrade_call "heard a comrade's call" ge 1 w01d --skip-cutscenes --snake-at=1200,9000,-14000 --shot-at 14
+# Snake aims the USP (empty) at guard 3 from 7 m: its light draws him to
+# look (stimulus 0x2000); the M9 has no light.
+MGS2_USP=1 MGS2_GIVE=1/2:0 check usp_light "sees the USP's light" ge 1 w01a --skip-cutscenes --snake-at=6000,0,-3000 --snake-dir=0 --fire-at 1 --aim-for 3 --shot-at 6
+check m9_no_light "sees the USP's light" eq 0 w01a --skip-cutscenes --snake-at=6000,0,-3000 --snake-dir=0 --fire-at 1 --aim-for 3 --shot-at 6
 # Darted from beyond earshot and still awake: he turns to look (state 7).
 # (A body hit: aimed from first person at the right of his chest.)
 MGS2_FPV_TEST=1 MGS2_FPV_AT=5900,880,4020 check dart_stung "feels a dart" ge 1 w01a --skip-cutscenes --snake-at=6000,0,-3000 --snake-dir=0 --fire-at 1 --aim-for 0.2 --shot-at 4

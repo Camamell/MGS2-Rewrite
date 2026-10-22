@@ -502,6 +502,9 @@ pub const LINE_SIGHTED: u32 = 0x2C00_0000;
 /// Evasion form.
 const LINE_SOUND: u32 = 0x0C04_0013;
 const LINE_SOUND_EVASION: u32 = 0x0C04_0014;
+/// "What's going on!?": normal state 3's line when the noise was a
+/// comrade's "!" (level 8).
+const LINE_WHATS_GOING: u32 = 0x0C04_0020;
 /// Lines per voice in the `-v` table.
 const LINES_PER_VOICE: u32 = 0x38;
 /// The radio click (`FUN_00114b30(0x20, 0x3f, 99)`).
@@ -1806,6 +1809,8 @@ pub fn think(
     let snake_pos = snake_body.pos;
     let snake_dead = player.dead();
     let snake_height = player.height();
+    // The USP's light is on (as `usp_light`).
+    let light_on = player.aiming && inv.usp && inv.weapon == 1;
     // Snake open to the rifle butt (the discovery's and the alert's):
     // `DAT_001ecd40 & 0x620`
     // clear (0x20 prone, `FUN_00269290`; 0x400 thrown down or lying,
@@ -2100,6 +2105,34 @@ pub fn think(
         {
             g.state = State::Investigate { target: snake_pos, sub: 0, timer: 0, asks: true };
         }
+        // The USP's light (stimulus 0x2000, `FUN_00230b40`): while Snake
+        // aims it (`DAT_001f857c`, which the weapon manager `FUN_0033ca68`
+        // sets while he aims a weapon with its light on), a soldier within
+        // three times his near range notices it if, within twice that,
+        // Snake points it his way (within 0x200) or else it is within his
+        // own field of view, with a clear line (`FUN_00252e28` ->
+        // `FUN_0014f230`); he goes to look where Snake is (normal state 6,
+        // `FUN_0023c568` -> `FUN_002571d8` on the target).
+        if light_on
+            && !snake_dead
+            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return)
+            && g.level < 2
+        {
+            let to = snake_pos - body.pos;
+            let dist = to.length();
+            let near = g.vision.distance;
+            let bearing = to_units(to.x.atan2(to.z));
+            let pointed = dist < 2.0 * near && angle_diff(to_units(snake_body.yaw), (bearing + 0x800) & 0xFFF).abs() < 0x200;
+            let in_view = angle_diff(to_units(body.yaw + g.head * ANGLE), bearing).abs() < g.vision.half_angle;
+            let eye = body.pos + Vec3::Y * EYE;
+            if dist < 3.0 * near
+                && (pointed || in_view)
+                && !game.collision.as_ref().is_some_and(|c| c.line_blocked(eye, snake_pos + Vec3::Y * (snake_height * 0.6)))
+            {
+                info!("guard {} sees the USP's light", g.route);
+                g.state = State::Investigate { target: snake_pos, sub: 0, timer: 0, asks: true };
+            }
+        }
         // In the box: unseen while still, only suspicious while moving.
         if player.boxed {
             g.level = if player.speed < 1.0 { 0 } else { g.level.min(1) };
@@ -2234,6 +2267,21 @@ pub fn think(
             if matches!(g.state, State::Investigate { .. } | State::Search { .. }) && able >= 2 {
                 let line = if phase.kind == PhaseKind::Evasion { LINE_SOUND_EVASION } else { LINE_SOUND };
                 phase.speak(line, &g);
+            }
+            stimulus(&mut g, &body, at, &game);
+        }
+        // A comrade's "!" (noise 8, `FUN_00237128`): every soldier within
+        // his hearing range (`FUN_0021e7a8`, straight distance to +0x24c)
+        // hears it as stimulus 1 and looks into it (normal state 3); heard
+        // again while at it, the line is "What's going on!?" (0xc040020).
+        if let Some((8, at)) = noise_now
+            && g.level < 2
+            && body.pos.distance(at) <= g.hearing
+            && matches!(g.state, State::Patrol | State::Wait(_) | State::Return | State::Investigate { .. } | State::Search { .. } | State::Stung { .. })
+        {
+            info!("guard {} heard a comrade's call at {at:?}", g.route);
+            if matches!(g.state, State::Investigate { .. } | State::Search { .. }) && able >= 2 {
+                phase.speak(LINE_WHATS_GOING, &g);
             }
             stimulus(&mut g, &body, at, &game);
         }
@@ -3437,6 +3485,11 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
                 .and_then(|(_, mar)| mar.motions.get(g.anim.exclaim))
                 .map_or(EXCLAIM_FRAMES, |m| m.length.max(1));
             let before = timer;
+            if before == 0 {
+                // His "!" is heard by the others: noise 8 at his place
+                // (`FUN_00237128`: `FUN_0011b630(8, ..)`).
+                noise(8, body.pos);
+            }
             let mut timer = timer.saturating_add(ticks);
             // Snake within a metre cuts it short after 7 frames
             // (`FUN_00237128`).
