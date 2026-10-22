@@ -106,6 +106,9 @@ MGS2_USP=1 MGS2_GIVE=1/2:0 check usp_no_light "sees the USP's light" eq 0 w01a -
 # (normal state 0xf). MGS2_ROUTE puts guard 22 on route 43.
 MGS2_ROUTE=22:43 check check_in "checks in: line 0x2000d82b" ge 1 w02a --skip-cutscenes --shot-at 25
 MGS2_JAM=1 MGS2_ROUTE=22:43 check check_in_jammed "reports in person \(check-in\)" ge 1 w02a --skip-cutscenes --shot-at 62
+# In Caution (MGS2_CAUTION_AT) a point's flags 0x1000 make its action the
+# head swing 0xd: w02a guard 17's point 2 (else action 0xa).
+MGS2_CAUTION_AT=0.5 check caution_point "guard 17 at point 2: action 0xd" ge 1 w02a --skip-cutscenes --shot-at 25
 # Darted from beyond earshot and still awake: he turns to look (state 7).
 # (A body hit: aimed from first person at the right of his chest.)
 MGS2_FPV_TEST=1 MGS2_FPV_AT=5900,880,4020 check dart_stung "feels a dart" ge 1 w01a --skip-cutscenes --snake-at=6000,0,-3000 --snake-dir=0 --fire-at 1 --aim-for 0.2 --shot-at 4

@@ -350,6 +350,45 @@ mod motion {
 
 const WALK_SPEED: f32 = 1330.0;
 const RUN_SPEED: f32 = 4050.0;
+/// The Caution walk (gait 5, `FUN_0025dfd8`): motion 99 (0x63; 0x158 /
+/// 300 / 0xf9 under body flags 0x4000 / 0x40 / 8, not used here), whose
+/// root track goes 960 mm in its 54 frames (as the walk's 2110 mm in 95
+/// and the run's 2160 mm in 32 give the speeds above).
+const CAUTION_WALK: usize = 99;
+const CAUTION_WALK_SPEED: f32 = 960.0 / 54.0 * 60.0;
+
+/// The walk to his next route point (`FUN_00224c28`, the gait +0xf5a by
+/// the point's action): in Caution gait 5, [`CAUTION_WALK`]. Not ported:
+/// gait 1 for point flags 0xa, 2 / 3 / 7 / 9 for actions 0x1d / 0x1e /
+/// 0x25 / 0x26 (no Tanker point uses them), 10 under `-s` bit 0x40.
+fn route_gait(g: &Guard, phase: &Phase) -> (usize, f32) {
+    if phase.kind == PhaseKind::Caution && g.anim.check.is_some() {
+        (CAUTION_WALK, CAUTION_WALK_SPEED)
+    } else {
+        (g.anim.walk, g.anim.walk_speed)
+    }
+}
+
+/// A route point's action and wait (`FUN_00224870`): in Caution (Bs16:0x112
+/// == 3) flags 0x800 make the action 2, flags 0x1000 and actions 4-6 make
+/// it 0xd (the head swing), and then a wait of -1 is 180 frames.
+fn point_plan(wp: &mgs2_formats::hzx::Waypoint, phase: &Phase) -> (u16, i16) {
+    let action = point_action(wp);
+    if phase.kind != PhaseKind::Caution {
+        return (action, wp.wait);
+    }
+    let caution = if wp.flags & 0x1000 != 0 || (4..=6).contains(&action) {
+        Some(0xD)
+    } else if wp.flags & 0x800 != 0 {
+        Some(2)
+    } else {
+        None
+    };
+    match caution {
+        Some(a) => (a, if wp.wait == -1 { 180 } else { wp.wait }),
+        None => (action, wp.wait),
+    }
+}
 const TURN_RATE: f32 = TAU;
 /// Eye height above the feet (head joint position, approximate).
 const EYE: f32 = 1600.0;
@@ -1617,13 +1656,16 @@ fn point_action(wp: &mgs2_formats::hzx::Waypoint) -> u16 {
 }
 
 /// The motion an action plays once while he waits (`FUN_002240f8`; the
-/// step functions end it with +0xf58 = 1). Not ported: 2 (the "!"), 3 / 0xf
+/// step functions end it with +0xf58 = 1). Not ported: 3 / 0xf
 /// (turns), 7 / 8 / 0xe / 0x10..0x14 / 0x17 (motions 274-282, one-frame
 /// placeholders in gbs.mar), 0xa's effect at frame 18 and its motion 7,
 /// 6's voice at frames 70, 226 and 393, 0x16 (idle, body flag
 /// 0x100000000000) and 0x19 / 0x1a (the radio).
 fn action_motion(action: u16) -> Option<usize> {
     Some(match action {
+        // The "!" motion (`FUN_0025da40`, 0x5c): route action 18, and
+        // flags 0x800 in Caution.
+        2 => motion::EXCLAIM,
         4 => 15,
         5 => 16,
         6 => 17,
@@ -1931,6 +1973,16 @@ pub fn think(
             *forced = true;
             highest = i32::from(METER_MAX);
         }
+    }
+
+    // MGS2_CAUTION_AT=seconds: the caution timer set once then, as a
+    // report does (testing).
+    if let Some(at) = std::env::var("MGS2_CAUTION_AT").ok().and_then(|s| s.parse::<f32>().ok())
+        && time.elapsed_secs() >= at
+        && tested.insert(usize::MAX - 1)
+    {
+        info!("test: caution");
+        phase.caution = phase.caution_time;
     }
 
     // atcomm under `-t` 1 (w03b, `FUN_00272820`): the phase held at Alert
@@ -3394,7 +3446,8 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
                 body.play(g.anim.idle);
                 return;
             };
-            body.play(g.anim.walk);
+            let (walk, walk_speed) = route_gait(g, phase);
+            body.play(walk);
             if g.path.is_empty() {
                 g.path = vec![Vec3::from(wp.position)];
             }
@@ -3410,7 +3463,7 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
                 g.stuck = 0.0;
                 return;
             }
-            if follow(g, body, g.anim.walk_speed, 150.0, dt, game) {
+            if follow(g, body, walk_speed, 150.0, dt, game) {
                 // At the point (`FUN_002244f0`): the manager's `-e` event
                 // for it runs (`FUN_0021dc60`, the soldier's name as $1).
                 let node = g.node % game.data.collision.as_ref().and_then(|c| c.routes.get(g.route)).map_or(1, |r| r.points.len().max(1));
@@ -3421,12 +3474,13 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
                     }
                 }
                 g.point_frames = 0;
-                if point_action(&wp) != 0 || wp.wait < 0 {
-                    info!("guard {} at point {node}: action {:#x}, wait {}", g.route, point_action(&wp), wp.wait);
+                let (action, wait) = point_plan(&wp, phase);
+                if action != 0 || wait < 0 {
+                    info!("guard {} at point {node}: action {action:#x}, wait {wait}", g.route);
                 }
                 // A route of one point is a post: he stands there.
                 let posts = game.data.collision.as_ref().and_then(|c| c.routes.get(g.route)).is_some_and(|r| r.points.len() <= 1);
-                g.state = match wp.wait {
+                g.state = match wait {
                     _ if posts => State::Wait(f32::INFINITY),
                     0 => {
                         g.node += 1;
@@ -3458,7 +3512,7 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
             };
             let t = g.point_frames.saturating_add(ticks);
             g.point_frames = t;
-            let action = point_action(&wp);
+            let (action, wait) = point_plan(&wp, phase);
             // Action 0x19 (route action 23: w02a's door soldier, route 43
             // point 1): his check-in, `FUN_00224530` on each frame of the
             // wait. With his radio shot or jammed on the first frame,
@@ -3514,7 +3568,7 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
                 g.head_to = head_swing(t);
             }
             let left = left - dt;
-            let done = match wp.wait {
+            let done = match wait {
                 // `FUN_00225dc8`: until the action's motion ends (+0xf58 == 1).
                 -1 => action_done(action, t, game, body),
                 -2 => false,
@@ -3658,8 +3712,9 @@ fn normal_brain(g: &mut Guard, body: &mut Body, phase: &mut Phase, snake: Vec3, 
             g.state = State::Discovery { timer };
         }
         State::Return => {
-            body.play(g.anim.walk);
-            if follow(g, body, g.anim.walk_speed, 300.0, dt, game) {
+            let (walk, walk_speed) = route_gait(g, phase);
+            body.play(walk);
+            if follow(g, body, walk_speed, 300.0, dt, game) {
                 g.path.clear();
                 g.state = State::Patrol;
             }

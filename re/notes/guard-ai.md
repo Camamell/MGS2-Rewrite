@@ -1157,11 +1157,16 @@ Ported (`Wait` in `normal_brain`): the action's motion once, the head
 swing of 0xd, the head turned to the look point (yaw only; the +0x354
 modes 0x100 / 0x200 / 0x400 are not told apart), the body to the
 direction, waits -1 / -2 / -3 / -4, `-e` events (the soldier's name as
-$1) and `-f` lines. Not ported: the turn sub-state 6 (the body turns as
-he waits), 10 / action 0xf, the gaits, the Caution changes, the walking
-head look, actions 2 / 3 / 7 / 8 / 0xe / 0x10-0x14 / 0x16 / 0x17 / 0x19 /
-0x1a and the 0x40 / 0x80 motion forms, 0xa's effect and second motion,
-6's voices.
+$1) and `-f` lines; action 2 (the "!" motion 0x5c, route action 18);
+the Caution changes (`point_plan`) and the Caution gait 5 (`FUN_0025dfd8`:
+motion 99, whose root track gives 960 mm per 54 frames, ~1067 mm/s; the
+walk's and run's tracks match the port's 1330 / 4050); action 0x19 (the
+check-in, below). Not ported: the turn sub-state 6 (the body turns as he
+waits), 10 / action 0xf, the other gaits (1 for flags 0xa, 2 / 3 / 7 / 9
+for actions 0x1d / 0x1e / 0x25 / 0x26, 10 under `-s` 0x40), the walking
+head look, actions 3 / 7 / 8 / 0xe / 0x10-0x14 / 0x16 / 0x17 and the
+0x40 / 0x80 motion forms, 0xa's effect and second motion, 6's voices.
+Test hook: `MGS2_CAUTION_AT=secs` sets the caution timer.
 
 ### The check-in (action 0x19, `FUN_00224530`) and normal state 0xf
 

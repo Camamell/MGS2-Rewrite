@@ -337,6 +337,8 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      the USP's light, aimed at a soldier or in his view, draws him to look
      (the light is the game's only there); at a check-in point a soldier
      radios in his line, and with his radio jammed or shot he shakes it,
-     runs to the report point and reports in person
+     runs to the report point and reports in person; in Caution the
+     soldiers walk their routes at the Caution walk and their route points
+     turn to looking about (the game's Caution changes)
    - next: the soldiers' other radio lines (the manager's `-v` table), the troopers' own brain, Olga's sequence selector
      (needs her cover objects)
