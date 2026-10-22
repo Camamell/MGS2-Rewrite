@@ -1192,7 +1192,14 @@ frame until the motion ends: motions 15 (559 frames), 16 (440), 0x68) and
 0x200000000000000; it also sets the eyes, +0xf4c +0x10: 5 shut at frames
 30, 38, 60, 0 open at 34, 42, 1 at 0x1e7, not ported, and says 0x11c +
 voice at frames 70, 226, 393, ported). In the Tanker: route actions 1 / 2
-/ 3 (21 / 9 / 27 points) and 17. Other steps set it too (the hurt and
+/ 3 (21 / 9 / 27 points) and 17. Lead (not ported): action 0x16 (route
+action 15; `FUN_00260240`, an idle) sets 0x100000000000, which the sight
+checks first with the same result, but only while the action is unchanged
+from the previous frame (+0xfdc == +0xfe8). All 21 Tanker points with it
+are one-point posts with wait 0 / 1 / 30 (w00c, w01d routes 2 / 14 / 28,
+w02a's waiting soldiers), which the game cycles (arrive, wait, arrive)
+and the port holds in one endless wait; how long they are blind depends
+on that cycle. Other steps set it too (the hurt and
 blow steps 0x24a938.., normal state 7 / 10 steps 0x23ce48 / 0x240a00,
 0x243b00): not ported. Ported (`point_blind`, `Guard::blind`). Test:
 `MGS2_ROUTE=from:to:point` places a guard at a point.
