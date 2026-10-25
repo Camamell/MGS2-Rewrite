@@ -147,7 +147,7 @@ model is located (it is not in the w00a files).
 | `0x55b942` | sliding door | `-m model -d rx ry rz -p -s width -t -b` |
 | `0x128946` | player | `-m sna_def -a snake -p x y z -d 0 dir`, name `0x28dce6` |
 | `0xf7f777` | soldier | see Guards |
-| `0x43f718` | camera (set from traps) | `-c type -p pos -t target ...` (not used yet) |
+| `0x43f718` | camera (set from traps) | `-c type -p pos -t target -a zoom*100 -z flags -N frames -s on` (`script_cam`) |
 | `delay` | timer | `-t frames -e {block}` |
 | `0xe22388` | fade | `-t frames -p proc` (proc runs when done) |
 

@@ -159,6 +159,9 @@ check olga_down "Olga is down" ge 1 w00b --skip-cutscenes --boss-down-at 5 --sho
 # Her taunts (+0x1066): line 0 with its event at her point after ~8.5 s,
 # lines 1-4 one after another, line 5 with its event.
 MGS2_GOD=1 check olga_taunt "olga: line 5" ge 1 w00b --skip-cutscenes --shot-at 60
+# Her first line's event pans the camera to her (#de7ce7: -z 0x2000000
+# -N 360), the event camera (-l 0) above the area traps' (-l 2).
+MGS2_GOD=1 check olga_pan "stage camera 7c7fb3 pans over 360" ge 1 w00b --skip-cutscenes --shot-at 13
 # Items: a bandage stops the bleeding; cold medicine ends the sneezing.
 MGS2_LIFE=25 MGS2_GIVE=0/5:1 MGS2_KEYS=N@2 check bandage "bandage used" ge 1 w01a --skip-cutscenes --shot-at 3
 MGS2_COLD=120 MGS2_GIVE=0/4:1 MGS2_KEYS=N@4 check cold "cold medicine used" ge 1 w01a --skip-cutscenes --shot-at 6

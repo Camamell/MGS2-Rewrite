@@ -356,13 +356,8 @@ pub fn view(
     let Ok((mut tf, mut proj)) = cam.single_mut() else { return };
     let Projection::Perspective(persp) = proj.as_mut() else { return };
     let mode = mode.into_inner();
-    // The default field of view, restored on leaving.
-    static NORMAL: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
-    let normal = *NORMAL.get_or_init(|| persp.fov);
+    // Out of the camera view the follow camera sets the field of view.
     if !mode.active {
-        if persp.fov != normal {
-            persp.fov = normal;
-        }
         return;
     }
     let Ok((b, _)) = player.single() else { return };

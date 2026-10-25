@@ -711,13 +711,12 @@ selectors and the steps of every table they reach in the port.
   `265C20`, `265728` / `2657B0`. The lines play as spoken lines with
   their subtitles; "over" = the stage no longer plays it. Run (w00b,
   Normal): line 0 at ~9 s, lines 1-4 by ~32 s, line 5's event at ~43 s.
-  The procs run, but their camera event (`#de7ce7`, the `#43f718`
-  cameras) does not move the port's camera yet (lead: `#de7ce7 sx sy sz
-  tx ty tz` + the destination pair stored in Au32:0x8dc..0x8f0, `-a`
-  frames: a camera pan over `-a` frames, aimed at `-t`; `script_cam`
-  aims fixed cameras at Snake and ignores `-a`, and the proc's
-  `chara "delay" -t 360` blocks run at once under `vm.eager`, so the
-  follow-up `#9c5a50` camera replaces the pan immediately); the skip by button
+  Their camera event `#de7ce7 src(p, t) dst(p, t) a n flag` sets
+  camera `#7c7fb3` (`-l 0`) at src, then again at dst with `-z 0x2000000
+  -N n`: a straight move over n frames, lens `-a` (zoom a / 100; 766 on
+  line 0's). Ported 2026-10-25 in `script_cam` (see its docs: the camera
+  groups, lens, moves, and `Spawn::after` for cameras inside `delay`s,
+  which otherwise run at once); the skip by button
   (`DAT_0019165e & 0x840` under +0xf70 0x4000000) is not ported.
 - `FUN_00104950` (the "busy" test at the top of the selector and the
   sense: she heads for point 0xb) is true while `DAT_0017f48c |

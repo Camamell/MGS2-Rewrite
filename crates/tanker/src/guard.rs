@@ -5194,6 +5194,7 @@ mod tests {
             kind: GUARD_ACTOR,
             args: vec![Val::Int(0x26539FC)],
             options: vec![(b'r', vec![Val::Int(3)]), (b'q', vec![Val::Proc(0x10), Val::Int(100), Val::Proc(0x11), Val::Int(0)])],
+            after: 0,
         };
         let (mut g, _) = from_spawn(&s, 6000.0).unwrap();
         assert_eq!(g.drops[0], vec![(0x10, 100), (0x11, 0)]);

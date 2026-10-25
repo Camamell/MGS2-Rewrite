@@ -282,6 +282,10 @@ pub struct FollowCam {
     pub guard: Option<usize>,
 }
 
+/// The follow camera's field of view (Bevy's default; a stage camera's
+/// `-a 200`, the scripts' usual lens, is 42.6 degrees).
+pub const NORMAL_FOV: f32 = std::f32::consts::FRAC_PI_4;
+
 /// Synthetic input for automated runs (`--auto-walk`).
 #[derive(Resource)]
 pub struct AutoWalk {
@@ -818,12 +822,12 @@ pub fn follow_camera(
     player: Query<&Body, With<Player>>,
     guards: Query<&Body, (With<crate::guard::Guard>, Without<Player>)>,
     game: Res<Game>,
-    mut cam: Query<(&mut Transform, &mut FollowCam)>,
+    mut cam: Query<(&mut Transform, &mut FollowCam, &mut Projection)>,
     mut rays: MeshRayCast,
     parents: Query<&ChildOf>,
     bodies: Query<(), With<Body>>,
 ) {
-    let Ok((mut tf, mut c)) = cam.single_mut() else { return };
+    let Ok((mut tf, mut c, mut proj)) = cam.single_mut() else { return };
     let b = match c.guard {
         Some(i) => guards.iter().nth(i),
         None => player.single().ok(),
@@ -846,10 +850,15 @@ pub fn follow_camera(
     if keys.just_pressed(KeyCode::F3) || (std::env::var_os("MGS2_FOLLOW_CAM").is_some() && c.scripted && time.elapsed_secs() < 0.5) {
         c.scripted = !c.scripted;
     }
-    // The stage's own camera for this area, eased into.
-    if let (true, None, Some((_, sc))) = (c.scripted, c.guard, &game.cameras.active) {
-        let (eye, look) = sc.place(b.pos + Vec3::Y * 900.0);
-        let k = 1.0 - (-6.0 * dt).exp();
+    // The stage's own camera for this area, eased into by a quarter a
+    // frame (`FUN_0010b1c8`), its lens too.
+    let k = 1.0 - 0.75f32.powf(dt * 60.0);
+    let scripted = if c.scripted && c.guard.is_none() { game.cameras.view(b.pos + Vec3::Y * 900.0) } else { None };
+    if let Projection::Perspective(pp) = proj.as_mut() {
+        let fov = scripted.and_then(|(_, _, z)| z).map_or(NORMAL_FOV, crate::script_cam::zoom_fov);
+        pp.fov += (fov - pp.fov) * k;
+    }
+    if let Some((eye, look, _)) = scripted {
         tf.translation = tf.translation.lerp(eye * SCALE, k);
         c.look = c.look.lerp(look * SCALE, k);
         let look = c.look;

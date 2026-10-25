@@ -33,6 +33,10 @@ pub struct Spawn {
     pub kind: u32,
     pub args: Vec<Val>,
     pub options: Vec<(u8, Vec<Val>)>,
+    /// Frames the game would wait before making it: the `-t` of the
+    /// `delay`s whose block or proc made it, added up (the port runs those
+    /// at once; the stage cameras wait).
+    pub after: u32,
 }
 
 impl Spawn {
@@ -205,6 +209,8 @@ pub struct Vm<'a> {
     pub load: Option<String>,
     /// Run timer/fade callbacks immediately and stop at `load`.
     pub eager: bool,
+    /// The `delay` frames around what runs now ([`Spawn::after`]).
+    after: u32,
     /// Frames left on the holds' timer (`command #450c64`).
     pub timer: i32,
     /// The song last requested of the sound driver (`FUN_00112b88`: a
@@ -376,6 +382,7 @@ impl<'a> Vm<'a> {
             traps: Vec::new(),
             load: None,
             eager: false,
+            after: 0,
             timer: 0,
             song: 0,
             codec: Vec::new(),
@@ -526,14 +533,31 @@ impl<'a> Vm<'a> {
                     .collect()
             });
             let block_args: Vec<i32> = own.unwrap_or_else(|| args.to_vec());
-            let spawn = Spawn {
-                kind,
-                args: spawn_args,
-                options: options
-                    .iter()
-                    .map(|(l, v)| (*l, v.iter().map(|x| if matches!(x, Value::Block(_)) { self.value(x, &block_args) } else { self.value(x, args) }).collect()))
-                    .collect(),
+            // What a `delay` makes waits its `-t` frames.
+            let wait = if kind == DELAY_ACTOR {
+                let t = options.iter().find(|(l, _)| *l == b't').and_then(|(_, v)| v.first());
+                t.map_or(0, |x| self.value(x, args).int().unwrap_or(0).max(0) as u32)
+            } else {
+                0
             };
+            let outer = self.after;
+            let spawn_after = outer;
+            let mut opts = Vec::with_capacity(options.len());
+            for (l, v) in options.iter() {
+                let mut vals = Vec::with_capacity(v.len());
+                for x in v {
+                    vals.push(if matches!(x, Value::Block(_)) {
+                        self.after = outer + wait;
+                        let r = self.value(x, &block_args);
+                        self.after = outer;
+                        r
+                    } else {
+                        self.value(x, args)
+                    });
+                }
+                opts.push((*l, vals));
+            }
+            let spawn = Spawn { kind, args: spawn_args, options: opts, after: spawn_after };
             let on_create: Vec<u32> = CALL_ON_CREATE
                 .iter()
                 .filter(|(k, _)| *k == spawn.kind)
@@ -567,7 +591,9 @@ impl<'a> Vm<'a> {
                 self.call(p, &[]);
             }
             if let Some(Val::Proc(p)) = eager {
+                self.after = outer + wait;
                 self.call(p, &[]);
+                self.after = outer;
             }
             None
         } else if is("trap") {

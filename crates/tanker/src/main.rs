@@ -1492,6 +1492,7 @@ fn main() -> Result<()> {
         app.insert_resource(c);
     }
     app.add_systems(Update, body::hold.after(body::skin).before(player::follow_camera));
+    app.add_systems(Update, script_cam::tick.before(player::follow_camera));
     app.add_systems(Update, body::skin_evm.after(body::skin));
     app.add_systems(Update, aim_cameras.after(guard::think));
     app.add_systems(Update, guard::radio::place.after(guard::think).before(body::hold));

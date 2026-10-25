@@ -363,6 +363,12 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      to shoot, looks out, side-steps along a cover, runs between covers
      aiming, holds fire with a wall in her face, and reloads when empty;
      she taunts Snake with her six lines as the game paces them, the
-     first and the last from her points with the script's events
+     first and the last from her points with the script's events, whose
+     camera pans to her over six seconds with a long lens;
+     the stage cameras as the game's: fixed cameras look at their target,
+     each camera's lens (`-a`) sets the view's angle, a camera can move to
+     a new place over a set time, cameras switched on inside a script
+     `delay` wait it out, and the camera shown is the first switched on in
+     the highest of the game's camera groups (event cameras over area ones)
    - next: the troopers' own brain, Olga's orders (her fixed points) and
      her memory of Snake; leads in `re/notes/guard-ai.md`
