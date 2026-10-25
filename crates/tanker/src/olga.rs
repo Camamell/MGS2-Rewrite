@@ -26,11 +26,12 @@
 //! | 0x267DE0 | choose the next sequence |
 //!
 //! Simplified: the selectors (`FUN_002679F0`, `FUN_00266448`,
-//! `FUN_00266348`) and the cover choice (`FUN_002673B0`) depend on cover
-//! objects and Snake's zone, which are not ported. Here the next sequence
-//! alternates between moving to another of her positions (the table at
-//! 0x1F5D80..) and one of her shoot-from-cover sequences, avoiding recent
-//! picks as `FUN_00267DE0` does; she reloads when out of rounds.
+//! `FUN_00266348`) are not ported (their structure is in
+//! `re/notes/guard-ai.md`). Here the next sequence alternates between a
+//! move and one of her shoot-from-cover sequences, avoiding recent picks
+//! as `FUN_00267DE0` does; she reloads when out of rounds. A move goes to
+//! the cover spot `FUN_002673B0` would choose ([`Cover`], Snake's zone,
+//! the hiding spots), else to one of her positions (0x1F5D80..).
 
 use bevy::prelude::*;
 
@@ -67,6 +68,152 @@ mod table {
 /// Her positions (16-byte vectors in the image): crates and corners on her
 /// side of the deck.
 const POSITIONS: [u32; 7] = [0x001F_5D80, 0x001F_5D90, 0x001F_5DE0, 0x001F_5DF0, 0x001F_5E10, 0x001F_5E20, 0x001F_5E30];
+
+/// One of her cover objects (`cmd_53209a`, w00b `FUN_00259f30`): the
+/// centre (+0x40) and half-extents (+0x50) of its model's box, placed and
+/// turned as the script says.
+#[derive(Clone, Copy, Debug)]
+pub struct Cover {
+    pub centre: Vec3,
+    pub half: Vec3,
+}
+
+impl Cover {
+    /// From a model's box (`[min, max]`) and offset, placed at `at` and
+    /// turned by `turn` (the game turns the box's two corners and halves
+    /// their difference).
+    pub fn from_box(b: [f32; 6], origin: [f32; 3], at: Vec3, turn: Quat) -> Self {
+        let lo = turn * Vec3::new(b[0], b[1], b[2]);
+        let hi = turn * Vec3::new(b[3], b[4], b[5]);
+        Self { centre: (lo + hi) * 0.5 + Vec3::from(origin) + at, half: (hi - lo).abs() * 0.5 }
+    }
+
+    /// Its corners (x, z): +0x0, +0x8, +0x10, +0x18.
+    fn corners(&self) -> [Vec2; 4] {
+        let (c, h) = (self.centre, self.half);
+        [Vec2::new(c.x + h.x, c.z - h.z), Vec2::new(c.x + h.x, c.z + h.z), Vec2::new(c.x - h.x, c.z - h.z), Vec2::new(c.x - h.x, c.z + h.z)]
+    }
+
+    /// `FUN_00268d80`: its two hiding spots (+0x20 / +0x30, on its -x side,
+    /// 850 mm out or 550 crouched) and which of them hide her from `snake`
+    /// (bit 1 / 2), the spots then kept on the deck.
+    fn spots(&self, snake: Vec2, crouch: bool) -> ([Vec2; 2], u32) {
+        let k = self.corners();
+        let x = k[2].x - if crouch { 550.0 } else { 850.0 };
+        let za = spot_z(300.0, x, k[0], k[2], snake);
+        let zb = spot_z(-300.0, x, k[1], k[3], snake);
+        let bits = u32::from(za != 0.0) | u32::from(zb != 0.0) << 1;
+        ([on_deck(Vec2::new(x, za)), on_deck(Vec2::new(x, zb))], bits)
+    }
+}
+
+/// The deck's bounds for her points (`FUN_00268a88`): z from -19150 up to
+/// the slanted rail, (x + 12000) / 4 - 12850.
+fn rail(x: f32) -> f32 {
+    (x + 12000.0) * 0.25 - 12850.0
+}
+
+fn on_deck(p: Vec2) -> Vec2 {
+    Vec2::new(p.x, p.y.max(-19150.0).min(rail(p.x)))
+}
+
+/// `FUN_00268af8`: on the line at `x`, where she is hidden behind the
+/// edge a-b from `snake` (x, z): each ray from Snake through a corner,
+/// moved `off` mm aside, crosses the line; the nearer crossing (min for
+/// `off` > 0, else max) is kept, or the corner a's own z when `x` is
+/// within 551 mm of b's and that is further out. 0 when off the deck.
+fn spot_z(off: f32, x: f32, a: Vec2, b: Vec2, snake: Vec2) -> f32 {
+    let cross = |c: Vec2| {
+        let n = (c - snake).normalize_or_zero();
+        (n.y * (x - snake.x) - off) / n.x + snake.y
+    };
+    let (za, zb) = (cross(a), cross(b));
+    let z = if off > 0.0 { za.min(zb) } else { za.max(zb) };
+    if !(-19150.0..=rail(x)).contains(&z) {
+        0.0
+    } else if ((x - b.x) / 551.0) as i32 == 0 {
+        if off > 0.0 { z.max(a.y) } else { z.min(a.y) }
+    } else {
+        z
+    }
+}
+
+/// Snake's zone (+0x109c, `FUN_00269028`): which side of nine lines he
+/// is on, each through a cover corner and a crate corner from the table
+/// at 0x3bb860 (bits 1..0x100 in this order).
+fn zone(img: &[u8], snake: Vec2) -> u16 {
+    const LINES: [(u32, u32); 9] = [
+        (0x3B_B860, 0x3B_B8C0),
+        (0x3B_B870, 0x3B_B8D0),
+        (0x3B_B880, 0x3B_B8C0),
+        (0x3B_B880, 0x3B_B8D0),
+        (0x3B_B880, 0x3B_B8F8),
+        (0x3B_B888, 0x3B_B8E8),
+        (0x3B_B868, 0x3B_B8F8),
+        (0x3B_B8A0, 0x3B_B868),
+        (0x3B_B8B8, 0x3B_B8F8),
+    ];
+    let pt = |a: u32| Some(Vec2::new(f32::from_bits(word(img, a)?), f32::from_bits(word(img, a + 4)?)));
+    LINES.iter().enumerate().fold(0, |z, (i, &(a, b))| match (pt(a), pt(b)) {
+        (Some(c), Some(d)) if (snake.y - c.y) * (c.x - d.x) < (snake.x - c.x) * (c.y - d.y) => z | 1 << i,
+        _ => z,
+    })
+}
+
+/// `FUN_002673b0` with no order pending (+0xf74 clear): the cover sides
+/// Snake's zone allows (narrowed while her stamina is under 0x26, +0xf70
+/// 0x200000), graded per cover (2 bits each, the first cover highest; the
+/// second, the low box, never crouched), one picked at random. Returns
+/// the cover and the spot she goes to; None when no side is allowed.
+fn cover_choice(covers: &[Cover], img: &[u8], snake: Vec3, crouch: bool, tired: bool, rng: &mut Rng) -> Option<(usize, Vec2)> {
+    if covers.len() < 3 {
+        return None;
+    }
+    let s = Vec2::new(snake.x, snake.z);
+    let mut allowed = match zone(img, s) {
+        0 => 5,
+        0x20 if snake.z > -17400.0 => 0x18,
+        0x20 => 5,
+        0x60 => 0x30,
+        0x160 => 0x32,
+        0x170 => 0x1E,
+        0x1F0 | 0x1F2 => 0x1C,
+        0x1FA => 0x20,
+        0x1FB => 0x22,
+        0x1FF => 0x2A,
+        _ => 0x3F,
+    };
+    if tired {
+        allowed &= 0x3C;
+    }
+    let graded: Vec<([Vec2; 2], u32)> = covers.iter().take(3).enumerate().map(|(i, c)| c.spots(s, crouch && i != 1)).collect();
+    let grades = graded[0].1 << 4 | graded[1].1 << 2 | graded[2].1;
+    let mut m = grades & allowed;
+    if m == 0 {
+        return None;
+    }
+    // A random subset of the candidates (AND with draws until empty), then
+    // the last cover in it.
+    loop {
+        let next = m & rng.next();
+        if next == 0 {
+            break;
+        }
+        m = next;
+    }
+    let mut i = 2;
+    while m & 3 == 0 {
+        m >>= 2;
+        i -= 1;
+    }
+    // Both sides of it (and nothing further back): a coin flip.
+    let side = if m == 3 {
+        usize::from(rng.next() & 0x100 == 0)
+    } else {
+        usize::from(m & 1 == 0)
+    };
+    Some((i, graded[i].0[side]))
+}
 
 const MAGAZINE: i32 = 15;
 const RUN_SPEED: f32 = 3000.0;
@@ -391,7 +538,7 @@ fn step(o: &mut Olga, b: &mut Body, f: u32, cx: &mut Ctx) -> bool {
             next(o)
         }
         0x0026_7DE0 => {
-            select(o, cx.img, cx.rng);
+            select(o, cx.img, cx.rng, &cx.game.covers, cx.target.feet);
             true
         }
         _ => {
@@ -405,9 +552,11 @@ fn step(o: &mut Olga, b: &mut Body, f: u32, cx: &mut Ctx) -> bool {
 }
 
 /// Stand-in for `FUN_00267DE0` and its selectors: reload when empty,
-/// otherwise alternate between moving to another position and a shooting
-/// sequence, avoiding recent picks.
-fn select(o: &mut Olga, img: &[u8], rng: &mut Rng) {
+/// otherwise alternate between moving and a shooting sequence, avoiding
+/// recent picks. A move goes where `FUN_002673b0` would send her: a cover
+/// spot hidden from Snake (the wish's crouch bit drawn at random as in
+/// `FUN_002679F0`), else one of her positions.
+fn select(o: &mut Olga, img: &[u8], rng: &mut Rng, covers: &[Cover], snake: Vec3) {
     if o.down() {
         o.ptr = table::DOWN;
         return;
@@ -420,9 +569,19 @@ fn select(o: &mut Olga, img: &[u8], rng: &mut Rng) {
     let next = if o.rounds <= 0 {
         table::RELOAD
     } else if !o.moved_last && rng.next() % 2 == 0 {
-        let at = pick(rng, &POSITIONS, &o.dest_at.into_iter().collect::<Vec<_>>());
-        o.dest_at = Some(at);
-        o.dest = vec3(img, at);
+        let crouch = rng.next() & 2 != 0;
+        match cover_choice(covers, img, snake, crouch, o.stamina < 0x26, rng) {
+            Some((i, spot)) => {
+                info!("olga: to cover {i} at ({:.0}, {:.0})", spot.x, spot.y);
+                o.dest_at = None;
+                o.dest = Some(Vec3::new(spot.x, 0.0, spot.y));
+            }
+            None => {
+                let at = pick(rng, &POSITIONS, &o.dest_at.into_iter().collect::<Vec<_>>());
+                o.dest_at = Some(at);
+                o.dest = vec3(img, at);
+            }
+        }
         o.moved_last = true;
         pick(rng, &table::MOVES, &[])
     } else {

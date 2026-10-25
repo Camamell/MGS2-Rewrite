@@ -348,9 +348,14 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      (soldiers who wait there until a script moves them) they see and hear
      nothing; a soldier shot dead leaves a body (the game's `corps.c`) that
      lasts five minutes on deck and moments overboard or in an alert; a
-     soldier who sees one says "!", walks up to it, kicks it and radios it
-     in (Caution), or looks about when a comrade there is already on the
-     radio, with the dead-radio and in-person paths of the other reports
-   - next: the troopers' own brain, Olga's sequence selector (needs her
-     cover objects);
-     leads in `re/notes/guard-ai.md`
+     soldier who sees one says "!", walks up to it and kicks it, and the
+     body fades away; he radios it in (Caution, then HQ's reply and his
+     answer), or looks about when a comrade there is already on the
+     radio, with the dead-radio and in-person paths of the other reports;
+     a soldier who sees a comrade running to report in person takes the
+     report over, or turns toward Snake (with his binoculars when Snake
+     is far); Olga's three cover objects stand on her platform, and she
+     moves to the side of one that hides her from Snake, as the game
+     picks it
+   - next: the troopers' own brain, Olga's sequence selectors (her cover
+     choice is in); leads in `re/notes/guard-ai.md`

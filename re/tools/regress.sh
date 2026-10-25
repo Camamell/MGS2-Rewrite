@@ -86,8 +86,9 @@ MGS2_GRENADE_AT=4c check discovery_jammed "meets Snake on his run|Snake knocked 
 MGS2_ROUTE=28:11 MGS2_GOD=1 MGS2_USP=1 check shot_comrade "leaves the call to a comrade|alert: running" ge 2 w01d --skip-cutscenes --snake-at=1200,9000,-11000 --fire-at 3 --shot-at 11
 MGS2_DOWN=7:s@1 MGS2_JAM=1 check comrade_jammed "Comrade0xd/" ge 1 w01d --skip-cutscenes --trace --shot-at 32
 # A body (corps.c, normal state 4): guard 18 finds guard 7 shot dead,
-# kicks him and radios it in; in an alert a body goes in 141 frames.
-MGS2_DOWN=7:d@1 check body_found "radios in a body" ge 1 w01d --skip-cutscenes --shot-at 24
+# kicks him (the body fades and goes) and radios it in; in an alert a
+# body goes in 141 frames.
+MGS2_DOWN=7:d@1 check body_found "reports a body|guard 7: his body is gone" ge 2 w01d --skip-cutscenes --shot-at 24
 MGS2_GOD=1 MGS2_DOWN=7:d@1 MGS2_ALERT_AT=3-12 check body_alert "guard 7: his body is gone" ge 1 w01d --skip-cutscenes --snake-at=1200,9000,-11000 --shot-at 8
 # A dart into guard 3's radio from behind: his call fails the same way.
 MGS2_FPV_TEST=1 MGS2_FPV_AT=5893,800,3886 check radio_shot "radio shot|reported Snake in person" ge 2 w01a --skip-cutscenes --snake-at=6000,0,2000 --fire-at 1 --aim-for 0.4 --shot-at 26
@@ -141,8 +142,13 @@ MGS2_GOD=1 check reload "reloads" ge 1 w01a --skip-cutscenes --snake-at=6000,0,0
 MGS2_FPV_TEST=1 MGS2_FPV_PITCH=41 check lamp "light 906464 shot" ge 1 w03a --skip-cutscenes --snake-at=-14800,-5000,-39250 --snake-dir=3072 --fire-at 2 --shot-at 4
 # The deck's mirror reflects Snake once he is on it (mirror.c messages).
 check mirror "reflects 28dce6" ge 1 w00b --skip-cutscenes --shot-at 4
-# Olga's own zones (w00b 0x1f6090): a dart in the head takes 32.
-MGS2_FPV_TEST=1 MGS2_FPV_AT=-18900,15000,-14200 check olga_head "Olga darted \(32\)" ge 1 w00b --skip-cutscenes --snake-at=-18900,12750,-17500 --fire-at 3 --aim-for 0.2 --shot-at 5
+# Olga's own zones (w00b 0x1f6090: head 32, limbs 8, body 10). Snake here
+# leaves her one cover side (the low box's spot at -14350, -14544); she
+# aims at him there, her arms before her face: a limb.
+MGS2_FPV_TEST=1 MGS2_FPV_AT=-14350,15000,-14544 check olga_head "Olga darted \((8|10|32)\)" ge 1 w00b --skip-cutscenes --snake-at=-12963,12750,-16963 --fire-at 6 --aim-for 0.2 --shot-at 8
+# Her moves go to cover (FUN_002673b0): from the start, Snake far east,
+# the obs_irs spot on its -x side.
+MGS2_GOD=1 check olga_cover "olga: to cover 2 at \(-18945" ge 1 w00b --skip-cutscenes --shot-at 10
 # Items: a bandage stops the bleeding; cold medicine ends the sneezing.
 MGS2_LIFE=25 MGS2_GIVE=0/5:1 MGS2_KEYS=N@2 check bandage "bandage used" ge 1 w01a --skip-cutscenes --shot-at 3
 MGS2_COLD=120 MGS2_GIVE=0/4:1 MGS2_KEYS=N@4 check cold "cold medicine used" ge 1 w01a --skip-cutscenes --shot-at 6

@@ -505,10 +505,96 @@ reset with point 0x15 copied to +0x1000), +0x109a (frames since player
 flag 0x80000000000), +0xf7a (point 0xb in line of sight of Snake: 1, or
 0x8000 within 1.5 m); +0x109c, Snake's zone: nine side-of-line tests of
 point 0x15 (`FUN_00268830` / `FUN_00268748`) against corners at
-0x3bb860..0x3bb8fc (bits 1..0x100); then the cover objects
+0x3bb860..0x3bb8fc (bits 1..0x100). The corners (x, z): 0x3bb860..878
+obs_box1's (-14000/-13500, -13750/-14750), 0x880..898 obs_box2's
+(-13500/-12500, -17600/-18600), 0x8a0..8b8 obs_irs' (-17600/-16400,
+-15450/-18550: narrower than its model), 0x8c0..8d8 a turned crate
+(-11303,-11867) (-10932,-12903) (-9897,-12532) (-10267,-11497), 0x8e0
+(-10890,-16542), 0x8e8 (-9808,-18954), 0x8f0 (-10753,-18391), 0x8f8
+(-9842,-16210): each bit says which side of the line through a cover
+corner and a crate corner (cross-product sign) Snake is on, i.e. which
+covers the crates' sight lines leave open; then the cover objects
 (0x3ca0b0, `FUN_0025c5f8`, from +0xf70 & 0xc0000; rest unread).
-Still needed: the cover objects' +0x6a and who moves them,
-`FUN_002673b0`, the rest of `FUN_00269028` and `FUN_00266448`.
+Her "points" (`FUN_00268830(n)`): her remembered Snake +0x1000 while
++0x1098 & 0x8000 or +0xf70 & 0x40000 (and +0xf74 == 0), else
+`FUN_00268748(n)`: Snake himself: n = 0x15 his position (DAT_001ecd00),
+other n his joint n (`*DAT_001ecdf0 + 0xf0 + n * 0x130`; 0xb the head);
+crouched (DAT_001ecd40 & 0x10) the joint block's +0xf0 when DAT_001ecd50
+is within 550 mm above him (and not aiming under +0xf70 & 0x400000),
+else DAT_001ecd50, as also with flag 1.
+
+`FUN_002673b0(olga, wish)` (cover choice): with +0xf74 & ~0x170 == 0,
+a mask of allowed cover sides from Snake's zone +0x109c (0 -> 5; 0x20 ->
+5, or 0x18 when point 0x15's z > -17400; 0x60 -> 0x30; 0x160 -> 0x32;
+0x170 -> 0x1e; 0x1f0 / 0x1f2 -> 0x1c; 0x1fa -> 0x20; 0x1fb -> 0x22;
+0x1ff -> 0x2a; else 0x3f), narrowed to & 0x3c under +0xf70 0x200000 or
+0x40000 and & 0x30 when her destination is 0x1F5E00. The three cover
+objects from +0x107c (0x70 bytes apart) are graded by `FUN_00268d80
+(cover, point 0x15, wish)` (2 bits each, packed object 2 first): it sets
+the two hiding spots +0x20 / +0x30 at height +0x10 - 850 (550 with wish
+bit 2: crouched) and tests each side (`FUN_00268af8` with +-300 mm
+offsets) against Snake: bit 1 / 2 = that side hides her. No allowed
+side: returns 1 (no cover). Else a random allowed bit picks the object
+and side (both sides: a coin flip on bit 0x100 of the next draw): her
+destination +0x1030 = spot +0x20 (+0xf70 | 0x1000) or +0x30 (| 0x800);
+| 0x400 when the object's +0x64 < 1200 (a low cover?), | 0x8000 when it
+is the object at +0x1084 (the one she is at). With other +0xf74 bits
+(0x4000, 1, 2, 0x1000, 0x20000, 0x800, 0x200, 0x2000, 8, 4, 0x10a0
+...) it picks fixed points instead (0x1F5E70 + 16 x stage, 0x1F5E00,
+0x1F5E10, 0x1F6040 / 0x1F6030, 0x1F5E50 / 0x1F5E40, 0x1F5D60 / 70,
+0x1F5DE0 / F0 with a z solved against Snake by `FUN_00268af8(+-50,
+..)` from 0x1F8178..0x1F8190, 0x1F5E20, cover 3's spot at +0x110,
+0x1F5E60 with 0x1F5DA0 / B0, 0x1F5D50). Chosen: +0x1078 = old +0x1074,
++0x1074 = old +0x1084 (the cover she was at), +0x1084 = the new cover
+(0 for a fixed point), +0x108c = +0x1060 = 0, the destination clamped
+(`FUN_00268a88`), returns 0; no allowed side returns 1.
+`FUN_002679F0` then: 1 (no cover) -> 0x1F7DA8 if she is within 100 mm
+of her destination on x or z, else 0x1F6368 as is; 0 -> by +0xf74 0x8000
+(as 1), 0x20000 (0x1F7EE8), the same cover again (+0xf70 0x8000: low,
+| 0x400 -> 0x1F7CB0; high with a crouched wish -> 0x1F7E60), stamina
+under 0x26 (+0xf70 0x200000) -> 0x1F7DA8, a move between covers 0 <-> 1
+or from 2 (by the old and new covers' +0x6a) -> 0x1F7E30 (+0xf7e 0) /
+0x1F7E48, plus 0x1F7DE8 from stage (+0x1066 >> 12) 6, else 0x1F7DA8 /
+0x1F7DC8 by +0xf70 & 0xc (< 5), or 0x1F7CB0 from stage 6 on even
+difficulty.
+The cover objects (`FUN_00259f30`, w00b dump line ~142350): the script
+gives all three `-p 0 0 0` and `-r 0 0 0` (w00b.gcl line 977), so each
+one's place is its model's own: per `-m` model (`FUN_001287f0(.., 0x11)`)
++0x60 = the object; `-r` turns (+0x68, 10-bit, the model rotated by it);
+`-p` sets the object's position (+0x30 of the model object); then from
+the model header (+0x44: box min +0x1c..+0x24, max +0x28..+0x30, offset
++0x34..+0x3c) half-extents +0x50 / +0x54 / +0x58, +0x64 = twice the
+half-height (the "under 1200 mm" test of `FUN_002673b0` is a low cover),
++0x6a = its index (0 obs_box1, 1 obs_box2, 2 obs_irs), +0x68 += 0xc00,
+centre +0x40 = the box's middle + offset; corners (x, z) +0x0 (cx + hx,
+cz - hz), +0x8 (cx + hx, cz + hz), +0x10 (cx - hx, cz - hz), +0x18
+(cx - hx, cz + hz); spots +0x20 / +0x30 start at (cx - hx - 850, cy).
+`FUN_00268d80` then puts both spots' x at the -x edge less 850 (550
+crouched) and asks `FUN_00268af8(+-300, x, corner, corner, Snake)` for
+each spot's z (+0x28 from corners +0x0 / +0x10 with +300, +0x38 from
++0x8 / +0x18 with -300), 0 when no z hides her. `FUN_00268af8(off, x, A,
+B, snake)`: the rays from Snake through corners A and B (x, z) meet the
+line at x; each crossing's z is shifted by `off` along the ray (divided
+by the ray's x component), and the nearer one to the cover's middle is
+kept (min for off > 0, max otherwise); a z beyond the deck (< -19150, or
+> (x + 12000) / 4 - 12850, the slanted rail) gives 0; when x is within
+551 mm of A's x the corner's own z wins if it is further out.
+`FUN_00268a88` clamps the spots into the same deck bounds. So: she always takes cover
+on a box's -x side, the side away from the deck's +x (where Snake
+comes from). So `FUN_002679F0`'s tests of
++0x1074 / +0x1084 `+0x6a` are "which cover she was / is at".
+The obs_* models' boxes (kms header): obs_box1 x -14000..-13500, y
+12750..15000, z -14750..-13750; obs_box2 x -13500..-12500, y ..13750,
+z -18600..-17600 (1000 tall: the low cover); obs_irs x -18095..-15905,
+y ..14380, z -18550..-15450.
+Ported (2026-10-25): the cover objects drawn and walled (`main::
+obstacles`, `olga::Cover`), Snake's zone (`olga::zone`, the table read
+from the image), the spots (`Cover::spots`, `spot_z`, `on_deck`) and
+`FUN_002673b0`'s plain path (`cover_choice`) for where her moves go;
+not ported: the +0xf74 orders' fixed points, her remembered Snake
+(+0x1000), the 0x40000 / 0x1F5E00 narrowing, and the selectors that
+choose the tables. Still to read: the rest of `FUN_00269028` and of
+`FUN_00266448`.
 
 ## Noise (`FUN_0011b630`, `FUN_00220078`, `FUN_0021f958`)
 
@@ -647,7 +733,8 @@ So a body on deck lasts 18000 frames (5 min), one dropped over the side
 or in an alert 141 frames. At 0 `FUN_00262688` starts its vanishing
 (+0x2c4 bit 2), and bit 0x100 later deletes it and its entry
 (`FUN_00262cc8`, `FUN_002224a8`). Ported (`Guard::corpse`,
-`corpse_tick`; the fade `FUN_002627e8` is not: the body is hidden).
+`corpse_tick`; the body is hidden at the end of the fade's 61 frames,
+whose colour change is not drawn).
 
 The finder (`FUN_002224f0`): the first entry he sees at level 3
 (`FUN_00255f30` with both area masks) within his near range +0x248 (or
@@ -669,10 +756,14 @@ down wins). State 4 (`FUN_002358b0`, init `FUN_00235a38`: actions table
 | 0xf | `FUN_002357d0` | done: `FUN_00227a50` returns him to his route once +0x26c bit 0x80 is clear |
 
 Nothing in `FUN_002224f0` skips a body already found (entry flag 4 is
-only read under +0x350 bit 0x8000000), and the return to the route
-(`FUN_00227e00`) clears +0x26c, so a soldier who sees the same body again
-goes through state 4 again (the second time a report is in hand: the "?"
-or the look about). Ported as `State::Body` / `corpse_found` (subs 1,
+only read under +0x350 bit 0x8000000), but sub 2's first frame
+(`FUN_00235558`) writes 0 to its entry's +0x10, which (the entry being
+at corpse +0x2b0) is the corpse's life +0x2c0: the kick ends the body.
+At life 0 `FUN_00262688` sets +0x1b88 = 4 and `FUN_002627e8` fades it
+for 61 frames (+0x2a0 / +0x2a4 down 1, +0x2a8 down 2 a frame: its
+colour), still listed, then removes the entry, frees the corpse and,
+with over 1 MB free, calls `FUN_002644c8(+0x1c28, ..)` (something made
+from the soldier's spawn data: not traced, not ported). Ported as `State::Body` / `corpse_found` (subs 1,
 10, 2, 6, 4, 3, 5, 7, 8, 9, 0xf); a dead soldier is no longer a comrade
 down (state 2's sub 0x17 is left unported). Not ported: sub 0 (action
 6 under `-s` bit 0x20 with +0xf4c +0xc == 1), the walker 0xb and doors
@@ -778,9 +869,17 @@ away (0x1c / 0x33, flag cleared at frame 62). Ported (left hand only).
 ## A comrade down (normal state 2, `FUN_00233120`)
 
 Stimulus 0x40 (`FUN_00230a48`): `FUN_0021e998` finds a soldier in the
-manager's list at +0x7c (count +0xdc, only cleared in w00a's decomp: the
-writer is not visible; the port takes the soldiers lying down) whom he
-sees at level 3 within his near range. `FUN_00233330` targets him (+0x2f4)
+manager's list at +0x7c (count +0xdc) whom he sees at level 3 within his
+near range. The list is filled each frame by `FUN_00220120` in code the
+decomp leaves out (w00a 0x2201c0.., read with `re/tools/mips_res.py`):
+for every squad member, +0xde counts those without body flag 0x40000000
+(able), and while +0xdc < 24 a soldier joins when body +0xf98 meets
+0x400080000401C or controller +0x348 has bit 0x100; one seeing Snake
+(+0x18e == 3) sets bit 8 at 0x17f48c. Bit 0x100 is set wherever a report
+takes the run to the report point (`FUN_00231c28`, `FUN_002349c0`, the
+discovery's, the check-in's ...) and cleared at its end. The port lists
+the soldiers lying down and the runners (the other body flags, 0x4 /
+0x8 / 0x10 / 0x800000000, are not traced). `FUN_00233330` targets him (+0x2f4)
 and starts sub-state 5 when he is down (+0xf98 bit 0x4000, or
 0x4000000000000, or +0xfb0 bit 4) and not already seen to, else 0. The
 sub-states (+0x330, timer +0x338) and their body actions (+0xfdc, table
@@ -800,14 +899,23 @@ motion 10, 7 0x5b, 8 0x4c, 9 0x2f):
 | 10 / 0xc | `FUN_00231d08` / `FUN_00231d88` | the radio: action 4, then line +0x310 (0x1c00000b); at its end action 5 and, for this report, `FUN_0021ee90(-h)` (the caution timer, manager +0x24, which turns Infiltration into Caution); done when the radio is away |
 | 0xb / 0xd | `FUN_00231f20` / `FUN_00231fb8` | radio shot (+0xb4 bit 0x10000) or `DAT_0017f48c` bit 0x10: no call (action 6), back to the route |
 | 0xf | `FUN_00232128` | the report when the caution timer is still over 3/4 of `-h` or in Evasion (`FUN_00252708`): a "?" for 121 frames |
-| 0-4, 9, 0x18 | | a comrade already seen to; another soldier nearby; can't see him from beside him (line 0x144) |
+| 0 | `FUN_002321b8` | (a comrade not down, or running: `FUN_00233330` starts here) "!" (0x8000), faces him, voice 0x14c; frame 16: a runner still flagged hands over (his 0x348 bit 0x100 cleared, `FUN_00231c28(0x1c00000b, 0x40)` for him), else Snake within 1.5 x near range (+0x188 < +0x248 * 1.5) -> 2, else 1 |
+| 1 / 3 | `FUN_002322c0` / `FUN_00232318` | action 1 (motion 6, binoculars out) toward Snake (+0x18c), then action 2 (motion 7) 90 frames -> 4 |
+| 2 | `FUN_00232358` | faces Snake 90 frames -> 4 |
+| 4 | `FUN_00232398` | "?" (0x8001); frame 0x5a: Evasion done; asleep (+0xf98 0x4000) or both arms hit: 9 if a comrade on the radio is within earshot (`FUN_00252820`), else the report; else 8 |
+| 9 | `FUN_00232488` | looks about 240 frames (look points), then done with a report in hand, else 9 / the report |
+| 0x18 | `FUN_00232ee0` | can't see him from beside him: looks about, "?" kind 5 at 200 and line 0x144, done at 0x141 |
 
 The report's entry is `FUN_00231c28(line, mask)`; the line's length comes
 from table 0x400ca8 (`FUN_0021c608`, filled at load), 0xf0 frames when the
-line cannot play. Ported in `guard::comrade` (sub-states 5, 6, 7, 8, 0xc,
-0xf, 0x10, 0x12, 0x15, 0x17); assumed: 0x4000000000000 = dead, the shake
-wakes him; the lines now play (see "Radio lines" below). So only a sleeper's
-kick leads to a call and Caution; a knocked-out or dead comrade does not.
+line cannot play. Ported in `guard::comrade` (sub-states 0-9, 0xb-0x10,
+0x12, 0x15); assumed: the shake wakes him; the lines now play (see "Radio
+lines" below). So only a sleeper's kick leads to a call and Caution; a
+knocked-out comrade does not, and the dead are bodies (state 4). The
+runner takeover (sub 0 at frame 16) is ported but not yet seen in a
+headless run: the Tanker's routes give no witness facing a run (w01d's
+report point is beside route 28's deaf post; w02a's run passes behind
+route 5). `MGS2_ROUTE` takes a list (`22:43,5:5:1`) for such staging.
 `MGS2_DOWN=route:s|k|d@seconds` downs a soldier for testing (w01d r11 / r18).
 
 ## Radio lines (`FUN_0021cdb8`, the enemy manager's `-v` / `-y`)

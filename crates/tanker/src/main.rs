@@ -243,6 +243,8 @@ pub struct Game {
     pub arrivals: Vec<(gcl::Spawn, f32)>,
     /// Deck 2's defence (atcomm), once it is created.
     pub atcomm: Option<guard::Atcomm>,
+    /// Olga's cover objects (`cmd_53209a`), in their order.
+    pub covers: Vec<olga::Cover>,
     /// Rain on the open deck, if the stage has it.
     pub rain: Option<rain::RainSpec>,
     /// The holds' time limit, when the stage runs one.
@@ -540,6 +542,39 @@ const SKYLINE_SCALE: f32 = 6.0;
 /// collision and being shot apart are not ported).
 const ORGA_OBJ: u32 = 0x4FB2CA;
 
+/// `cmd_53209a` (w00b `FUN_00259f30`): Olga's cover objects, `-m` up to
+/// ten models, `-r` one Y turn per model (12-bit signed, 4096ths: 0x68 of
+/// each cover keeps it), `-p` one position per model. w00b gives
+/// obs_box1, obs_box2 and obs_irs, all at the origin: they are modelled
+/// in place. Drawn, and walled as the crates are; her cover choice
+/// (`FUN_002673b0`) is not ported yet.
+const OBSTACLES: u32 = 0x53209A;
+
+fn obstacles(s: &gcl::Spawn, data: &StageData) -> Vec<Prop> {
+    let models = s.opt(b'm').unwrap_or(&[]);
+    models
+        .iter()
+        .take(10)
+        .enumerate()
+        .filter_map(|(k, v)| {
+            let h = v.int()? as u32 & 0x00FF_FFFF;
+            let model = data.models.iter().position(|(m, _)| *m & 0x00FF_FFFF == h)?;
+            let r = s.opt_int(b'r', k).unwrap_or(0);
+            let turn = (r & 0xFFF) - (r & 0x800) * 2;
+            let p = |i: usize| s.opt_int(b'p', k * 3 + i).unwrap_or(0) as f32;
+            Some(Prop {
+                model,
+                transform: Transform::from_translation(Vec3::new(p(0), p(1), p(2)) * SCALE)
+                    .with_rotation(Quat::from_rotation_y(turn as f32 / 4096.0 * std::f32::consts::TAU)),
+                no_fog: false,
+                lt2: None,
+                name: 0,
+                beam: false,
+            })
+        })
+        .collect()
+}
+
 /// `#de0402`: a model attached to another actor's joint.
 const ATTACHMENT: u32 = 0xDE0402;
 
@@ -775,6 +810,7 @@ fn prepare(
     let mut crowd = Vec::new();
     let mut on_alert = None;
     let mut atcomm = None;
+    let mut covers = Vec::new();
     let mut rain_spec = None;
     let mut holds_timer = None;
     let mut song = 0;
@@ -935,7 +971,22 @@ fn prepare(
             brk_lights.push((name, Vec3::new(v(b't', 0), v(b't', 1), v(b't', 2)), proc, false));
         }
         mirrors = vm.spawns.iter().filter(|s| s.kind == reflect::MIRROR_ACTOR).filter_map(reflect::Mirror::from_spawn).collect();
-        let crates: Vec<Prop> = vm.spawns.iter().filter(|s| s.kind == ORGA_OBJ).flat_map(|s| orga_objects(s, &data)).collect();
+        let crates: Vec<Prop> = vm
+            .spawns
+            .iter()
+            .flat_map(|s| match s.kind {
+                ORGA_OBJ => orga_objects(s, &data),
+                OBSTACLES => {
+                    let o = obstacles(s, &data);
+                    covers.extend(o.iter().map(|p| {
+                        let m = &data.models[p.model].1;
+                        olga::Cover::from_box(m.bbox, m.origin, p.transform.translation / SCALE, p.transform.rotation)
+                    }));
+                    o
+                }
+                _ => Vec::new(),
+            })
+            .collect();
         // The crates stop Snake: a wall round each model's bounds (an
         // approximation of their own collision, which is not read).
         if let Some(col) = collision.as_mut() {
@@ -1107,6 +1158,7 @@ fn prepare(
         on_alert,
         arrivals: Vec::new(),
         atcomm,
+        covers,
         rain: rain_spec,
         timer: holds_timer,
         fog: fog_spec,

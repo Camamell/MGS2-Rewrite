@@ -211,7 +211,9 @@ fn update(
             // with no line): "!" before the kick (sub-state 0x12), "?" when
             // no report is needed (0xf).
             State::Comrade { sub: 0x12, .. } => Some(Kind::Exclaim),
-            State::Comrade { sub: 0xf, .. } => Some(Kind::Question),
+            State::Comrade { sub: 0xf | 4, .. } => Some(Kind::Question),
+            // A comrade running to report (`FUN_002321b8`, 0x8000).
+            State::Comrade { sub: 0, .. } => Some(Kind::Exclaim),
             // A body found (normal state 4): "!" from frame 6 of sub 1
             // (0x8000), "?" in sub 9 (0x8001).
             State::Body { sub: 1, timer: 6.., .. } => Some(Kind::Exclaim),
