@@ -712,7 +712,12 @@ selectors and the steps of every table they reach in the port.
   their subtitles; "over" = the stage no longer plays it. Run (w00b,
   Normal): line 0 at ~9 s, lines 1-4 by ~32 s, line 5's event at ~43 s.
   The procs run, but their camera event (`#de7ce7`, the `#43f718`
-  cameras) does not move the port's camera yet; the skip by button
+  cameras) does not move the port's camera yet (lead: `#de7ce7 sx sy sz
+  tx ty tz` + the destination pair stored in Au32:0x8dc..0x8f0, `-a`
+  frames: a camera pan over `-a` frames, aimed at `-t`; `script_cam`
+  aims fixed cameras at Snake and ignores `-a`, and the proc's
+  `chara "delay" -t 360` blocks run at once under `vm.eager`, so the
+  follow-up `#9c5a50` camera replaces the pan immediately); the skip by button
   (`DAT_0019165e & 0x840` under +0xf70 0x4000000) is not ported.
 - `FUN_00104950` (the "busy" test at the top of the selector and the
   sense: she heads for point 0xb) is true while `DAT_0017f48c |
