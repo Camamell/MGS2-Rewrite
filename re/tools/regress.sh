@@ -81,8 +81,14 @@ MGS2_GOD=1 MGS2_DOWN=3:s@air check discovery_cut "radio cut off|radios for backu
 MGS2_GRENADE_AT=4c check discovery_jammed "meets Snake on his run|Snake knocked down|reported Snake in person" ge 3 w01a --skip-cutscenes --snake-at=6000,0,0 --snake-dir=0 --shot-at 26
 # A shot heard by soldiers near each other: one calls, the next leaves
 # the call to him and raises the alert after his "!" (sub 3 -> 10).
-MGS2_GOD=1 MGS2_USP=1 check shot_comrade "leaves the call to a comrade|alert: running" ge 2 w01d --skip-cutscenes --snake-at=1200,9000,-11000 --fire-at 3 --shot-at 11
+# Guard 28 walks route 11: at his own post (route action 15) he hears
+# nothing.
+MGS2_ROUTE=28:11 MGS2_GOD=1 MGS2_USP=1 check shot_comrade "leaves the call to a comrade|alert: running" ge 2 w01d --skip-cutscenes --snake-at=1200,9000,-11000 --fire-at 3 --shot-at 11
 MGS2_DOWN=7:s@1 MGS2_JAM=1 check comrade_jammed "Comrade0xd/" ge 1 w01d --skip-cutscenes --trace --shot-at 32
+# A body (corps.c, normal state 4): guard 18 finds guard 7 shot dead,
+# kicks him and radios it in; in an alert a body goes in 141 frames.
+MGS2_DOWN=7:d@1 check body_found "radios in a body" ge 1 w01d --skip-cutscenes --shot-at 24
+MGS2_GOD=1 MGS2_DOWN=7:d@1 MGS2_ALERT_AT=3-12 check body_alert "guard 7: his body is gone" ge 1 w01d --skip-cutscenes --snake-at=1200,9000,-11000 --shot-at 8
 # A dart into guard 3's radio from behind: his call fails the same way.
 MGS2_FPV_TEST=1 MGS2_FPV_AT=5893,800,3886 check radio_shot "radio shot|reported Snake in person" ge 2 w01a --skip-cutscenes --snake-at=6000,0,2000 --fire-at 1 --aim-for 0.4 --shot-at 26
 # Out of sight on the radio he looks about (sub 7: +-0x200 head turns).
@@ -117,6 +123,9 @@ MGS2_ROUTE=1:5 check gait_side "guard 5 at point 1: gait 3" ge 1 w03a --skip-cut
 # it, then seen.
 MGS2_GOD=1 MGS2_ROUTE=3:6:3 check blind_point "Discovery" eq 0 w01a --skip-cutscenes --trace --snake-at=3250,0,2250 --shot-at 6
 MGS2_GOD=1 MGS2_ROUTE=3:6:3 check blind_point_after "Discovery" ge 1 w01a --skip-cutscenes --trace --snake-at=3250,0,2250 --shot-at 11
+# Route action 15 (0x16, an idle with body flag 0x100000000000): w01d
+# guard 28 at his one-point post sees nothing of Snake 1.2 m in front.
+MGS2_GOD=1 check blind_post "r28 \S+ Wait\S+ L[1-9]" eq 0 w01d --skip-cutscenes --trace --snake-at=-3575,6000,-12700 --shot-at 8
 # Route action 4 (0xa): binoculars from frame 0x12 (w02a guard 17, point 2).
 MGS2_ROUTE=17:17:2 check binoculars "guard 17 takes out his binoculars" ge 1 w02a --skip-cutscenes --shot-at 4
 # Darted from beyond earshot and still awake: he turns to look (state 7).

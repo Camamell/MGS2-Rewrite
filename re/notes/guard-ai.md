@@ -207,7 +207,7 @@ centres are within the sum of half-extents on every axis
 Snake's collision cylinder as a box (assumed: his own hit box is not
 read), once per strike, and the alert's action 9 for a soldier with a
 wounded arm (+0xf16 & 1: `FUN_0025fa48`, motion 0x54 with the box on joint
-16; 0x153 under body flag 0x4000, not traced); the push is not. Each shot is action 6. Aim for 21 frames, then fire
+16; 0x153 under body flag 0x4000, not traced); the push too (below). Each shot is action 6. Aim for 21 frames, then fire
 every 4 frames with a 1-in-3 chance to stop after each shot; reload after
 31 shots.
 
@@ -254,8 +254,12 @@ records into Snake's (`FUN_00108468` -> `FUN_001082f0`): a record of
 type 0 adds its vector (the butt's), type 4 (a blast, `FUN_003724d0`:
 x = half its box size / 8) pushes that far along the line from the
 blast to him (atan2 of the boxes' centres): 125 mm a frame for the
-soldiers' 2000 mm grenade. Not
-ported: the front / back variants, face-down lying, the damage scaling,
+soldiers' 2000 mm grenade. The front / back variants (+0xf90 0x2000 /
+0x4000 / 0x10000 / 0x20000) are chosen only for hit flags
+0x4000000000000 / 0x2000000000 (`FUN_002713e8`, by the push's heading
+within 0x400 of his facing), which neither the butt nor a blast carries:
+the plain one (`+0x62 = heading + 0x800`) is the Tanker's. Not
+ported: face-down lying, the damage scaling,
 flag 2's and the item's states, 0x15e / 0x15f.
 
 ## Evasion brain: `FUN_0022C670`
@@ -407,7 +411,8 @@ facing).
 
 ## Not yet ported
 
-- radio reports; the troopers' own brain; the strike's push;
+- the troopers' own brain (radio reports and the rifle butt's push are
+  ported: see their sections);
 - the game's precomputed shortest-path matrices in the `.hzx` (paths are
   recomputed from the node links instead).
 
@@ -454,6 +459,56 @@ points at them; `FUN_00268d80(cover, point, flags)` grades each (2 bits),
 `FUN_002673b0` picks one by those grades and Snake's zone (+0x109c: 0x0,
 0x20, 0x60, 0x160, 0x170, 0x1f0, 0x1f2, 0x1fa, 0x1fb, 0x1ff map to cover
 masks). Who moves the obstacles is not traced yet.
+
+Selector structure (leads, 2026-10-25; not ported). `FUN_00267DE0`: when
+`FUN_00104950()` is true and stamina +0xfb2 > 0 she just heads for point
+0xb (`FUN_00268830(0xb)`, `FUN_0025fcc0`). Otherwise the condition
+function at 0x1F8198[+0xf70 & 3] (w00b: 0x2679f0, 0x266448, 0x266348,
+0x266348) fills a 0-ended list of step-table candidates and returns 0
+(take the first as is) or 1 (choose): candidates found in the 8-entry
+history +0xf88 (ring index +0xfa8) score by age and the oldest such is
+the fallback; any candidate not in the history makes a bit of a mask, a
+random set bit of which is picked (`DAT_0019227c = x * 0x5d588b65 + 1`,
+ANDed until zero, then its lowest bit) and written to the history.
+- `FUN_002679F0` (mode 0, choosing where to go): sets +0xf70 | 0x201
+  (or 0x202 on 3 of 4 random draws while +0xf70 & 0xc < 8), clears
+  +0xfaa / +0xfa9 / +0xf7c, draws a cover wish (2 random bits; 1 bit while
+  +0xf7e != 0; | 2 under +0xf74 & 0x70) and asks `FUN_002673b0` for cover.
+  Found: the destination +0x1030 within 100 mm on x or z of her -> table
+  0x1F7DA8, else 0x1F6368 (returned as is). Not found: +0xf74 & 0x8000 as
+  found; & 0x20000 -> 0x1F7EE8; else by +0xf70 0x8400, 0x200000, 0x80000,
+  the two cover objects +0x1074 / +0x1084 (their +0x6a state 0 / 1 / 2),
+  +0x1066 >> 12 (< 6) and +0xf7e: 0x1F7E60, 0x1F7CB0, 0x1F7DE8, 0x1F7E30,
+  0x1F7E48, 0x1F7DA8 / 0x1F7DC8 (by +0xf70 & 0xc < 5), the difficulty's
+  low bit (DAT_001e6924) in one branch. +0xfae = the cover wish.
+- `FUN_00266448` (mode 1, attacking): +0xf70 | 0x40, +0xfaf counts picks;
+  no rounds (+0xfb6 < 1) -> 0x1F68E8[+0xfae] (reloads); at one of eleven
+  fixed points (0x1F5D50..0x1F6040) or +0xf7a & 0x8000 -> 0x1F6368; then
+  by +0x108c (>= 20), +0xf70 0xc0000 / 0x1000 / 0x800 / 0x400, Snake's
+  zone fields +0x1098 (& 0x3f > 2, & 0x8000) / +0x109a (< 4), the frame's
+  player flags DAT_001ecd40 & 0x801 (crouch-free / aiming), rounds
+  (> 3, < 10) and +0xfaf (11 -> 0x1F68F8, 12 -> 0x1F6368 and
+  +0xf70 | 0x80000): shoot tables 0x1F7A20..0x1F7AC8, 0x1F7B00..0x1F7BD8,
+  0x1F7210 / 0x1F7470 / 0x1F7690, pairs from 0x1F6810 / 0x1F7360 /
+  0x1F77E0, 0x1F7C80 (rest of the function, past 0x2671d8, not read yet).
+- `FUN_00266348` (modes 2 / 3): toggles +0xf70 bits 0 / 1 (| 0x40),
+  then 0x1F6E70 (+0xf70 & 0x400 with +0xfae 0) or 0x1F6EA0 / 0x1F6EE0
+  (by 0x1000 / 0x800) [+0xfae, + 4 under 0x400000]; runs her `-h`-style
+  proc +0xeb0 if set (`FUN_00152ca0`).
+Her per-frame sense, `FUN_00269028` (w00b dump line ~151159), writes
+most of them: stamina bands -> +0xf70 0x300000 / 0x200000 / 0x100000 and
++0xfac (< 0x16 / 0x26 / 0x46); +0xf70 & 0xc from +0x1070 (counts to 8 on
+frames where DAT_001e6924's low byte is 0) and Bs16:8 (> 0x27 / 0x1d);
++0x1066 (a 4-bit stage << 12 and a 12-bit count, `FUN_002685c8`);
++0x1098 (count & 0x3f each 64 frames, 0x4000 past 1, 0x3000 steps,
+reset with point 0x15 copied to +0x1000), +0x109a (frames since player
+flag 0x80000000000), +0xf7a (point 0xb in line of sight of Snake: 1, or
+0x8000 within 1.5 m); +0x109c, Snake's zone: nine side-of-line tests of
+point 0x15 (`FUN_00268830` / `FUN_00268748`) against corners at
+0x3bb860..0x3bb8fc (bits 1..0x100); then the cover objects
+(0x3ca0b0, `FUN_0025c5f8`, from +0xf70 & 0xc0000; rest unread).
+Still needed: the cover objects' +0x6a and who moves them,
+`FUN_002673b0`, the rest of `FUN_00269028` and `FUN_00266448`.
 
 ## Noise (`FUN_0011b630`, `FUN_00220078`, `FUN_0021f958`)
 
@@ -522,7 +577,7 @@ normal-phase transition picks a state per bit (C+0x32c):
 | 0x4000000 | Snake within the 250 x 1500 x 250 bump box (`FUN_00230c20`) | |
 | 0x40 | a comrade down in sight (`FUN_00230a48`; 0x2000000 instead under +0x350 bit 0x8000000) | 2, `FUN_00233120` (below) |
 | 0x2000 | the USP's light (`FUN_00230b40`, below) | 6 |
-| 0x80 | `FUN_00230ad0`: `FUN_0021eaa8` -> `FUN_002224f0` sees an entry of the list at DAT_003fefa8 within his near range (+0x290 = its id; with +0x350 bit 0x8000000 also 0x2000000). Entries register through `FUN_00222410(actor + 0x2b0)` from `corps.c` (`FUN_002635f8`, `FUN_00263d90`): bodies. Not traced further; not ported | 4 |
+| 0x80 | `FUN_00230ad0`: `FUN_0021eaa8` -> `FUN_002224f0` sees an entry of the list at DAT_003fefa8 within his near range (+0x290 = its id; with +0x350 bit 0x8000000 also 0x2000000). Entries register through `FUN_00222410(actor + 0x2b0)` from `corps.c` (`FUN_002635f8`, `FUN_00263d90`): bodies (below, "Bodies"); ported | 4 |
 | 0x2000000 | a comrade down or 0x80, under +0x350 bit 0x8000000 (never in the Tanker: `-s` is 34 / 10 / 2) | 0xe |
 | 0x4000, 0x20000, 0x40000, 0x200000, 0x400000 | 0x230dd8, 0x2311f0, 0x2316b0, 0x230c20, 0x231418 | 6, 0xb, -, 7, 0xc |
 | (0x400000) | `FUN_00231418` needs Snake's equipped item (`FUN_001541f8`) to be 6, the B.D.U (Raiden's disguise; item names at ELF 0x19209c), and a story flag (+0x10c bit 0x40): the Plant's, never in the Tanker | 0xc |
@@ -556,6 +611,74 @@ a hit that leaves him under a third of his life sets 0x1000000 and a drop
 falls every 20 frames until life is a third again or a ration is used. A
 soldier who sees either marker group goes to the newest marker in view and
 marks the older ones (`FUN_00240858`); the port follows that way.
+
+## Bodies (`corps.c`, stimulus 0x80, normal state 4)
+
+What prevents most stimuli: `FUN_002316f8` (each frame, +0x268 = 0)
+skips the hearing `FUN_00230830` and every check below it except
+`FUN_002316b0` (stimulus 0x40000, the script's) while body flag
+0x100000000000 is set (action 0x16's posts: ported as `Guard::still`);
+in an alert (Bs16:0x112 == 1) it runs `FUN_00231380` instead; the
+comrade (0x40) and body (0x80) checks also need body +0xf2c bit 0x1000
+clear.
+
+The corpse: a soldier's death step `FUN_0024e4f8` (motion 0xd2 / 0x80 /
+0x72 by +0xf5c), from its frame 16, makes a `corps.c` actor
+(`FUN_00263b00`, actor type 6) when more than 1 MB is free and he is not
+parked far away (x < 1e6): it takes over his model (`FUN_003998b0`) and
+registers a list entry at corpse +0x2b0 (`FUN_002223d0`: [0] its position
+block, [1] +0xec, [2] the soldier's id, [3] a serial, [5] flags (4 =
+found), [6] the corpse body at +0x1860; `FUN_00222410` appends it to
+DAT_003fefa8). `**(soldier + 0xfa8)` (controller +0x350, the `-s`
+flags: `FUN_0025ad08` sets +0xfa8 = controller + 0x350) goes to corpse
++0x1bb0 (`| 0x200`), not to the life. The life +0x2c0 is 18000: in
+`FUN_00263d90` (the other constructor, `FUN_00263f88`) as a constant, and
+in `FUN_002635f8` its 12th argument, on the stack, which the decomp does
+not show: `FUN_00263b00` stores `addiu t4, zero, 18000` at 24(sp) before
+the call (0x263b90 / 0x263be0; 0(sp) the soldier's model word, 8 / 16
+its caller's stack words: the soldier, +0x1008 != 0). `FUN_00262c18` takes 0x80 a frame in an alert
+(Bs16:0x112 == 1) or while `FUN_00262be0` is true, else 1.
+`FUN_00262be0` is `FUN_001079b0(corpse + 0x40, 0x1f3d80, 1, 0)`: not a
+view test but whether the object's name list (+0xf8, count +0xf4, filled
+by `FUN_00107b10` -> `FUN_0010eda8`) holds the 24-bit word at 0x1f3d80,
+0xccfd9f (w00a resident offset 0x2900): the trap name of boxes 1-2 m
+below the deck in w00a and w00c (`routes <hzx> traps`), i.e. overboard.
+So a body on deck lasts 18000 frames (5 min), one dropped over the side
+or in an alert 141 frames. At 0 `FUN_00262688` starts its vanishing
+(+0x2c4 bit 2), and bit 0x100 later deletes it and its entry
+(`FUN_00262cc8`, `FUN_002224a8`). Ported (`Guard::corpse`,
+`corpse_tick`; the fade `FUN_002627e8` is not: the body is hidden).
+
+The finder (`FUN_002224f0`): the first entry he sees at level 3
+(`FUN_00255f30` with both area masks) within his near range +0x248 (or
+any under +0x350 bit 0x8000000 unless entry flag 0x400) -> +0x290 = its
+id, stimulus 0x80 (checked after 0x40 in `FUN_00227520`, so a comrade
+down wins). State 4 (`FUN_002358b0`, init `FUN_00235a38`: actions table
+`FUN_00234818`, target the corpse's position, entry flag 4, +0x294 =
+`corpse body + 0x170`, pace 2, sub 1). Sub-states (+0x330, timer +0x338):
+
+| Sub | Function | What |
+|---|---|---|
+| 1 | `FUN_00235418` | faces the body; frame 6 a "!" mark (`FUN_00253f50(.., 0xc, 0x8000)`) and voice 0x14c; frame 0x78: to sub 10 (`FUN_00234f88(cb 0x235388, 350 mm, else 0xb)`), or under +0x350 bit 0x20 with +0xf4c +0xc == 1 sub 0 |
+| 0 | `FUN_002354e8` | action 6 until its motion ends, then as sub 1's end |
+| 10 / 0xb | `FUN_00234fc0` / `FUN_00235120` | walk to the body (re-targeted each frame, `FUN_002357e0`) until within 350 mm, then the callback; a door in the way (`FUN_00119528`, flags 0x4100000000) -> 0xc..0xe (turn to it, action 8 up to 0x12d frames, action 9 and `FUN_001196f8(door, 100, 5, 0)`) |
+| cb `FUN_00235388` | | another soldier on the same body within 2 m (`FUN_00235338`, `FUN_0021eb20(.., 0x80)`): if a soldier within his `-h` (`FUN_00252820`) look about (6), else report (line 0x1c00000a if `FUN_002527d0` else 0x1c000009, mask 0x80); else sub 2 |
+| 2 | `FUN_00235558` | entry +0x10 = 0, action 7 (looks him over) to its end; in Evasion done (0xf), else as the callback (6 or the report) |
+| 6 | `FUN_00235650` | looks about 240 frames (head to the area's look points every 60, `FUN_00253dd8` / `FUN_00253e30`), then done if a report is in hand (`FUN_00252708`), else as above |
+| 4 / 3 / 5 / 7 / 8 / 9 | `FUN_002349c0` -> | the report as the comrade's (radio out, the line, `FUN_0021ee90(-h)` caution timer at its end; dead radio 5 -> run 7 -> in person 8 (line 0x18a00005); `FUN_00252708` already reported: 9, a "?" 0x79 frames) |
+| 0xf | `FUN_002357d0` | done: `FUN_00227a50` returns him to his route once +0x26c bit 0x80 is clear |
+
+Nothing in `FUN_002224f0` skips a body already found (entry flag 4 is
+only read under +0x350 bit 0x8000000), and the return to the route
+(`FUN_00227e00`) clears +0x26c, so a soldier who sees the same body again
+goes through state 4 again (the second time a report is in hand: the "?"
+or the look about). Ported as `State::Body` / `corpse_found` (subs 1,
+10, 2, 6, 4, 3, 5, 7, 8, 9, 0xf); a dead soldier is no longer a comrade
+down (state 2's sub 0x17 is left unported). Not ported: sub 0 (action
+6 under `-s` bit 0x20 with +0xf4c +0xc == 1), the walker 0xb and doors
+(0xc-0xe), the area look points in 6. The report's follow-ups (HQ's
+reply, then his 0xc00000e) play through `Phase::follow_up`. Tests:
+`body_found`, `body_alert` (regress).
 
 ## Drops and dog tags (`FUN_00245e08`, `FUN_00245e98`)
 
@@ -719,7 +842,11 @@ report 0x1c00000b (also 0x1c000006..8, 0x1c00000d and a few others)
 -> `0x2000000 | n`, HQ's reply n (manager message 3, `FUN_0021f760`; 0
 by default); 0x1c000009 / 0xa -> line 0xc00000e, then the reply (or
 0x1081400f once the manager's count +0x814 reaches +0x816); 0x2c00000x
-and 0x20008003 -> an area line (`FUN_0021c940`).
+and 0x20008003 -> an area line (`FUN_0021c940`). Read off the decomp's
+branches, 0x14000, 0xc000011 and 0x18a00005 (the in-person report) also
+fall through to the single reply. Ported as `Phase::follow_up` /
+`queue_tick` (each queued line 0xf0 frames after the one before; the
+0x1081400f limit is not traced: the reply is always taken).
 
 Investigation (normal state 6, `FUN_0023c470`): sub 0 (`FUN_0023c028`,
 line 0x140, a turn, action 3) goes to 5, to 6 in Evasion (action 4, then
@@ -1192,14 +1319,20 @@ frame until the motion ends: motions 15 (559 frames), 16 (440), 0x68) and
 0x200000000000000; it also sets the eyes, +0xf4c +0x10: 5 shut at frames
 30, 38, 60, 0 open at 34, 42, 1 at 0x1e7, not ported, and says 0x11c +
 voice at frames 70, 226, 393, ported). In the Tanker: route actions 1 / 2
-/ 3 (21 / 9 / 27 points) and 17. Lead (not ported): action 0x16 (route
-action 15; `FUN_00260240`, an idle) sets 0x100000000000, which the sight
-checks first with the same result, but only while the action is unchanged
-from the previous frame (+0xfdc == +0xfe8). All 21 Tanker points with it
+/ 3 (21 / 9 / 27 points) and 17. Action 0x16 (route action 15;
+`FUN_00260240`, an idle) sets 0x100000000000, which the sight checks
+first with the same result, while the action is unchanged from the
+previous frame (+0xfdc, the action asked for, == +0xfe8, the one the
+step runs; they differ only on the frame the brain asks for another,
+when the step's +0xfd8 check switches over). All 21 Tanker points with it
 are one-point posts with wait 0 / 1 / 30 (w00c, w01d routes 2 / 14 / 28,
-w02a's waiting soldiers), which the game cycles (arrive, wait, arrive)
-and the port holds in one endless wait; how long they are blind depends
-on that cycle. Other steps set it too (the hurt and
+w02a's waiting soldiers). The wait does not cycle back through the walk:
+in `FUN_002258a0`, once the wait has counted down, a route of under 2
+points (+0xc0e < 2) stays in the wait sub-state and sets +0xfdc = 0x16
+again each frame (the `-e` event `FUN_002244f0` is called again too), so
+such a soldier is blind from his second frame at the post until a script
+message moves him (`FUN_00224760`, +0xc0f != +0xc0c). Ported (the wait's
+`g.blind`); test `blind_post` (w01d guard 28). Other steps set it too (the hurt and
 blow steps 0x24a938.., normal state 7 / 10 steps 0x23ce48 / 0x240a00,
 0x243b00): not ported. Ported (`point_blind`, `Guard::blind`). Test:
 `MGS2_ROUTE=from:to:point` places a guard at a point.

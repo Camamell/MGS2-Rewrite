@@ -212,6 +212,10 @@ fn update(
             // no report is needed (0xf).
             State::Comrade { sub: 0x12, .. } => Some(Kind::Exclaim),
             State::Comrade { sub: 0xf, .. } => Some(Kind::Question),
+            // A body found (normal state 4): "!" from frame 6 of sub 1
+            // (0x8000), "?" in sub 9 (0x8001).
+            State::Body { sub: 1, timer: 6.., .. } => Some(Kind::Exclaim),
+            State::Body { sub: 9, .. } => Some(Kind::Question),
             State::HoldupCall { sub: 0x11, .. } => Some(Kind::Exclaim),
             // A shot heard (discovery sub 3, `FUN_00237918`: the mark and
             // effect 0x53, no line; the effect plays as it starts).

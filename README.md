@@ -344,8 +344,13 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      toward a look point, side steps on Deck 2); while a soldier plays
      some of his posts' actions (the game's flag 0x1000; one shuts his
      eyes for a while, with a voice) he sees nothing; at some posts they
-     look through binoculars
+     look through binoculars; at the one-point posts of route action 15
+     (soldiers who wait there until a script moves them) they see and hear
+     nothing; a soldier shot dead leaves a body (the game's `corps.c`) that
+     lasts five minutes on deck and moments overboard or in an alert; a
+     soldier who sees one says "!", walks up to it, kicks it and radios it
+     in (Caution), or looks about when a comrade there is already on the
+     radio, with the dead-radio and in-person paths of the other reports
    - next: the troopers' own brain, Olga's sequence selector (needs her
-     cover objects), the one-point posts' arrive / wait cycle (and action
-     0x16's blindness with it), bodies seen (`corps.c`, stimulus 0x80);
+     cover objects);
      leads in `re/notes/guard-ai.md`
