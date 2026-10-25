@@ -416,7 +416,7 @@ facing).
 - the game's precomputed shortest-path matrices in the `.hzx` (paths are
   recomputed from the node links instead).
 
-## Olga (w00b): step tables run, selector simplified
+## Olga (w00b): step tables and selectors run
 
 - Stamina +0xfb2 starts at 0x80. Her eleven hit zones (table 0x1F6090,
   0x20 bytes each: joint at +0xc, damage at +0x1c as `(u32)float >> 17`
@@ -595,6 +595,131 @@ not ported: the +0xf74 orders' fixed points, her remembered Snake
 (+0x1000), the 0x40000 / 0x1F5E00 narrowing, and the selectors that
 choose the tables. Still to read: the rest of `FUN_00269028` and of
 `FUN_00266448`.
+
+### The selectors ported (2026-10-25, `olga::select`)
+
+Decompiled with headless Ghidra: every step function the selectors' 115
+tables use (`re/ghidra-w00b/olga_steps.c`, git-ignored; 104 functions
+the dump had missed). Ported: `FUN_00267DE0` exactly (history ring
++0xf88 / +0xfa8: a candidate found in it scores its age
+`(slot - ring) & 7`, the smallest, i.e. oldest, is the fallback; the
+others form a mask narrowed by `DAT_0019227c` draws), the three
+selectors and the steps of every table they reach in the port.
+- Modes (+0xf70 & 3): 0 `FUN_002679F0` -> sets 0x201 (attack next) or,
+  on 3 of 4 draws while +0xf70 & 0xc < 8, 0x202 (looks next); 2 / 3
+  `FUN_00266348`: bit 0 clear -> (& ~2) | 0x41 (attack next), set -> & ~3
+  (move next); 1 `FUN_00266448`: `& ~1` (move next) on several paths,
+  and every fifth pick (+0xfaf) 3 of 4 draws `& ~1`, else `| 2` (mode
+  3, the looks then a move) unless +0xf7c > 0 or +0xf7e != 0 (the
+  inner draw only under +0xf70 & 0xc < 4; from 4, not under 0x400000).
+  Mode 1 also ends: +0xf78 = 0, +0xf7a &= 0x7fff.
+- Mode 1's main path (no orders, Snake not remembered): no rounds ->
+  0x1F68E8[+0xfae] (reload: `FUN_00262A78` / `FUN_00262B00`, both
+  motion 0xc) taken as is; at a fixed point, +0xf7a & 0x8000 or +0x108c
+  >= 20 -> 0x1F6368 taken, mode 0; under +0xf70 & 0xc >= 4 with +0x109a
+  >= 4 -> (& ~1) | 0x20000. Stance +0xfae bit 1 clear and +0xf7e == 0:
+  i = (+0xf70 & 0xc) >> 2; low cover (0x400): 0x1F7C80 when rounds > 3,
+  0x1F6810[2i, 2i+1], then the side's table (0x1000 -> 0x1F77E0, 0x800
+  -> 0x1F7360) [2i, 2i+1] and [2i+8, 2i+9]; high cover: the side's
+  [2i, 2i+1], + 8 when +0xfae bit 0. +0xf7e != 0: 0x1F7920 / 0x1F79A0 /
+  0x1F7960 / 0x1F79E0 (difficulty < 0x1f, +0xf7e < 2, | 0x20000) or
+  0x1F7820 / 0x1F78A0 / 0x1F7860 / 0x1F78E0, then +0xf7e - 1. Stance bit
+  1 set: & ~1, 0x1F7B00 / 0x1F7B90 / 0x1F7B48 / 0x1F7BD8 (crouched).
+- Mode 2 / 3 tables: 0x1F6EA0 (side 0x1000) / 0x1F6EE0 (0x800)
+  [+0xfae + 4 under 0x400000], or 0x1F6E70 at a low cover standing.
+- `FUN_002673b0` clears +0xf70 0x9c00 before setting the side, 0x400
+  (cover +0x64 < 1200) and 0x8000 (the same cover as +0x1084).
+- Settle `FUN_00265CA0`: the idle motion is +0xfae itself (0..3); at a
+  low cover +0xfae = (& ~2) | 1; `FUN_0025fe90(0, 0x20250)` (mirror and
+  layer 1 off); no rounds -> (& 0xbffffe7d) | 1 (mode 1, which
+  reloads); crouched (+0xfae bit 1) she turns to the cover's +0x68 (all
+  0xc00) instead of Snake. `FUN_00265E38` (table 0x1F6368) first adds a
+  miss to +0xf7e.
+- Firing: the steps set +0xfcc = 1.0 (her gun, `FUN_0026ddd8` with
+  +0xfb6, fires a round); 261878 (motion 0xf), 261A78 (layer-1 0x1b),
+  261710 / 262F70 (layer-1 0xf), 263FA8 (0x18, at the head); refused
+  (+0xf7e + 1) without rounds, under 0x80000, or (lean shots) with
+  +0xf7a & 0x8000. `FUN_00264088` loops back 8 bytes to the shot while
+  she has rounds and +0xf7e < 10 (Ghidra's decompile showed the jump
+  overwritten; the disassembly at 0x2640b8 returns after it).
+- `FUN_00327bc0(ctl, layer, motion, start, joint mask, blend)`: layer 0
+  0x1fffff the whole body, layer 1 0x1ffe / 0x7f8 the upper body / arms;
+  motion -1 on layer 1 clears it; the motion's end is ctl+4 -> +0x20 & 4.
+  Steps that add 0x300 to the model flags (ctl +0x10) play the motion
+  mirrored: see "Mirrored motions" below.
+- Sense (`FUN_00269028`): `DAT_001e6924` is the frame clock (the notes
+  above called its low bit the difficulty: wrong; it is a frame parity).
+  +0x1070 counts 256-frame periods up to 8; +0xf70 & 0xc: < 2 -> 0xc,
+  < 4 or difficulty > 0x27 -> 8, < 6 or difficulty > 0x1d -> 4. +0x109a
+  counts 256-frame periods since Snake's flag 0x80000000000 (set by
+  several of his action handlers, `FUN_00272cf8`, `FUN_0027a420`,
+  `FUN_0027be10`, `FUN_0027cf10`: which action is open; the port never
+  sets it, so after ~17 s of the fight on Normal she leaves cover more).
+  `FUN_00268880`: with Snake's flags 0x800 (aiming) and 1 (not known;
+  the port uses aiming alone), within 1400 mm of his line -> 0x400000;
+  leaning out (+0xf70 & 0xc0080 == 0x80) +0xf78 = the mask of her zones
+  the line meets. Sight check under 0x100 (set by the lean / run steps):
+  `FUN_0014f230` from her head (+0x1c0 + 0x810) to point 0xb: clear ->
+  +0xf7a 1, blocked within 1.5 m (the hit point to her head) -> 0x8000.
+  +0x108c (attacking at a cover, +0xf70 & 0x40): +1 a frame while she is
+  exposed (`FUN_00268cf0`, the spot z for each side with +-300: exposed
+  when +0x1030's z <= zA - 60, or (A clear) >= zB + 60, or neither side
+  hides), reset otherwise and under 0x80200 or Snake's hit flag 0x200.
+  +0xf70 0x80000 comes only from the orders (+0xf74 & 8, sense line
+  ~151470), 0x40000 from +0x1098 & 0x4000.
+- +0x1098 (her memory of Snake) is written by her message handler
+  `FUN_0026ae58`: message 0 clears 0x8000, message 1 sets it (and the
+  value << 6; copies Snake's place to +0x1000 when & 0x3000 == 0x3000).
+  Who sends them is not traced (a lead: her sight, or the script).
+- Not ported: the orders +0xf74 (the rest of the sense, from line
+  ~151600: fixed points 0x1F5D50.., the stage count +0x1066 and
+  `FUN_002685c8`, +0x10a0), the remembered Snake, `-h` procs the
+  selectors and steps run (+0xe98.. +0xeec: voices / script), the
+  upper-body layer (the recoil is a wait of its length; the arms' idle
+  overlay 0x7f8 is not drawn), the voice ids steps put in +0x1064 /
+  +0x1068. Assumed: the crouched walk (8) and the aiming run (0x10)
+  move at the walk's / run's speed; the side step at the walk's.
+
+### Leads: her taunts and the fight's camera events (not ported)
+
+- Her init reads `-h` into +0xe90 (25 procs: +0xe90 + 4n = h[n]; h[1]
+  +0xe94 the defeat) and `-v` into +0xef4 (6 VOX ids).
+- +0x1066 is her taunt progress: the high nibble the line reached, the
+  low 12 bits a count (+1 every 64 frames while the nibble < 6 and no
+  voice plays, +0xf0c == 0). With a count and the nibble not 0 or 5,
+  and her motion not 0x28..0x2f, `FUN_002685c8` plays `-v`[nibble]
+  (`FUN_001183f8`, handle in +0xf0c) and the nibble goes up. At nibble
+  0 or 5 with the count >= 8 the sense gives the order +0xf74 0x4000:
+  she goes to point 0x1F5E70 + 16 x nibble, and mode 1 there runs
+  h[18] (+0xed8, `#2cba9c`: the camera event `#de7ce7` sweeping to
+  her, a `#9c5a50` camera) with table 0x1F80E8 (nibble 0), or h[20]
+  (+0xee0, `#ecba91`) with 0x1F8110 (nibble 5). So the selectors'
+  "stage >= 6" branches are "all her lines said".
+- Other procs the steps / selectors call: h[2] (+0xe98, `#71f807`, sets
+  Abit:0x2a.1) from `FUN_00263110` / `FUN_00263690` and mode 1's
+  0x80000 path, h[3] (+0xe9c, empty) from `FUN_00263EF8`, h[6] (+0xea8,
+  `#563a2a`: a camera event by Au32:0xa5c) from `FUN_002611A0`, h[8]
+  (+0xeb0, empty) from mode 2 / 3, h[11] (+0xebc) / h[12] (+0xec0) /
+  h[22] (+0xee8) from mode 1's 0x80000 path and the message handler.
+- `FUN_00104950` (the "busy" test at the top of the selector and the
+  sense: she heads for point 0xb) is true while `DAT_0017f48c |
+  DAT_0017f490` is negative, `DAT_0017f4e4` set or `DAT_0017f4e0` set
+  (a demo / pause state; not traced).
+
+### Mirrored motions (`FUN_003b2f58`, model flags 0x300)
+
+The engine mirrors a posed skeleton before composing it: 0x100 the
+upper body, 0x200 the root and legs (and the root's x translation
+negated, `FUN_003af528`). Every listed joint's rotation quaternion has
+x and w negated (`vsub.xw vf1, vf0*0, vf1` at 0x3b3058: the reflection
+in the model's x = 0 plane), then pairs swap rotations. By model flags
+& 0xf0000: 0x10000 (16 joints) masks 0x3fe / 0xfc01, pairs at
+0x1fc070 (7,2) (8,3) (9,4) and 0x1fc080 (13,10) (14,11) (15,12);
+0x20000 (21 joints: soldiers, Olga) masks 0x1ffe / 0x1fe001, pairs at
+0x1fc090 (7,3) (8,4) (9,5) (10,6) and 0x1fc0a0 (17,13) (18,14) (19,15)
+(20,16); 0xf0000 (33 joints) not read. Ported as
+`anim::pose_mirrored` / `Body::mirror` (Olga's lean-outs; the Deck-2
+defenders' mirrored actions 0xb / 0xc / 0x18 could use it now).
 
 ## Noise (`FUN_0011b630`, `FUN_00220078`, `FUN_0021f958`)
 

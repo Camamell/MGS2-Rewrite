@@ -144,11 +144,18 @@ MGS2_FPV_TEST=1 MGS2_FPV_PITCH=41 check lamp "light 906464 shot" ge 1 w03a --ski
 check mirror "reflects 28dce6" ge 1 w00b --skip-cutscenes --shot-at 4
 # Olga's own zones (w00b 0x1f6090: head 32, limbs 8, body 10). Snake here
 # leaves her one cover side (the low box's spot at -14350, -14544); she
-# aims at him there, her arms before her face: a limb.
-MGS2_FPV_TEST=1 MGS2_FPV_AT=-14350,15000,-14544 check olga_head "Olga darted \((8|10|32)\)" ge 1 w00b --skip-cutscenes --snake-at=-12963,12750,-16963 --fire-at 6 --aim-for 0.2 --shot-at 8
+# aims at him there, her arms before her face: a limb. (God mode: her
+# attacks from cover would kill him before the dart.)
+MGS2_GOD=1 MGS2_FPV_TEST=1 MGS2_FPV_AT=-14350,15000,-14544 check olga_head "Olga darted \((8|10|32)\)" ge 1 w00b --skip-cutscenes --snake-at=-12963,12750,-16963 --fire-at 6 --aim-for 0.2 --shot-at 8
 # Her moves go to cover (FUN_002673b0): from the start, Snake far east,
 # the obs_irs spot on its -x side.
 MGS2_GOD=1 check olga_cover "olga: to cover 2 at \(-18945" ge 1 w00b --skip-cutscenes --shot-at 10
+# Her selectors (FUN_00267DE0 and modes): she leans out from her cover
+# (the other side mirrored, model flags 0x300), reloads when empty, and
+# goes down when her stamina is gone.
+MGS2_GOD=1 check olga_lean "olga: ptr .* mirrored" ge 1 w00b --skip-cutscenes --trace --shot-at 10
+MGS2_GOD=1 check olga_reload "olga: ptr 0x1f68(bc|d4) " ge 1 w00b --skip-cutscenes --trace --shot-at 30
+check olga_down "Olga is down" ge 1 w00b --skip-cutscenes --boss-down-at 5 --shot-at 14
 # Items: a bandage stops the bleeding; cold medicine ends the sneezing.
 MGS2_LIFE=25 MGS2_GIVE=0/5:1 MGS2_KEYS=N@2 check bandage "bandage used" ge 1 w01a --skip-cutscenes --shot-at 3
 MGS2_COLD=120 MGS2_GIVE=0/4:1 MGS2_KEYS=N@4 check cold "cold medicine used" ge 1 w01a --skip-cutscenes --shot-at 6

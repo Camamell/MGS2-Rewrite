@@ -356,6 +356,11 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      report over, or turns toward Snake (with his binoculars when Snake
      is far); Olga's three cover objects stand on her platform, and she
      moves to the side of one that hides her from Snake, as the game
-     picks it
-   - next: the troopers' own brain, Olga's sequence selectors (her cover
-     choice is in); leads in `re/notes/guard-ai.md`
+     picks it; her sequences are chosen by the game's own selectors
+     (moving, attacking, looking out, with their eight-pick memory): she
+     leans out from her cover and fires (on the cover's other side the
+     motions mirrored, as the game mirrors them), rises over the low box
+     to shoot, looks out, side-steps along a cover, runs between covers
+     aiming, holds fire with a wall in her face, and reloads when empty
+   - next: the troopers' own brain, Olga's orders (her fixed points) and
+     her memory of Snake; leads in `re/notes/guard-ai.md`

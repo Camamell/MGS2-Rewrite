@@ -18,11 +18,40 @@ pub fn pose(model: &kms::Model, motion: Option<&Motion>, frame: f32, conjugate: 
 /// [`pose`] with one object turned further by `turn` (in its own space,
 /// after the motion's rotation): a head looking about.
 pub fn pose_turned(model: &kms::Model, motion: Option<&Motion>, frame: f32, conjugate: bool, turn: Option<(usize, Quat)>) -> Vec<Affine3A> {
+    pose_mirrored(model, motion, frame, conjugate, turn, false)
+}
+
+/// Left and right joints the game swaps to mirror a pose (`FUN_003b2f58`,
+/// tables at 0x1fc070..0x1fc0ac of the stage image): 16-joint skeletons
+/// (model flags 0x10000) and 21-joint ones (0x20000, soldiers, Olga).
+const MIRROR_16: [(usize, usize); 6] = [(7, 2), (8, 3), (9, 4), (13, 10), (14, 11), (15, 12)];
+const MIRROR_21: [(usize, usize); 8] = [(7, 3), (8, 4), (9, 5), (10, 6), (17, 13), (18, 14), (19, 15), (20, 16)];
+
+/// [`pose_turned`], optionally mirrored left for right as the game plays a
+/// motion under model flags 0x300 (`FUN_003b2f58`): every joint's
+/// rotation has x and w negated (`vsub.xw` from zero: the reflection in
+/// the model's x = 0 plane) and the paired arm and leg joints trade
+/// rotations. Skeletons of other sizes are left as they are.
+pub fn pose_mirrored(model: &kms::Model, motion: Option<&Motion>, frame: f32, conjugate: bool, turn: Option<(usize, Quat)>, mirror: bool) -> Vec<Affine3A> {
     let root_y = motion.and_then(|m| m.root_position(frame)).map_or(0.0, |p| p[1]);
+    let mut rots: Vec<Option<[f32; 4]>> = (0..model.objects.len()).map(|i| motion.and_then(|m| m.rotation(i, frame))).collect();
+    if mirror {
+        let (joints, pairs): (usize, &[(usize, usize)]) = match rots.len() {
+            21.. => (21, &MIRROR_21),
+            16..=20 => (16, &MIRROR_16),
+            _ => (0, &[]),
+        };
+        for q in rots.iter_mut().take(joints).flatten() {
+            q[0] = -q[0];
+            q[3] = -q[3];
+        }
+        for &(a, b) in pairs {
+            rots.swap(a, b);
+        }
+    }
     let mut out: Vec<Affine3A> = Vec::with_capacity(model.objects.len());
     for (i, o) in model.objects.iter().enumerate() {
-        let rot = motion
-            .and_then(|m| m.rotation(i, frame))
+        let rot = rots[i]
             .map(|q| {
                 let q = Quat::from_xyzw(q[0], q[1], q[2], q[3]).normalize();
                 if conjugate { q.conjugate() } else { q }

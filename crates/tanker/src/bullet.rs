@@ -150,7 +150,7 @@ fn struck(game: &Game, body: &Body, groups: &[&[ZoneBox]], a: Vec3, b: Vec3) -> 
         return None;
     }
     let motion = body.motions.and_then(|m| game.data.motions[m].1.motions.get(body.motion));
-    let joints = mgs2_bevy::anim::pose_turned(model, motion, body.frame, false, body.turn);
+    let joints = mgs2_bevy::anim::pose_mirrored(model, motion, body.frame, false, body.turn, body.mirror);
     let owner = Quat::from_rotation_y(body.yaw);
     let test = |z: &ZoneBox| -> Option<f32> {
         let (_, rot, pos) = joints.get(z.joint)?.to_scale_rotation_translation();
@@ -200,6 +200,11 @@ impl OlgaZones {
         let refs: Vec<&[ZoneBox]> = boxes.iter().map(Vec::as_slice).collect();
         let (_, g, i) = struck(game, body, &refs, a, b)?;
         Some(self.groups[g][i].1)
+    }
+    /// Whether the segment `a`..`b` meets any of her zones (Snake's aim on
+    /// her, +0xf78).
+    pub fn crosses(&self, game: &Game, body: &Body, a: Vec3, b: Vec3) -> bool {
+        self.hit(game, body, a, b).is_some()
     }
 }
 

@@ -23,11 +23,13 @@ pub struct Body {
     pub once: bool,
     /// One object turned further (object, rotation): a Marine's head.
     pub turn: Option<(usize, Quat)>,
+    /// The motion played mirrored, left for right (model flags 0x300).
+    pub mirror: bool,
 }
 
 impl Body {
     pub fn new(pos: Vec3, yaw: f32, model: usize, motions: Option<usize>) -> Self {
-        Self { pos, yaw, model, motions, motion: 0, frame: 0.0, once: false, turn: None }
+        Self { pos, yaw, model, motions, motion: 0, frame: 0.0, once: false, turn: None, mirror: false }
     }
 
     /// Switches to a looping motion, restarting it only when it changes.
@@ -121,7 +123,7 @@ pub fn hold(
         let motion = b.motions.and_then(|m| game.data.motions[m].1.motions.get(b.motion));
         let joints = match evm.and_then(|x| game.data.evms.get(x.0)) {
             Some((_, em)) => evm_bones(em, b, &game),
-            None => anim::pose(model, motion, b.frame, false),
+            None => anim::pose_mirrored(model, motion, b.frame, false, None, b.mirror),
         };
         let Some(hand) = joints.get(h.object).copied() else { continue };
         let owner = Transform::from_translation(b.pos * SCALE).with_rotation(Quat::from_rotation_y(b.yaw));
@@ -272,7 +274,7 @@ pub fn skin(
             scope.spawn(async move {
                 let model = &game.data.models[b.model].1;
                 let motion = b.motions.and_then(|m| game.data.motions[m].1.motions.get(b.motion));
-                let mats = anim::pose_turned(model, motion, *frame, false, b.turn);
+                let mats = anim::pose_mirrored(model, motion, *frame, false, b.turn, b.mirror);
                 let reach = Vec3::splat(2000.0);
                 let lights = lt2.map(|l| l.gather((b.pos - reach).into(), (b.pos + reach).into())).unwrap_or_default();
                 list.iter()
@@ -324,6 +326,7 @@ pub struct SkinKey {
     pos: [i32; 3],
     yaw: u32,
     turn: Option<(usize, [u32; 4])>,
+    mirror: bool,
 }
 
 /// Animation frames per skinning update by distance from the camera (mm):
@@ -349,6 +352,7 @@ impl SkinKey {
             pos: b.pos.round().as_ivec3().to_array(),
             yaw: b.yaw.to_bits(),
             turn: b.turn.map(|(j, q)| (j, q.to_array().map(f32::to_bits))),
+            mirror: b.mirror,
         }
     }
 }
