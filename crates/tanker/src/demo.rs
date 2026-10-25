@@ -690,8 +690,9 @@ pub fn animate(
         tf.look_at(target, Vec3::Y);
         tf.rotate_local_z(roll);
         if let Projection::Perspective(pp) = proj.as_mut() {
-            let zoom = (a.zoom + (b.zoom - a.zoom) * t).max(0.1);
-            pp.fov = 2.0 * (1.0 / zoom).atan();
+            // The demo's zoom is the camera's lens (`FUN_00219ac8` puts
+            // it in the camera's +0x20, as `-a` does).
+            pp.fov = crate::script_cam::zoom_fov(a.zoom + (b.zoom - a.zoom) * t);
         }
     }
 
