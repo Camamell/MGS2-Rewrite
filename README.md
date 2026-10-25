@@ -361,6 +361,8 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      leans out from her cover and fires (on the cover's other side the
      motions mirrored, as the game mirrors them), rises over the low box
      to shoot, looks out, side-steps along a cover, runs between covers
-     aiming, holds fire with a wall in her face, and reloads when empty
+     aiming, holds fire with a wall in her face, and reloads when empty;
+     she taunts Snake with her six lines as the game paces them, the
+     first and the last from her points with the script's events
    - next: the troopers' own brain, Olga's orders (her fixed points) and
      her memory of Snake; leads in `re/notes/guard-ai.md`

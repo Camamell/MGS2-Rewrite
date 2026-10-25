@@ -680,7 +680,7 @@ selectors and the steps of every table they reach in the port.
   +0x1068. Assumed: the crouched walk (8) and the aiming run (0x10)
   move at the walk's / run's speed; the side step at the walk's.
 
-### Leads: her taunts and the fight's camera events (not ported)
+### Her taunts and the fight's camera events (ported 2026-10-25, `olga::say`)
 
 - Her init reads `-h` into +0xe90 (25 procs: +0xe90 + 4n = h[n]; h[1]
   +0xe94 the defeat) and `-v` into +0xef4 (6 VOX ids).
@@ -701,6 +701,19 @@ selectors and the steps of every table they reach in the port.
   `#563a2a`: a camera event by Au32:0xa5c) from `FUN_002611A0`, h[8]
   (+0xeb0, empty) from mode 2 / 3, h[11] (+0xebc) / h[12] (+0xec0) /
   h[22] (+0xee8) from mode 1's 0x80000 path and the message handler.
+- Ported: the count and lines 1-4 in the sense, the order 0x4000 (the
+  sense sends her back through her init when her destination is not the
+  line's point; `FUN_002673b0`'s order branch picks the point, +0xfae 0
+  or 2 from line 3), mode 1's event (h[18] / h[20] and the table taken
+  as is), the event steps (`FUN_00265890` / `265A50` say the line,
+  `265998` / `265980` / `265A98` wait for its end then `FUN_002658c0`:
+  +0xf74 = 0, the proc h[19] / h[21], table 0x1F6368, the next line),
+  `265C20`, `265728` / `2657B0`. The lines play as spoken lines with
+  their subtitles; "over" = the stage no longer plays it. Run (w00b,
+  Normal): line 0 at ~9 s, lines 1-4 by ~32 s, line 5's event at ~43 s.
+  The procs run, but their camera event (`#de7ce7`, the `#43f718`
+  cameras) does not move the port's camera yet; the skip by button
+  (`DAT_0019165e & 0x840` under +0xf70 0x4000000) is not ported.
 - `FUN_00104950` (the "busy" test at the top of the selector and the
   sense: she heads for point 0xb) is true while `DAT_0017f48c |
   DAT_0017f490` is negative, `DAT_0017f4e4` set or `DAT_0017f4e0` set

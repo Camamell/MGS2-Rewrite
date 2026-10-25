@@ -372,7 +372,7 @@ struct Cast {
     items: Vec<(items::Item, usize)>,
     sliding: Vec<(Prop, SlidingDoor)>,
     /// Bosses: (model, motions, position, facing).
-    bosses: Vec<(usize, Option<usize>, Vec3, f32, Option<u32>)>,
+    bosses: Vec<(usize, Option<usize>, Vec3, f32, olga::Script)>,
     /// `putmodel.c` models: (model, motions, place, facing, motion).
     posed: Vec<(usize, Option<usize>, Vec3, f32, usize, u32)>,
     /// `#de0402` attachments: (owner's actor name, model, joint, offset mm,
@@ -1010,14 +1010,14 @@ fn prepare(
             .spawns
             .iter()
             .filter(|s| s.kind == olga::OLGA_ACTOR)
-            .filter_map(|s| olga::from_spawn(s).map(|x| (x, olga::callbacks(s).get(1).copied())))
-            .filter_map(|((m, a, mut p, yaw), on_down)| {
+            .filter_map(|s| olga::from_spawn(s).map(|x| (x, olga::Script::from_spawn(s))))
+            .filter_map(|((m, a, mut p, yaw), script)| {
                 let model = data.models.iter().position(|(h, _)| *h & 0x00FF_FFFF == m)?;
                 let motions = data.motions.iter().position(|(h, _)| *h & 0x00FF_FFFF == a);
                 if let Some(y) = collision.as_ref().and_then(|c| c.floor_below(p.x, p.z, p.y + 100.0)) {
                     p.y = y;
                 }
-                Some((model, motions, p, yaw, on_down))
+                Some((model, motions, p, yaw, script))
             })
             .collect();
         let ushold = motions_index(&data, "ushold");
@@ -1499,6 +1499,8 @@ fn main() -> Result<()> {
     app.add_systems(Update, (body::add_shadows, body::update_shadows.after(body::skin)));
     app.add_systems(Update, boss_defeat.after(olga::think).run_if(codec::idle).run_if(demo::idle));
     app.add_systems(Update, death_events);
+    app.init_resource::<olga::Requests>();
+    app.add_systems(Update, olga_requests.after(olga::think).before(boss_defeat).run_if(codec::idle).run_if(demo::idle));
     app.add_systems(Update, olga::think.after(guard::think).before(bullet::fly).run_if(codec::idle).run_if(demo::idle));
     if cli.trace {
         app.insert_resource(guard::Trace::default()).add_systems(Update, guard::trace);
@@ -1668,9 +1670,9 @@ fn spawn_level(
             weapons.push((e, *m, false, *rot, *joint, *offset));
         }
     }
-    for (model, motions, pos, yaw, on_down) in cast.bosses {
+    for (model, motions, pos, yaw, script) in cast.bosses {
         let e = spawn(&mut commands, model, Body::new(pos, yaw, model, motions));
-        commands.entity(e).insert(olga::Olga::new(on_down));
+        commands.entity(e).insert(olga::Olga::new(script));
     }
     let rifle = model_index(data, "m4a_nm");
     for (model, motions, pos, yaw, idle, extras, flags) in cast.crowd {
@@ -2080,6 +2082,25 @@ fn death_events(
         }
     }
     *was_dead = dead;
+}
+
+/// What Olga's actor asked for this frame: her line (a spoken line, with
+/// its subtitles) and the procs her steps run (the fight's camera events).
+fn olga_requests(
+    mut commands: Commands,
+    session: Res<Session>,
+    mut game: ResMut<Game>,
+    mut requests: ResMut<olga::Requests>,
+    level: LevelRoots,
+    bullets: Query<Entity, With<bullet::Bullet>>,
+) {
+    if let Some(id) = requests.speech.take() {
+        game.speech = Some((id, None, SPEECH_SECONDS));
+    }
+    for p in std::mem::take(&mut requests.procs) {
+        info!("olga: running {p:#x}");
+        script_event(&mut commands, &session, &mut game, |vm| vm.call_proc(p, &[]), &level, &bullets);
+    }
 }
 
 /// Olga beaten: after her fall, run her defeat callback, which ends the

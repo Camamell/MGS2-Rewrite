@@ -40,10 +40,14 @@
 //! `FUN_002679F0` (where to go: a cover from [`Cover`], Snake's zone and
 //! the hiding spots), `FUN_00266448` (attacks from the cover) and
 //! `FUN_00266348` (looks out); [`sense`] keeps the fields they read.
-//! Not ported (see `re/notes/guard-ai.md`): her orders (+0xF74) and the
-//! fixed points they send her to, her memory of Snake (+0x1098, from
-//! messages), the stage count (+0x1066), her `-h` procs the selectors
-//! run, and the upper-body motion layer (the recoil plays as a wait).
+//! Her taunts (+0x1066) are in: her six `-v` lines, lines 0 and 5 at her
+//! points with the order 0x4000 and its event tables (0x1F80E8 /
+//! 0x1F8110) and `-h` procs (the fight's camera events), lines 1-4 by
+//! themselves in between ([`Requests`] carries the lines and procs to
+//! the stage). Not ported (see `re/notes/guard-ai.md`): her other orders
+//! (+0xF74) and the fixed points they send her to, her memory of Snake
+//! (+0x1098, from messages), the other `-h` procs the selectors run, and
+//! the upper-body motion layer (the recoil plays as a wait).
 
 use bevy::prelude::*;
 
@@ -320,6 +324,11 @@ pub struct Olga {
     /// `-h` callback 1 (`#e5ee1f` in w00b): run when she is beaten; it
     /// ends the fight (camera, then the next cutscene).
     pub on_down: Option<u32>,
+    script: Script,
+    /// Her taunts (+0x1066): the line reached (high nibble) and a count.
+    taunt: u16,
+    /// The line she is saying (+0xf0c).
+    voice: Option<u32>,
     /// Seconds since she went down; the callback runs once.
     pub down_for: f32,
     pub reported: bool,
@@ -328,7 +337,7 @@ pub struct Olga {
 }
 
 impl Olga {
-    pub fn new(on_down: Option<u32>) -> Self {
+    pub fn new(script: Script) -> Self {
         Self {
             stamina: STAMINA,
             ptr: table::INIT,
@@ -361,7 +370,10 @@ impl Olga {
             frames: 0,
             unknown: Vec::new(),
             traced: 0,
-            on_down,
+            on_down: script.proc(1),
+            script,
+            taunt: 0,
+            voice: None,
             reload_sounds: 0,
             down_for: 0.0,
             reported: false,
@@ -397,6 +409,28 @@ impl Olga {
     /// `FUN_002673b0` (with no order pending): takes cover from Snake.
     /// False (the game's 1) when no side is allowed; nothing changes then.
     fn take_cover(&mut self, cx: &Ctx, wish: u8) -> bool {
+        // An order (+0xf74 beyond 0x170): a fixed point instead. Only the
+        // taunt order 0x4000 is ported: point 0x1F5E70 + 16 x the line
+        // reached, crouched from line 3 on.
+        if self.f74 & !0x170 != 0 {
+            self.fae = 0;
+            self.f70 &= !0x9C00;
+            if self.f74 & 0x4000 == 0 {
+                return false;
+            }
+            let line = u32::from(self.taunt >> 12);
+            if line > 2 {
+                self.fae = 2;
+            }
+            let at = 0x001F_5E70 + 16 * line;
+            info!("olga: to her point {at:#x} (line {line})");
+            self.dest = point(cx.img, at);
+            self.dest_at = Some(at);
+            self.cover_was = self.cover_at;
+            self.cover_at = None;
+            self.exposed = 0;
+            return true;
+        }
         let Some((i, side, spot)) = cover_choice(&cx.game.covers, cx.img, cx.target.feet, wish, self.f70, &mut self.lcg) else {
             return false;
         };
@@ -418,12 +452,35 @@ impl Olga {
     }
 }
 
-/// The `-h` callback procs.
-pub fn callbacks(s: &Spawn) -> Vec<u32> {
-    s.opt(b'h').unwrap_or(&[]).iter().filter_map(|v| match v {
-        crate::gcl::Val::Proc(p) => Some(*p),
-        _ => None,
-    }).collect()
+/// Her script data (`FUN_0025f230`): the `-h` procs (+0xe90 + 4n; 0 for
+/// a value that is not a proc) and the `-v` voice lines (+0xef4, VOX ids).
+#[derive(Clone, Debug, Default)]
+pub struct Script {
+    pub procs: Vec<u32>,
+    pub voices: Vec<u32>,
+}
+
+impl Script {
+    pub fn from_spawn(s: &Spawn) -> Self {
+        let procs = s.opt(b'h').unwrap_or(&[]).iter().map(|v| match v {
+            crate::gcl::Val::Proc(p) => *p,
+            _ => 0,
+        }).collect();
+        let voices = (0..6).map_while(|i| s.opt_int(b'v', i)).map(|v| v as u32).collect();
+        Self { procs, voices }
+    }
+
+    fn proc(&self, n: usize) -> Option<u32> {
+        self.procs.get(n).copied().filter(|&p| p != 0)
+    }
+}
+
+/// What her actor asks of the stage this frame (applied by
+/// `main::olga_requests`): a voice line to play, script procs to run.
+#[derive(Resource, Default)]
+pub struct Requests {
+    pub speech: Option<u32>,
+    pub procs: Vec<u32>,
 }
 
 /// (model hash, motion archive hash, position, facing in radians).
@@ -438,6 +495,36 @@ pub fn from_spawn(s: &Spawn) -> Option<(u32, u32, Vec3, f32)> {
 pub fn word(img: &[u8], addr: u32) -> Option<u32> {
     let o = addr.checked_sub(RESIDENT_BASE)? as usize;
     img.get(o..o + 4).map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+}
+
+/// A point (16-byte vector) in the image.
+fn point(img: &[u8], addr: u32) -> Option<Vec3> {
+    let f = |k: u32| word(img, addr + k * 4).map(f32::from_bits);
+    Some(Vec3::new(f(0)?, f(1)?, f(2)?))
+}
+
+/// `FUN_002685c8`: she says her `-v` line for the line count reached.
+fn say(o: &mut Olga, requests: &mut Requests) {
+    let n = usize::from(o.taunt >> 12);
+    if let Some(&id) = o.script.voices.get(n) {
+        info!("olga: line {n} ({id:#x})");
+        requests.speech = Some(id);
+        o.voice = Some(id);
+    }
+}
+
+/// `FUN_002658c0`: once her line is over, the order is done: proc
+/// `h[n]` runs, the next line is due and she settles (0x1F6368).
+fn line_over(o: &mut Olga, requests: &mut Requests, n: usize) -> bool {
+    if o.voice.is_some() {
+        return false;
+    }
+    o.f74 = 0;
+    o.f70 &= 0xF3FF_FFFF;
+    requests.procs.extend(o.script.proc(n));
+    o.ptr = table::HIT;
+    o.taunt = o.taunt.wrapping_add(0x1000) & 0xF000;
+    true
 }
 
 /// Entry `i` of a table of step tables.
@@ -469,6 +556,7 @@ pub fn think(
     mut olgas: Query<(&mut Olga, &mut Body)>,
     trace: Option<Res<crate::guard::Trace>>,
     down_at: Option<Res<DownAt>>,
+    mut requests: ResMut<Requests>,
     mut clock: Local<f32>,
 ) {
     let Some(img) = game.data.resident.as_deref() else { return };
@@ -499,8 +587,15 @@ pub fn think(
                 o.upper = None;
             }
         }
+        // Her line is over once the stage no longer plays it.
+        if let Some(v) = o.voice
+            && requests.speech != Some(v)
+            && game.speech.map(|s| s.0) != Some(v)
+        {
+            o.voice = None;
+        }
         if !o.down() {
-            sense(&mut o, &b, &game, target, zones.as_ref(), difficulty, ticks);
+            sense(&mut o, &b, &game, target, zones.as_ref(), difficulty, ticks, &mut requests);
         }
         // Run instant steps until one waits (bounded, as a safety net).
         for _ in 0..16 {
@@ -508,7 +603,7 @@ pub fn think(
                 o.ptr = table::START;
                 break;
             };
-            let mut ctx = Ctx { img, game: &game, ticks, target, difficulty, rng: &mut rng, commands: &mut commands };
+            let mut ctx = Ctx { img, game: &game, ticks, target, difficulty, rng: &mut rng, commands: &mut commands, requests: &mut requests };
             if !step(&mut o, &mut b, f, &mut ctx) {
                 break;
             }
@@ -551,7 +646,8 @@ pub fn think(
 /// her (`FUN_00268880`), the sight check and how long she has been
 /// exposed at her cover. Not ported: her memory of Snake (+0x1098, set by
 /// messages), the stage count (+0x1066) and the orders (+0xf74).
-fn sense(o: &mut Olga, b: &Body, game: &Game, target: Target, zones: Option<&bullet::OlgaZones>, difficulty: i16, ticks: i32) {
+#[allow(clippy::too_many_arguments)]
+fn sense(o: &mut Olga, b: &Body, game: &Game, target: Target, zones: Option<&bullet::OlgaZones>, difficulty: i16, ticks: i32, requests: &mut Requests) {
     let (band, fac) = match o.stamina {
         ..0x16 => (Some(0x30_0000), 0xC0),
         0x16..0x26 => (Some(0x20_0000), 0xC0),
@@ -572,6 +668,18 @@ fn sense(o: &mut Olga, b: &Body, game: &Game, target: Target, zones: Option<&bul
             // sets it is not traced (taken as never).
             o.quiet = o.quiet.saturating_add(1);
         }
+        // The taunt count: every 64 frames while lines remain and none
+        // is being said.
+        if o.frames & 0x3F == 0 && o.taunt >> 12 < 6 && o.voice.is_none() {
+            o.taunt = o.taunt.wrapping_add(1);
+        }
+    }
+    // Lines 1-4 come by themselves (not during motions 0x28..0x2f); lines
+    // 0 and 5 wait for the order below.
+    let line = o.taunt >> 12;
+    if line < 6 && o.voice.is_none() && o.taunt & 0xFFF != 0 && !(0x28..=0x2F).contains(&b.motion) && line != 0 && line != 5 {
+        say(o, requests);
+        o.taunt = o.taunt.wrapping_add(0x1000) & 0xF000;
     }
     o.f70 &= !0xC;
     o.f70 |= match o.calm {
@@ -633,6 +741,22 @@ fn sense(o: &mut Olga, b: &Body, game: &Game, target: Target, zones: Option<&bul
         };
         o.exposed = if exposed { o.exposed.saturating_add(ticks.max(1) as i16) } else { 0 };
     }
+    // The orders (+0xf74), worked out again each frame. Ported: 0x4000,
+    // a taunt line with its camera event (lines 0 and 5, once the count
+    // reaches 8): she is sent back through her init to the line's point.
+    if o.f70 & 0x20 == 0 && o.f74 & 0x1F0 == 0 {
+        o.f74 &= 0x1_0000;
+        if o.f70 & 0x800_0000 == 0 && o.taunt & 0xFFF >= 8 && matches!(o.taunt >> 12, 0 | 5) {
+            o.f74 |= 0x4000;
+            let at = 0x001F_5E70 + 16 * u32::from(o.taunt >> 12);
+            if o.dest_at != Some(at) {
+                o.ptr = table::INIT;
+            }
+        }
+        if o.f74 & 0x200 == 0 {
+            o.f74 &= !0x1_0000;
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -654,6 +778,7 @@ struct Ctx<'a, 'w, 's> {
     difficulty: i16,
     rng: &'a mut Rng,
     commands: &'a mut Commands<'w, 's>,
+    requests: &'a mut Requests,
 }
 
 /// A shot (+0xfcc = 1: her gun fires a round), from her gun hand toward
@@ -1056,6 +1181,38 @@ fn step(o: &mut Olga, b: &mut Body, f: u32, cx: &mut Ctx) -> bool {
             }
             next(o)
         }
+        // The taunt events' steps: her line (FUN_00265890, 265A50), wait
+        // for it to end (265998 also counts the timer down; 265980;
+        // 265A98 holding motion 0x35 at frame 29), idle (265C20), the
+        // lean of line 5 (0x35, 2657B0 mirrored).
+        0x0026_5890 | 0x0026_5A50 => {
+            say(o, cx.requests);
+            next(o)
+        }
+        0x0026_5998 => {
+            if line_over(o, cx.requests, 19) {
+                return true;
+            }
+            o.timer -= frames;
+            if o.timer < 1 { next(o) } else { false }
+        }
+        0x0026_5980 => line_over(o, cx.requests, 19),
+        0x0026_5A98 => {
+            b.play_once(0x35);
+            b.frame = b.frame.max(29.0);
+            line_over(o, cx.requests, 21)
+        }
+        0x0026_5C20 => {
+            o.f70 |= 0x2_0000;
+            b.play(0);
+            next(o)
+        }
+        0x0026_5728 | 0x0026_57B0 => {
+            b.play_once(0x35);
+            b.mirror |= f == 0x0026_57B0;
+            o.f70 = (o.f70 & 0x8FFF_FFFF) | 0x1_0000;
+            next(o)
+        }
         0x0026_7DE0 => select(o, b, cx),
         _ => {
             if !o.unknown.contains(&f) {
@@ -1183,6 +1340,22 @@ fn mode_attack(o: &mut Olga, cx: &mut Ctx) -> Pick {
         if o.rounds < 1 {
             o.f70 = (o.f70 & !0x180) | 0x40;
             break 'pick Pick::Take(entry(img, 0x001F_68E8, (o.fae & 3) as usize));
+        }
+        // Orders: the taunt events (h[18] / table 0x1F80E8 at line 0, h[20]
+        // / 0x1F8110 at line 5); the others are not ported.
+        if o.f74 & 0xFFFF != 0 {
+            let event = match o.taunt >> 12 {
+                0 => Some((18, 0x001F_80E8)),
+                5 => Some((20, 0x001F_8110)),
+                _ => None,
+            };
+            o.f70 = (o.f70 & 0x8FFF_FFFE) | 0x10;
+            if let Some((h, t)) = event {
+                info!("olga: taunt event at line {}", o.taunt >> 12);
+                cx.requests.procs.extend(o.script.proc(h));
+                break 'pick Pick::Take(t);
+            }
+            break 'pick Pick::Choose(Vec::new());
         }
         if o.dest_at.is_some_and(|a| FIXED_POINTS.contains(&a)) || o.f7a & 0x8000 != 0 || (o.exposed >= 0x14 && o.f70 & 0x8_0000 == 0) {
             o.f70 &= !1;

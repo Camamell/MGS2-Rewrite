@@ -154,8 +154,11 @@ MGS2_GOD=1 check olga_cover "olga: to cover 2 at \(-18945" ge 1 w00b --skip-cuts
 # (the other side mirrored, model flags 0x300), reloads when empty, and
 # goes down when her stamina is gone.
 MGS2_GOD=1 check olga_lean "olga: ptr .* mirrored" ge 1 w00b --skip-cutscenes --trace --shot-at 10
-MGS2_GOD=1 check olga_reload "olga: ptr 0x1f68(bc|d4) " ge 1 w00b --skip-cutscenes --trace --shot-at 30
+MGS2_GOD=1 check olga_reload "olga: ptr .* step 0x262810 " ge 1 w00b --skip-cutscenes --trace --shot-at 30
 check olga_down "Olga is down" ge 1 w00b --skip-cutscenes --boss-down-at 5 --shot-at 14
+# Her taunts (+0x1066): line 0 with its event at her point after ~8.5 s,
+# lines 1-4 one after another, line 5 with its event.
+MGS2_GOD=1 check olga_taunt "olga: line 5" ge 1 w00b --skip-cutscenes --shot-at 60
 # Items: a bandage stops the bleeding; cold medicine ends the sneezing.
 MGS2_LIFE=25 MGS2_GIVE=0/5:1 MGS2_KEYS=N@2 check bandage "bandage used" ge 1 w01a --skip-cutscenes --shot-at 3
 MGS2_COLD=120 MGS2_GIVE=0/4:1 MGS2_KEYS=N@4 check cold "cold medicine used" ge 1 w01a --skip-cutscenes --shot-at 6
