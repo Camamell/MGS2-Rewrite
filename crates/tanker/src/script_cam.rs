@@ -4,7 +4,12 @@
 //! - `-c 0 -b x y z x y z -l x y z x y z -r pitch yaw roll -f dist`: follow
 //!   Snake from `dist` mm at the given angles (4096 = full turn), with the
 //!   camera position clamped into box `-b` and the point looked at into box
-//!   `-l`. A flat box makes a rail.
+//!   `-l`. A flat box makes a rail. The point looked at trails Snake
+//!   (`FUN_0010c008` type 2, `FUN_0010dea0`): it moves only to stay within
+//!   `DAT_0017f640` (750, 300, 750 mm) of him, x and z 750 - (2000 - dist)
+//!   / 2 (at least 250) when `dist` < 2000; the eye is placed from it.
+//!   Snake's point is his +0x40 (`FUN_0028b9c0`); the port uses 900 mm
+//!   above his feet (assumed).
 //! - `-c 1 -p x y z -t x y z`: a fixed camera at `-p` looking at `-t`
 //!   (`FUN_0010c3f0` type 1 only recomputes its angles from the two).
 //! - `-a n`: the lens, zoom n / 100 (+0x20; the projection's scale,
@@ -59,6 +64,8 @@ pub struct Cameras {
     on: Vec<(u32, ScriptCam, Option<f32>, u64)>,
     /// Lenses of cameras switched off (a camera keeps its `-a`).
     lens: std::collections::HashMap<u32, f32>,
+    /// The follow cameras' trailing point (mm).
+    trail: Option<Vec3>,
     /// `#061ade` ranks: name -> (group, order, when made).
     ranks: std::collections::HashMap<u32, (i32, i32, u64)>,
     clock: u64,
@@ -84,10 +91,22 @@ pub fn zoom_fov(zoom: f32) -> f32 {
     2.0 * (224.0 / (256.0 * 1.121 * zoom.max(0.1))).atan()
 }
 
-/// Counts down the stage cameras' waits and moves.
-pub fn tick(time: Res<Time>, mut game: ResMut<crate::Game>) {
-    if game.cameras.busy() {
-        game.cameras.tick(time.delta_secs());
+/// Counts down the stage cameras' waits and moves; the follow cameras'
+/// point trails Snake.
+pub fn tick(time: Res<Time>, mut game: ResMut<crate::Game>, snake: Query<&crate::body::Body, With<crate::player::Player>>) {
+    let cams = &mut game.cameras;
+    if cams.busy() {
+        cams.tick(time.delta_secs());
+    }
+    let at = snake.single().ok().map(|b| b.pos + Vec3::Y * 900.0);
+    match (&cams.active, at) {
+        (Some((_, ScriptCam::Follow { dist, .. })), Some(at)) => {
+            let side = if *dist < 2000.0 { (750.0 - (2000.0 - dist) * 0.5).max(250.0) } else { 750.0 };
+            let zone = Vec3::new(side, 300.0, side);
+            let t = cams.trail.unwrap_or(at);
+            cams.trail = Some(t.clamp(at - zone, at + zone));
+        }
+        _ => cams.trail = None,
     }
 }
 
@@ -150,7 +169,7 @@ impl Cameras {
     /// Eye, look-at point (mm) and zoom for Snake's chest at `snake`.
     pub fn view(&self, snake: Vec3) -> Option<(Vec3, Vec3, Option<f32>)> {
         let (_, cam) = self.active.as_ref()?;
-        let (eye, look) = cam.place(snake);
+        let (eye, look) = cam.place(self.trail.unwrap_or(snake));
         let Some(p) = &self.pan else { return Some((eye, look, self.zoom)) };
         let t = (p.done / p.frames).clamp(0.0, 1.0);
         let zoom = match (p.zoom, self.zoom) {
@@ -249,7 +268,8 @@ impl Cameras {
 }
 
 impl ScriptCam {
-    /// Eye and look-at point (mm) for Snake's chest at `snake`.
+    /// Eye and look-at point (mm) for the point followed (Snake's chest,
+    /// or the follow cameras' trailing point).
     pub fn place(&self, snake: Vec3) -> (Vec3, Vec3) {
         match self {
             ScriptCam::Follow { bmin, bmax, lmin, lmax, pitch, yaw, dist } => {
@@ -257,7 +277,7 @@ impl ScriptCam {
                 // behind the look-at point.
                 let facing = Vec3::new(yaw.sin() * pitch.cos(), -pitch.sin(), yaw.cos() * pitch.cos());
                 let look = snake.clamp(*lmin, *lmax);
-                let eye = (snake - facing * *dist).clamp(*bmin, *bmax);
+                let eye = (look - facing * *dist).clamp(*bmin, *bmax);
                 (eye, look)
             }
             ScriptCam::Fixed { pos, target } => (*pos, *target),

@@ -365,7 +365,9 @@ Other options: `--collision`, `--lit`, `--browse <index>`,
      she taunts Snake with her six lines as the game paces them, the
      first and the last from her points with the script's events, whose
      camera pans to her over six seconds with a long lens;
-     the stage cameras as the game's: fixed cameras look at their target,
+     the stage cameras as the game's: follow cameras trail Snake with the
+     game's slack (he moves within a box before the view follows), fixed
+     cameras look at their target,
      each camera's lens (`-a`) sets the view's angle, a camera can move to
      a new place over a set time, cameras switched on inside a script
      `delay` wait it out, and the camera shown is the first switched on in
